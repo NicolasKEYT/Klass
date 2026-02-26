@@ -1,4 +1,4 @@
-# Sapiens-ERP
+# -K-Klass-ERP
 Sistema ERP para instituições de ensino acadêmico (Base do projeto) 
 
 # CRUD DE GESTÃO DE CARREIRAS, TRILHAS E TURMAS
