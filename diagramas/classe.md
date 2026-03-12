@@ -1,3 +1,4 @@
+preliminar, nada definido com certeza
 ```mermaid
 classDiagram
 
