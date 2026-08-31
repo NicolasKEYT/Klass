@@ -2,10 +2,10 @@ import type { Config } from "tailwindcss";
 
 // Tokens extraídos diretamente dos SVGs de design em `docs/design/`
 // (exportados do Figma pela equipe). Nenhum valor foi estimado a olho —
-// cada grupo abaixo indica de qual arquivo veio. Ambiguidades e valores
-// que variam entre telas foram resolvidos para o valor mais recorrente e
-// estão sinalizados nos comentários; ver a lista de dúvidas entregue ao
-// final do prompt de bootstrap para confirmação.
+// cada grupo abaixo indica de qual arquivo veio. As ambiguidades do
+// bootstrap foram decididas e estão registradas nos comentários de cada
+// token; raios de borda e letter-spacing ficaram como estavam por decisão
+// explícita (sem divergência intencional confirmada ainda).
 //
 // Nenhum gradiente foi encontrado em nenhum dos seis SVGs.
 export default {
@@ -37,6 +37,13 @@ export default {
         neutral: {
           subtle: "#F1F1EF", // trilha de progress bar, badge neutro ("Fechada")
         },
+        // Inferida — não vem de nenhum SVG (nenhuma tela mostrou um estado
+        // de erro/recusa). Reservada para estados negativos do domínio
+        // (ex.: inscrição recusada, matrícula rejeitada).
+        danger: {
+          DEFAULT: "#DC2626",
+          subtle: "#FEE2E2",
+        },
 
         // Paleta do certificado (tela 06 — template de PDF, não é uma
         // tela navegável). Deliberadamente distinta: papel/pergaminho,
@@ -61,16 +68,19 @@ export default {
       },
 
       fontSize: {
-        // Escala semântica por papel do texto, não por tela. Tamanhos
-        // muito próximos (11.5/12/13/15px) foram consolidados no token
-        // mais próximo — ver dúvidas no relatório final.
+        // Escala semântica por papel do texto, não por tela.
         "klass-2xs": ["9.5px", { lineHeight: "1.3", fontWeight: "600" }], // sub-título do logo — 01–05
-        "klass-xs": [
-          "11px",
-          { lineHeight: "1.3", fontWeight: "600", letterSpacing: "0.06em" },
-        ], // eyebrows, cabeçalhos de coluna — 01–05
-        "klass-sm": ["12.5px", { lineHeight: "1.4" }], // texto auxiliar, timestamps — 01–05
-        "klass-base": ["13.5px", { lineHeight: "1.5" }], // corpo padrão, células de tabela — 01–05
+
+        // Cluster de tamanhos quase idênticos (11/11.5/12/12.5/13/13.5px)
+        // consolidado em 3 valores fixos. Peso e letter-spacing não vêm
+        // embutidos no token — cada uso aplica sua própria utility
+        // (ex.: font-semibold + tracking-wide para um eyebrow, font-medium
+        // para um badge), já que o mesmo tamanho serve papéis com pesos
+        // diferentes no design original.
+        "text-caption": ["11px", { lineHeight: "1.4" }], // texto auxiliar, timestamps — antes 11/11.5/12.5px
+        "text-label": ["12px", { lineHeight: "1.3" }], // labels de campo, eyebrows, badges — antes 11/12px
+        "text-body-sm": ["13px", { lineHeight: "1.5" }], // corpo pequeno, células de tabela — antes 13/13.5px
+
         "klass-md": ["14px", { lineHeight: "1.4", fontWeight: "500" }], // nav, botões, valores de tabela — 01–05
         "klass-lg": ["16px", { lineHeight: "1.3", fontWeight: "600" }], // título de card, serif — 01, 03
         "klass-xl": ["20px", { lineHeight: "1.3", fontWeight: "600" }], // título de página, serif — 01–05
@@ -89,8 +99,9 @@ export default {
       borderRadius: {
         // Consolidado a partir de valores observados de 6/7/8/9/10/12/16px.
         // 7px (inputs numéricos no diário) e 9–10px (ícones/perfil na
-        // sidebar) são ruído do design consolidado nos tokens mais
-        // próximos — ver dúvidas no relatório final.
+        // sidebar) ficam como ruído do design, mantidos nos tokens mais
+        // próximos por decisão — revisitar se aparecer divergência
+        // intencional nos próximos SVGs.
         "klass-badge": "6px", // badges de status em tabela
         "klass-control": "8px", // botões, inputs, selects, ícones
         "klass-card": "12px", // cards de conteúdo
@@ -105,7 +116,8 @@ export default {
       },
 
       spacing: {
-        "klass-card-x": "22px", // padding horizontal interno dos cards — 01, 02, 04, 05 (03 varia 18–24px, a confirmar)
+        "klass-card-x": "22px", // padding horizontal padrão dos cards — 01, 02, 04, 05
+        "klass-card-x-dense": "24px", // variante densa, uso pontual (ex.: card com headline maior) — 03
         "klass-card-y": "34px", // topo do card até o primeiro texto — 01, 02, 04, 05 (stat cards usam ~30px, a confirmar)
         "klass-gutter": "16px", // espaço entre cards do dashboard
       },

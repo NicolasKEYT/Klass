@@ -12,7 +12,7 @@ export function Placeholder() {
           <span className="font-serif text-lg font-semibold">K</span>
         </div>
         <h1 className="font-serif text-klass-xl text-text-primary">Klass</h1>
-        <p className="text-klass-base text-text-secondary">
+        <p className="text-body-sm text-text-secondary">
           ERP educacional em construção. O esqueleto do monorepo, o design
           system e as integrações já estão de pé — as telas de cada módulo
           chegam nos próximos passos.

@@ -9,7 +9,7 @@ export function Input({
 }: InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
-      className={`h-9 rounded-klass-control border border-border bg-surface px-3.5 text-klass-base text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/40 ${className}`}
+      className={`h-9 rounded-klass-control border border-border bg-surface px-3.5 text-body-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/40 ${className}`}
       {...props}
     />
   );

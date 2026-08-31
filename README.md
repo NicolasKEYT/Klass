@@ -22,6 +22,10 @@ mexer em qualquer coisa de domínio ou infraestrutura.
 | E-mail transacional | Resend, acessado só pelos Workers |
 | Tipos compartilhados | `packages/types`, consumido por web e workers |
 
+`apps/workers` usa [Hono](https://hono.dev) como roteador — não está no
+`CLAUDE.md`, mas é só isso: roteamento e middleware (CORS) dentro do
+Worker, não um backend de CRUD na frente do Supabase.
+
 ## Estrutura do repositório
 
 ```
