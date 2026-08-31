@@ -1,0 +1,26 @@
+# Dependências
+node_modules/
+
+# Build
+dist/
+build/
+.vite/
+
+# Ambiente — nenhum segredo versionado
+.env
+.env.local
+.env.*.local
+apps/workers/.dev.vars
+
+# Cloudflare / Wrangler
+.wrangler/
+
+# Supabase (CLI local)
+.branches
+.temp
+
+# Editor / SO
+.DS_Store
+*.log
+.vscode/*
+!.vscode/extensions.json

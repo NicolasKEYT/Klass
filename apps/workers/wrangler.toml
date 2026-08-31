@@ -1,0 +1,16 @@
+name = "klass-workers"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Nenhum valor de segredo entra neste arquivo. As variáveis abaixo são
+# configuradas com `wrangler secret put <NOME>` (produção) ou num arquivo
+# `.dev.vars` não versionado (desenvolvimento local) — ver README para o
+# passo a passo.
+#
+# Necessárias em runtime (ver `src/shared/env.ts`):
+#   SUPABASE_URL               URL do projeto Supabase
+#   SUPABASE_SERVICE_ROLE_KEY  chave de service role — nunca no frontend
+#   RESEND_API_KEY             chave de API do Resend
+#   ALLOWED_ORIGIN             origem do frontend liberada no CORS
+#                              (padrão de desenvolvimento: http://localhost:5173)

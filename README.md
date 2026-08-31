@@ -1,59 +1,120 @@
-# -K-Klass-ERP
-Sistema ERP para instituições de ensino acadêmico (Base do projeto) 
+# Klass
 
-# CRUD DE GESTÃO DE CARREIRAS, TRILHAS E TURMAS
+ERP educacional open source para automação da jornada acadêmica — da
+inscrição em uma trilha até a emissão do certificado em PDF.
 
-## Fluxo do Sistema
+Trabalho de Conclusão de Curso da Faculdade de Computação e Informática,
+Universidade Presbiteriana Mackenzie. Arquitetura, stack e convenções do
+projeto estão documentadas em [`CLAUDE.md`](./CLAUDE.md) — leia antes de
+mexer em qualquer coisa de domínio ou infraestrutura.
 
-### 1. Abertura de Turma
-- Ao abrir uma turma com **status de inscrições abertas**, o formulário é divulgado em redes sociais.  
-- O aluno se inscreve (**demonstra interesse**):  
-  - Recebe e-mail de confirmação para aguardar aprovação.  
-  - Entra na lista de interessados daquela turma.  
-  - A lista geral de alunos é atualizada (ex-alunos recebem um *merge* dos dados).  
-  - **O sistema deve analisar se os pré-requisitos do curso estão sendo atendidos.**
+> Este repositório está no esqueleto inicial: monorepo configurado,
+> frontend e Workers de pé, design system extraído, sem telas de domínio
+> ou schema de banco ainda.
 
----
+## Stack
 
-### 2. Seleção de Alunos
-- A gestão faz a seleção dos alunos:  
-  - Lista de aprovados para o curso.  
-  - Lista de espera de interessados.  
-  - Lista de recusados.  
+| Camada | Tecnologia |
+| --- | --- |
+| Frontend | React 18 + TypeScript + Vite + Tailwind, em Cloudflare Pages |
+| Núcleo de dados | Supabase (Postgres, Auth, RLS, PostgREST, Realtime) |
+| Integrações | Cloudflare Workers (TypeScript) — e-mail, webhooks, cron |
+| E-mail transacional | Resend, acessado só pelos Workers |
+| Tipos compartilhados | `packages/types`, consumido por web e workers |
 
----
+## Estrutura do repositório
 
-### 3. Alteração de Status da Turma
-- Gestão altera o status da oferta da turma (da trilha) para **"Aguardando Início"**:  
-  - Todos os aprovados recebem um e-mail de confirmação (precisam confirmar).  
-  - São formadas duas listas:  
-    - Lista de realmente confirmados.  
-    - Lista de espera.  
+```
+apps/
+  web/                  Frontend React (Cloudflare Pages)
+  workers/              Cloudflare Workers (integrações)
+packages/
+  types/                Tipos de domínio compartilhados
+supabase/               (schemas, RLS, funções — fase seguinte)
+docs/design/             SVGs de design (fonte dos tokens do Tailwind)
+```
 
-- Gestão altera para **"Iniciada"** (pode ser automatizado pela data de início do curso):  
-  - Status dos alunos aprovados muda para **Cursando**.  
+## Pré-requisitos
 
----
+- Node.js 20+ (versão fixada em [`.nvmrc`](./.nvmrc))
+- [pnpm](https://pnpm.io) 9 — se não tiver instalado globalmente, use
+  `corepack enable` ou `npx pnpm@9` no lugar de `pnpm` nos comandos abaixo
 
-### 4. Curso em Andamento
-- Alunos cursam normalmente (avaliações e presença).  
-- Baseado nas avaliações + presença → **Lista de aprovados**.  
-- Geração de **certificados**.  
-- Cada aprovado tem o status alterado para **Concluído**.  
+## Instalação
 
----
+```bash
+pnpm install
+```
 
-### 5. Conclusão de Carreira
-- Ao concluir **todos os cursos da carreira**, o aluno ainda recebe o **certificado da carreira**.  
+## Configurar variáveis de ambiente
 
----
+Copie o exemplo e preencha com os valores do seu projeto Supabase/Resend:
 
-## Motivação do Projeto
-Este sistema nasce como alternativa ao programa atualmente utilizado no Mackenzie:
+```bash
+cp .env.example .env
+```
 
-- O programa atual é **muito caro** (~400 dólares por usuário).  
-- Possui **muitos problemas** na gestão de turmas e trilhas.  
-- Ideia base: **dimensionar essa função para fora do programa atual**.  
-- Solução proposta: **Open Source**.  
+- **Frontend** (`VITE_*`, públicas): lidas direto do `.env` pelo Vite.
+- **Workers** (secretas): não vivem num `.env` consumido em runtime.
+  - Em desenvolvimento local, copie as mesmas linhas para
+    `apps/workers/.dev.vars` (já no `.gitignore`) — o `wrangler dev` lê
+    esse arquivo automaticamente.
+  - Em produção, configure cada uma com `wrangler secret put <NOME>`
+    (passo a passo na seção de deploy).
 
+## Rodando em desenvolvimento
 
+```bash
+# Frontend — http://localhost:5173
+pnpm dev
+
+# Workers — http://localhost:8787
+pnpm dev:workers
+```
+
+Com os dois no ar, `GET http://localhost:8787/health` deve responder
+`{"status":"ok"}`.
+
+## Build e typecheck
+
+```bash
+pnpm typecheck
+pnpm build
+```
+
+## Deploy no Cloudflare
+
+### 1. `apps/web` no Cloudflare Pages
+
+1. No dashboard da Cloudflare, **Workers & Pages → Create → Pages →
+   Connect to Git** e selecione este repositório.
+2. Configuração de build:
+   - **Framework preset:** Vite
+   - **Build command:** `pnpm --filter @klass/web build`
+   - **Build output directory:** `apps/web/dist`
+   - **Root directory:** `/` (raiz do monorepo — o comando acima já
+     filtra o workspace certo)
+3. Em **Settings → Environment variables**, adicione `VITE_SUPABASE_URL`,
+   `VITE_SUPABASE_ANON_KEY` e `VITE_WORKERS_URL` (a URL pública do Worker
+   publicado no passo 2) para os ambientes de produção e preview.
+
+### 2. `apps/workers` via wrangler
+
+```bash
+cd apps/workers
+npx wrangler login
+npx wrangler secret put SUPABASE_URL
+npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
+npx wrangler secret put RESEND_API_KEY
+npx wrangler secret put ALLOWED_ORIGIN   # URL do Pages em produção
+npx wrangler deploy
+```
+
+Depois do primeiro deploy, volte ao passo 1 e atualize
+`VITE_WORKERS_URL` no Pages com a URL que o `wrangler deploy` imprimiu.
+
+## Design system
+
+Os tokens em `apps/web/tailwind.config.ts` foram extraídos diretamente
+dos SVGs em `docs/design/` — cada grupo de tokens tem um comentário
+indicando de qual tela ele veio.
