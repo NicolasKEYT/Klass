@@ -99,8 +99,8 @@ pnpm build
    - **Root directory:** `/` (raiz do monorepo — o comando acima já
      filtra o workspace certo)
 3. Em **Settings → Environment variables**, adicione `VITE_SUPABASE_URL`,
-   `VITE_SUPABASE_ANON_KEY` e `VITE_WORKERS_URL` (a URL pública do Worker
-   publicado no passo 2) para os ambientes de produção e preview.
+   `VITE_SUPABASE_PUBLISHABLE_KEY` e `VITE_WORKERS_URL` (a URL pública do
+   Worker publicado no passo 2) para os ambientes de produção e preview.
 
 ### 2. `apps/workers` via wrangler
 

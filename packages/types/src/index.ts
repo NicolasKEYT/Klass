@@ -1,6 +1,7 @@
 // Ponto único de importação dos tipos de domínio do Klass, organizados
 // pelos cinco bounded contexts (ver CLAUDE.md).
 
+export * from "./database";
 export * from "./comum";
 export * from "./identidade";
 export * from "./catalogo";

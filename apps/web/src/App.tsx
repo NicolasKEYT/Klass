@@ -1,10 +1,26 @@
 import { Route, Routes } from "react-router-dom";
-import { Placeholder } from "@/pages/Placeholder";
+import { AuthProvider, Autenticado } from "@/auth";
+import { AcessoNegado } from "@/pages/AcessoNegado";
+import { Cadastrar } from "@/pages/Cadastrar";
+import { Entrar } from "@/pages/Entrar";
+import { Home } from "@/pages/Home";
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/" element={<Placeholder />} />
-    </Routes>
+    <AuthProvider>
+      <Routes>
+        <Route path="/entrar" element={<Entrar />} />
+        <Route path="/cadastrar" element={<Cadastrar />} />
+        <Route path="/acesso-negado" element={<AcessoNegado />} />
+        <Route
+          path="/"
+          element={
+            <Autenticado>
+              <Home />
+            </Autenticado>
+          }
+        />
+      </Routes>
+    </AuthProvider>
   );
 }

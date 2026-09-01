@@ -11,5 +11,8 @@
     "dev:workers": "pnpm --filter @klass/workers dev",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.112.4"
   }
 }
