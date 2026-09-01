@@ -17,6 +17,175 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
+  catalogo: {
+    Tables: {
+      modulos: {
+        Row: {
+          atualizado_em: string
+          carga_horaria_horas: number
+          criado_em: string
+          descricao: string
+          id: string
+          nivel: Database["catalogo"]["Enums"]["nivel_modulo"]
+          nome: string
+          ordem: number
+          trilha_id: string
+        }
+        Insert: {
+          atualizado_em?: string
+          carga_horaria_horas: number
+          criado_em?: string
+          descricao: string
+          id?: string
+          nivel: Database["catalogo"]["Enums"]["nivel_modulo"]
+          nome: string
+          ordem: number
+          trilha_id: string
+        }
+        Update: {
+          atualizado_em?: string
+          carga_horaria_horas?: number
+          criado_em?: string
+          descricao?: string
+          id?: string
+          nivel?: Database["catalogo"]["Enums"]["nivel_modulo"]
+          nome?: string
+          ordem?: number
+          trilha_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "modulos_trilha_id_fkey"
+            columns: ["trilha_id"]
+            isOneToOne: false
+            referencedRelation: "trilhas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pre_requisitos_modulo: {
+        Row: {
+          modulo_id: string
+          pre_requisito_id: string
+        }
+        Insert: {
+          modulo_id: string
+          pre_requisito_id: string
+        }
+        Update: {
+          modulo_id?: string
+          pre_requisito_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pre_requisitos_modulo_modulo_id_fkey"
+            columns: ["modulo_id"]
+            isOneToOne: false
+            referencedRelation: "modulos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pre_requisitos_modulo_pre_requisito_id_fkey"
+            columns: ["pre_requisito_id"]
+            isOneToOne: false
+            referencedRelation: "modulos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      trilhas: {
+        Row: {
+          atualizado_em: string
+          carga_horaria_total: number
+          criado_em: string
+          descricao: string
+          descricao_curta: string | null
+          id: string
+          nome: string
+          publicada: boolean
+          slug: string
+        }
+        Insert: {
+          atualizado_em?: string
+          carga_horaria_total?: number
+          criado_em?: string
+          descricao: string
+          descricao_curta?: string | null
+          id?: string
+          nome: string
+          publicada?: boolean
+          slug: string
+        }
+        Update: {
+          atualizado_em?: string
+          carga_horaria_total?: number
+          criado_em?: string
+          descricao?: string
+          descricao_curta?: string | null
+          id?: string
+          nome?: string
+          publicada?: boolean
+          slug?: string
+        }
+        Relationships: []
+      }
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      modulos_da_trilha: {
+        Args: { p_trilha_id: string }
+        Returns: {
+          atualizado_em: string
+          carga_horaria_horas: number
+          criado_em: string
+          descricao: string
+          id: string
+          nivel: Database["catalogo"]["Enums"]["nivel_modulo"]
+          nome: string
+          ordem: number
+          trilha_id: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "modulos"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      pre_requisitos_de_modulo: {
+        Args: { p_modulo_id: string }
+        Returns: {
+          atualizado_em: string
+          carga_horaria_horas: number
+          criado_em: string
+          descricao: string
+          id: string
+          nivel: Database["catalogo"]["Enums"]["nivel_modulo"]
+          nome: string
+          ordem: number
+          trilha_id: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "modulos"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      trocar_ordem_modulos: {
+        Args: { p_modulo_a: string; p_modulo_b: string }
+        Returns: undefined
+      }
+    }
+    Enums: {
+      nivel_modulo: "iniciante" | "intermediario" | "avancado"
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   graphql_public: {
     Tables: {
       [_ in never]: never
@@ -223,6 +392,11 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  catalogo: {
+    Enums: {
+      nivel_modulo: ["iniciante", "intermediario", "avancado"],
+    },
+  },
   graphql_public: {
     Enums: {},
   },

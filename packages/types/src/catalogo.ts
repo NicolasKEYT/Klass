@@ -1,7 +1,10 @@
 // MS2 — Catálogo Curricular (schema `catalogo`)
-// Trilhas, cursos, módulos/disciplinas e pré-requisitos.
-//
-// Os tipos de trilha, curso, disciplina e pré-requisito entram na fase de
-// implementação deste módulo.
+// Trilhas, módulos e pré-requisitos entre módulos.
 
-export {};
+import type { Database } from "./database";
+
+export type Trilha = Database["catalogo"]["Tables"]["trilhas"]["Row"];
+export type Modulo = Database["catalogo"]["Tables"]["modulos"]["Row"];
+export type NivelModulo = Database["catalogo"]["Enums"]["nivel_modulo"];
+export type PreRequisitoModulo =
+  Database["catalogo"]["Tables"]["pre_requisitos_modulo"]["Row"];
