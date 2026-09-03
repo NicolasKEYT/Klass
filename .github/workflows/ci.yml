@@ -9,13 +9,14 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9
+      # Sem "version:" de propósito — lê do packageManager do
+      # package.json da raiz, pra não ter dois lugares declarando a
+      # versão do pnpm (e divergindo, como aconteceu aqui).
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: pnpm
