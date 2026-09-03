@@ -8,6 +8,10 @@ import { Card } from "@/components/Card";
 import { Input } from "@/components/Input";
 import { criarTrilha, gerarSlug } from "@/lib/catalogo";
 
+// Tempo pra o aviso de sucesso ficar visível antes de navegar — sem
+// isso o redirecionamento é instantâneo e o feedback nunca aparece.
+const ATRASO_ANTES_DE_NAVEGAR_MS = 700;
+
 export function NovaTrilha() {
   const navigate = useNavigate();
   const [nome, setNome] = useState("");
@@ -16,6 +20,7 @@ export function NovaTrilha() {
   const [descricao, setDescricao] = useState("");
   const [descricaoCurta, setDescricaoCurta] = useState("");
   const [erro, setErro] = useState<string | null>(null);
+  const [mensagem, setMensagem] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
 
   function aoMudarNome(valor: string) {
@@ -23,18 +28,33 @@ export function NovaTrilha() {
     if (!slugEditadoManualmente) setSlug(gerarSlug(valor));
   }
 
-  async function aoSubmeter(evento: FormEvent) {
-    evento.preventDefault();
+  // "Ficar na tela" não faz sentido aqui como faz em EditarTrilha: o
+  // formulário já foi enviado, os campos não se limpam sozinhos, e
+  // enviar de novo tentaria criar outra trilha com o mesmo slug. O
+  // equivalente de "continuar ajustando" numa trilha nova é ir direto
+  // para a edição (onde módulos e pré-requisitos existem) — não ficar
+  // parado num formulário de criação já usado.
+  async function salvar(irParaListaAoInves: boolean) {
     setErro(null);
+    setMensagem(null);
     setEnviando(true);
     try {
       const trilha = await criarTrilha({ nome, slug, descricao, descricaoCurta });
-      navigate(`/coordenacao/trilhas/${trilha.slug}/editar`);
+      setMensagem("Trilha criada.");
+      await new Promise((resolve) => setTimeout(resolve, ATRASO_ANTES_DE_NAVEGAR_MS));
+      navigate(
+        irParaListaAoInves ? "/coordenacao/trilhas" : `/coordenacao/trilhas/${trilha.slug}/editar`,
+      );
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível criar a trilha.");
     } finally {
       setEnviando(false);
     }
+  }
+
+  async function aoSubmeter(evento: FormEvent) {
+    evento.preventDefault();
+    await salvar(true);
   }
 
   return (
@@ -87,10 +107,21 @@ export function NovaTrilha() {
             </label>
 
             {erro && <Aviso variant="danger">{erro}</Aviso>}
+            {mensagem && <Aviso variant="success">{mensagem}</Aviso>}
 
-            <Button type="submit" disabled={enviando}>
-              {enviando ? "Criando..." : "Criar trilha"}
-            </Button>
+            <div className="flex gap-3">
+              <Button type="submit" disabled={enviando}>
+                {enviando ? "Criando..." : "Salvar e voltar"}
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={enviando}
+                onClick={() => void salvar(false)}
+              >
+                Salvar e continuar editando
+              </Button>
+            </div>
           </form>
         </Card>
       </div>

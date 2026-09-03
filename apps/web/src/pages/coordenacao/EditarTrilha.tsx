@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { Aviso } from "@/components/Aviso";
 import { Badge } from "@/components/Badge";
 import { BotaoVoltar } from "@/components/BotaoVoltar";
@@ -30,6 +30,7 @@ const NIVEL_LABEL: Record<NivelModulo, string> = {
 
 export function EditarTrilha() {
   const { slug } = useParams<{ slug: string }>();
+  const navigate = useNavigate();
 
   const [trilha, setTrilha] = useState<Trilha | null>(null);
   const [modulos, setModulos] = useState<Modulo[]>([]);
@@ -93,8 +94,7 @@ export function EditarTrilha() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug]);
 
-  async function aoSalvarTrilha(evento: FormEvent) {
-    evento.preventDefault();
+  async function salvarTrilha(voltarParaLista: boolean) {
     if (!trilha) return;
     setErro(null);
     setMensagem(null);
@@ -107,11 +107,22 @@ export function EditarTrilha() {
       });
       setTrilha(atualizada);
       setMensagem("Dados da trilha salvos.");
+      if (voltarParaLista) {
+        // Espera o aviso de sucesso aparecer antes de sair da tela —
+        // um redirecionamento instantâneo nunca deixaria o usuário vê-lo.
+        await new Promise((resolve) => setTimeout(resolve, 700));
+        navigate("/coordenacao/trilhas");
+      }
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível salvar a trilha.");
     } finally {
       setSalvandoTrilha(false);
     }
+  }
+
+  async function aoSubmeterFormularioTrilha(evento: FormEvent) {
+    evento.preventDefault();
+    await salvarTrilha(true);
   }
 
   async function aoCriarModulo(evento: FormEvent) {
@@ -248,7 +259,7 @@ export function EditarTrilha() {
         )}
 
         <Card className="mb-6">
-          <form className="flex flex-col gap-4" onSubmit={aoSalvarTrilha}>
+          <form className="flex flex-col gap-4" onSubmit={aoSubmeterFormularioTrilha}>
             <label className="flex flex-col gap-1.5">
               <span className="text-label font-medium text-text-secondary">Nome</span>
               <Input required value={nome} onChange={(e) => setNome(e.target.value)} />
@@ -273,9 +284,19 @@ export function EditarTrilha() {
                 onChange={(e) => setDescricao(e.target.value)}
               />
             </label>
-            <Button type="submit" disabled={salvandoTrilha} className="self-start">
-              {salvandoTrilha ? "Salvando..." : "Salvar alterações"}
-            </Button>
+            <div className="flex gap-3">
+              <Button type="submit" disabled={salvandoTrilha}>
+                {salvandoTrilha ? "Salvando..." : "Salvar e voltar"}
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={salvandoTrilha}
+                onClick={() => void salvarTrilha(false)}
+              >
+                Salvar
+              </Button>
+            </div>
           </form>
         </Card>
 

@@ -1,6 +1,24 @@
-import { PostgrestError } from "@supabase/supabase-js";
-
 const MENSAGEM_PADRAO = "Não foi possível salvar. Confira os dados e tente novamente.";
+
+// O módulo de auth do supabase-js lança classes de erro de verdade
+// (AuthApiError extends AuthError), então "instanceof AuthError" funciona
+// (ver mensagensDeErro.ts). O PostgREST NÃO: `{ data, error }` de uma
+// query devolve `error` como objeto plano — mesmo formato de
+// PostgrestError (message/code/details/hint), mas com
+// `error.constructor.name === "Object"`, não a classe. Um
+// "instanceof PostgrestError" aqui nunca bate, e a função caía sempre no
+// fallback genérico — confirmado com uma query real contra o banco.
+// Por isso o shape é checado por duck typing, não pela classe.
+function pareceErroDoPostgrest(
+  error: unknown,
+): error is { message: string; code?: string } {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "message" in error &&
+    typeof (error as { message: unknown }).message === "string"
+  );
+}
 
 // Mapeado pelo nome da constraint, que o Postgres inclui na mensagem de
 // erro — mais estável do que tentar casar o texto inteiro.
@@ -39,7 +57,7 @@ const REGRAS: Array<{ contem: string; mensagem: string }> = [
 ];
 
 export function mensagemDeErroBanco(error: unknown): string {
-  if (!(error instanceof PostgrestError)) return MENSAGEM_PADRAO;
+  if (!pareceErroDoPostgrest(error)) return MENSAGEM_PADRAO;
 
   // P0001 são as nossas próprias exceções (triggers) — o texto já foi
   // escrito para o usuário final, não é jargão de banco.
