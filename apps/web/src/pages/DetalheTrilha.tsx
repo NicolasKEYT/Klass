@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Badge } from "@/components/Badge";
+import { BotaoVoltar } from "@/components/BotaoVoltar";
 import { Cabecalho } from "@/components/Cabecalho";
 import { Card } from "@/components/Card";
 import {
@@ -45,6 +46,7 @@ export function DetalheTrilha() {
     <div className="min-h-screen bg-background">
       <Cabecalho />
       <div className="mx-auto max-w-3xl p-6">
+        <BotaoVoltar />
         {erro && <p className="text-body-sm text-danger">{erro}</p>}
         {trilha === null && (
           <p className="text-body-sm text-text-secondary">Trilha não encontrada.</p>

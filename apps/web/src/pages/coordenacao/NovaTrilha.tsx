@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { Aviso } from "@/components/Aviso";
+import { BotaoVoltar } from "@/components/BotaoVoltar";
 import { Button } from "@/components/Button";
 import { Cabecalho } from "@/components/Cabecalho";
 import { Card } from "@/components/Card";
@@ -40,6 +41,7 @@ export function NovaTrilha() {
     <div className="min-h-screen bg-background">
       <Cabecalho />
       <div className="mx-auto max-w-lg p-6">
+        <BotaoVoltar />
         <h1 className="mb-6 font-serif text-klass-xl text-text-primary">Nova trilha</h1>
 
         <Card>

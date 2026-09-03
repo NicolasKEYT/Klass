@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useParams } from "react-router-dom";
 import { Aviso } from "@/components/Aviso";
 import { Badge } from "@/components/Badge";
+import { BotaoVoltar } from "@/components/BotaoVoltar";
 import { Button } from "@/components/Button";
 import { Cabecalho } from "@/components/Cabecalho";
 import { Card } from "@/components/Card";
@@ -220,9 +221,10 @@ export function EditarTrilha() {
     return (
       <div className="min-h-screen bg-background">
         <Cabecalho />
-        <Aviso variant="danger" className="m-6">
-          {erro ?? "Trilha não encontrada."}
-        </Aviso>
+        <div className="m-6">
+          <BotaoVoltar />
+          <Aviso variant="danger">{erro ?? "Trilha não encontrada."}</Aviso>
+        </div>
       </div>
     );
   }
@@ -231,6 +233,7 @@ export function EditarTrilha() {
     <div className="min-h-screen bg-background">
       <Cabecalho />
       <div className="mx-auto max-w-3xl p-6">
+        <BotaoVoltar />
         <h1 className="mb-6 font-serif text-klass-xl text-text-primary">Editar trilha</h1>
 
         {erro && (
