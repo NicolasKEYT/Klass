@@ -77,6 +77,19 @@ export function Trilhas() {
           </Aviso>
         )}
 
+        {/* Sem isso, a navegação client-side entre rotas (onde o
+            "Carregando..." do <Autenticado> já resolveu antes) deixava a
+            tela em branco — sem indicação nenhuma — pelo tempo do
+            fetch, o que lia como travado. Num reload cheio isso passava
+            despercebido porque o carregando da autenticação mascarava
+            parte da espera. */}
+        {!erro && trilhas === null && (
+          <p className="text-body-sm text-text-secondary">Carregando...</p>
+        )}
+        {trilhas?.length === 0 && (
+          <p className="text-body-sm text-text-secondary">Nenhuma trilha cadastrada ainda.</p>
+        )}
+
         <div className="flex flex-col gap-3">
           {trilhas?.map((trilha) => (
             <Card key={trilha.id} className="flex items-center justify-between gap-4">
