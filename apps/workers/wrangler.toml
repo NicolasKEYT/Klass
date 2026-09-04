@@ -14,3 +14,5 @@ compatibility_flags = ["nodejs_compat"]
 #   RESEND_API_KEY             chave de API do Resend
 #   ALLOWED_ORIGIN             origem do frontend liberada no CORS
 #                              (padrão de desenvolvimento: http://localhost:5173)
+#   WEBHOOK_SECRET             valida o header Authorization dos Database
+#                              Webhooks do Supabase — ver README (seção MS3)

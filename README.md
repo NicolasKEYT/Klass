@@ -8,9 +8,10 @@ Universidade Presbiteriana Mackenzie. Arquitetura, stack e convenções do
 projeto estão documentadas em [`CLAUDE.md`](./CLAUDE.md) — leia antes de
 mexer em qualquer coisa de domínio ou infraestrutura.
 
-> Este repositório está no esqueleto inicial: monorepo configurado,
-> frontend e Workers de pé, design system extraído, sem telas de domínio
-> ou schema de banco ainda.
+> MS1 (Identidade), MS2 (Catálogo) e MS3 (Motor de Seleção) estão
+> implementados — autenticação, catálogo de trilhas e o fluxo de
+> inscrição/matrícula. MS4 (Diário de Classe) e MS5 (Certificação) ainda
+> não existem.
 
 ## Stack
 
@@ -34,7 +35,9 @@ apps/
   workers/              Cloudflare Workers (integrações)
 packages/
   types/                Tipos de domínio compartilhados
-supabase/               (schemas, RLS, funções — fase seguinte)
+supabase/
+  migrations/           Schemas identidade, catalogo, selecao — RLS, triggers, funções
+  seed.sql              Dados de demonstração (usuários, trilhas, turmas, matrículas)
 docs/design/             SVGs de design (fonte dos tokens do Tailwind)
 ```
 
@@ -111,11 +114,55 @@ npx wrangler secret put SUPABASE_URL
 npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
 npx wrangler secret put RESEND_API_KEY
 npx wrangler secret put ALLOWED_ORIGIN   # URL do Pages em produção
+npx wrangler secret put WEBHOOK_SECRET   # string aleatória longa — ver seção de webhook abaixo
 npx wrangler deploy
 ```
 
 Depois do primeiro deploy, volte ao passo 1 e atualize
 `VITE_WORKERS_URL` no Pages com a URL que o `wrangler deploy` imprimiu.
+
+### 3. Database Webhook do MS3 (e-mail de matrícula aprovada)
+
+O Supabase não tem API pública pra Webhooks — é configuração manual,
+uma vez, pelo painel:
+
+1. Gere uma string aleatória longa para `WEBHOOK_SECRET` (ex.:
+   `openssl rand -hex 32`) e configure com `wrangler secret put
+   WEBHOOK_SECRET` (passo 2 acima) — guarde o mesmo valor, você vai
+   usá-lo no passo 4.
+2. No painel do Supabase: **Database → Webhooks → Create a new hook**.
+3. Configure:
+   - **Table:** `matriculas` (schema `selecao`)
+   - **Events:** `Update`
+   - **Type:** `HTTP Request`
+   - **URL:** `https://<seu-worker>.workers.dev/webhooks/matricula-deferida`
+     (em desenvolvimento, veja abaixo como expor o Worker local)
+   - **HTTP Headers:** adicione `Authorization: Bearer <WEBHOOK_SECRET>`
+     — o mesmo valor do passo 1.
+
+**Testando localmente**: o Supabase Cloud não alcança `localhost`, então
+para testar o webhook em desenvolvimento é preciso expor o Worker local
+publicamente. Duas opções:
+
+- `npx wrangler dev --remote` roda o Worker num endereço `*.workers.dev`
+  de verdade (não local), que o Supabase consegue chamar — aponte o
+  webhook do painel pra essa URL enquanto testa.
+- Ou pule o webhook: chame o endpoint direto com `curl` simulando o
+  payload do Supabase, pra testar só a lógica do Worker:
+  ```bash
+  curl -X POST http://localhost:8787/webhooks/matricula-deferida \
+    -H "Authorization: Bearer $WEBHOOK_SECRET" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "type": "UPDATE",
+      "table": "matriculas",
+      "schema": "selecao",
+      "old_record": { "status": "inscrita" },
+      "record": { "id": "...", "aluno_id": "...", "turma_id": "...", "status": "matriculada" }
+    }'
+  ```
+- Para ver os logs do Worker publicado em tempo real (produção ou
+  `--remote`), use `npx wrangler tail`.
 
 ## Design system
 
