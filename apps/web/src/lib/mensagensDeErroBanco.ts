@@ -54,6 +54,25 @@ const REGRAS: Array<{ contem: string; mensagem: string }> = [
     contem: "pre_requisitos_nao_autorreferencia",
     mensagem: "Um módulo não pode ser pré-requisito de si mesmo.",
   },
+  { contem: "turmas_codigo_key", mensagem: "Já existe uma turma com esse código." },
+  {
+    contem: "turmas_codigo_formato",
+    mensagem: "O código precisa seguir o padrão SIGLA-ANO-SEQUÊNCIA, ex.: CDA-2026-1.",
+  },
+  { contem: "turmas_periodo_valido", mensagem: "O período final precisa vir depois do início." },
+  { contem: "turmas_vagas_positivas", mensagem: "O número de vagas precisa ser maior que zero." },
+  {
+    contem: "matriculas_aluno_turma_unica",
+    mensagem: "Você já tem uma inscrição para esta turma.",
+  },
+  {
+    contem: "matriculas_motivo_rejeicao_obrigatorio",
+    mensagem: "Informe o motivo da rejeição.",
+  },
+  {
+    contem: "pre_requisitos_trilha_nao_autorreferencia",
+    mensagem: "Uma trilha não pode ser pré-requisito de si mesma.",
+  },
 ];
 
 export function mensagemDeErroBanco(error: unknown): string {

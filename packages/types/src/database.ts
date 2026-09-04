@@ -242,6 +242,13 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      nomes_completos: {
+        Args: { p_ids: string[] }
+        Returns: {
+          id: string
+          nome_completo: string
+        }[]
+      }
       papel_do_usuario_atual: {
         Args: never
         Returns: Database["identidade"]["Enums"]["papel"]
@@ -272,6 +279,140 @@ export type Database = {
       [_ in never]: never
     }
   }
+  selecao: {
+    Tables: {
+      matriculas: {
+        Row: {
+          aluno_id: string
+          atualizado_em: string
+          criado_em: string
+          deferido_em: string | null
+          deferido_por: string | null
+          id: string
+          motivo_rejeicao: string | null
+          status: Database["selecao"]["Enums"]["status_matricula"]
+          turma_id: string
+        }
+        Insert: {
+          aluno_id: string
+          atualizado_em?: string
+          criado_em?: string
+          deferido_em?: string | null
+          deferido_por?: string | null
+          id?: string
+          motivo_rejeicao?: string | null
+          status?: Database["selecao"]["Enums"]["status_matricula"]
+          turma_id: string
+        }
+        Update: {
+          aluno_id?: string
+          atualizado_em?: string
+          criado_em?: string
+          deferido_em?: string | null
+          deferido_por?: string | null
+          id?: string
+          motivo_rejeicao?: string | null
+          status?: Database["selecao"]["Enums"]["status_matricula"]
+          turma_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "matriculas_turma_id_fkey"
+            columns: ["turma_id"]
+            isOneToOne: false
+            referencedRelation: "turmas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pre_requisitos_trilha: {
+        Row: {
+          trilha_id: string
+          trilha_requisito_id: string
+        }
+        Insert: {
+          trilha_id: string
+          trilha_requisito_id: string
+        }
+        Update: {
+          trilha_id?: string
+          trilha_requisito_id?: string
+        }
+        Relationships: []
+      }
+      turmas: {
+        Row: {
+          atualizado_em: string
+          codigo: string
+          criado_em: string
+          id: string
+          periodo_fim: string
+          periodo_inicio: string
+          professor_id: string
+          trilha_id: string
+          vagas_total: number
+        }
+        Insert: {
+          atualizado_em?: string
+          codigo: string
+          criado_em?: string
+          id?: string
+          periodo_fim: string
+          periodo_inicio: string
+          professor_id: string
+          trilha_id: string
+          vagas_total: number
+        }
+        Update: {
+          atualizado_em?: string
+          codigo?: string
+          criado_em?: string
+          id?: string
+          periodo_fim?: string
+          periodo_inicio?: string
+          professor_id?: string
+          trilha_id?: string
+          vagas_total?: number
+        }
+        Relationships: []
+      }
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      aluno_da_matricula: { Args: { p_profile_id: string }; Returns: boolean }
+      cancelar_inscricao: {
+        Args: { p_matricula_id: string }
+        Returns: undefined
+      }
+      checar_matricula_ativa_na_trilha: {
+        Args: { p_aluno_id: string; p_trilha_id: string }
+        Returns: undefined
+      }
+      checar_vaga_disponivel: {
+        Args: { p_turma_id: string }
+        Returns: undefined
+      }
+      inscrever_aluno: { Args: { p_turma_id: string }; Returns: string }
+      professor_da_turma: { Args: { p_profile_id: string }; Returns: boolean }
+      validar_pre_requisitos_trilha: {
+        Args: { p_aluno_id: string; p_trilha_id: string }
+        Returns: undefined
+      }
+    }
+    Enums: {
+      status_matricula:
+        | "inscrita"
+        | "matriculada"
+        | "rejeitada"
+        | "cancelada"
+        | "concluida"
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
 }
 
 type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
@@ -282,12 +423,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -311,11 +452,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -336,11 +477,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -361,11 +502,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -378,11 +519,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -407,5 +548,16 @@ export const Constants = {
   },
   public: {
     Enums: {},
+  },
+  selecao: {
+    Enums: {
+      status_matricula: [
+        "inscrita",
+        "matriculada",
+        "rejeitada",
+        "cancelada",
+        "concluida",
+      ],
+    },
   },
 } as const

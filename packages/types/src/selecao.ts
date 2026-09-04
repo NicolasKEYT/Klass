@@ -1,7 +1,10 @@
 // MS3 — Motor de Seleção (schema `selecao`)
-// Inscrição, validação de pré-requisitos e matrícula.
-//
-// Os tipos de inscrição, turma e matrícula entram na fase de implementação
-// deste módulo.
+// Turmas, matrículas e pré-requisitos entre trilhas.
 
-export {};
+import type { Database } from "./database";
+
+export type Turma = Database["selecao"]["Tables"]["turmas"]["Row"];
+export type Matricula = Database["selecao"]["Tables"]["matriculas"]["Row"];
+export type StatusMatricula = Database["selecao"]["Enums"]["status_matricula"];
+export type PreRequisitoTrilha =
+  Database["selecao"]["Tables"]["pre_requisitos_trilha"]["Row"];
