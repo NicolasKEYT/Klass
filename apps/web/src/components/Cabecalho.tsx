@@ -3,9 +3,7 @@ import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 import { useAuth } from "@/auth";
 
-// Cabeçalho enxuto das rotas protegidas — muda o que aparece conforme o
-// papel. Menus específicos de professor/aluno chegam nos módulos deles;
-// por enquanto todo mundo só tem o catálogo.
+// Cabeçalho enxuto das rotas protegidas — muda o que aparece conforme o papel.
 export function Cabecalho() {
   const { profile, sair } = useAuth();
   const navigate = useNavigate();
@@ -29,11 +27,35 @@ export function Cabecalho() {
           Catálogo
         </Link>
         {profile?.papel === "coordenacao" && (
+          <>
+            <Link
+              to="/coordenacao/trilhas"
+              className="text-body-sm font-medium text-text-secondary hover:text-text-primary"
+            >
+              Trilhas
+            </Link>
+            <Link
+              to="/coordenacao/turmas"
+              className="text-body-sm font-medium text-text-secondary hover:text-text-primary"
+            >
+              Turmas
+            </Link>
+          </>
+        )}
+        {profile?.papel === "aluno" && (
           <Link
-            to="/coordenacao/trilhas"
+            to="/aluno/matriculas"
             className="text-body-sm font-medium text-text-secondary hover:text-text-primary"
           >
-            Trilhas
+            Minhas matrículas
+          </Link>
+        )}
+        {profile?.papel === "professor" && (
+          <Link
+            to="/professor/turmas"
+            className="text-body-sm font-medium text-text-secondary hover:text-text-primary"
+          >
+            Minhas turmas
           </Link>
         )}
 
