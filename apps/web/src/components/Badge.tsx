@@ -1,6 +1,6 @@
 import type { HTMLAttributes } from "react";
 
-type BadgeVariant = "success" | "neutral" | "live";
+type BadgeVariant = "success" | "neutral" | "live" | "danger";
 
 interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
   variant?: BadgeVariant;
@@ -11,10 +11,13 @@ interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
 // 05-professor-diario.svg).
 // "live": indicador de tempo real ("tempo real"/"sincronizando"),
 // pill com ponto colorido — mesmo padrão nas 5 telas de app.
+// "danger": não vem de nenhum SVG (mesma cor inferida do MS2, ver
+// tailwind.config.ts) — usada em estados negativos como matrícula rejeitada.
 const variantClasses: Record<BadgeVariant, string> = {
   success: "rounded-klass-badge bg-success-subtle text-success",
   neutral: "rounded-klass-badge bg-neutral-subtle text-text-secondary",
   live: "rounded-klass-pill border border-border bg-surface text-text-secondary",
+  danger: "rounded-klass-badge bg-danger-subtle text-danger",
 };
 
 export function Badge({

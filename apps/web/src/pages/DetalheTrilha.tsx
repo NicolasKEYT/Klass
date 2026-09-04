@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
+import { useAuth } from "@/auth";
+import { Aviso } from "@/components/Aviso";
 import { Badge } from "@/components/Badge";
 import { BotaoVoltar } from "@/components/BotaoVoltar";
+import { Button } from "@/components/Button";
 import { Cabecalho } from "@/components/Cabecalho";
 import { Card } from "@/components/Card";
 import {
@@ -9,7 +12,8 @@ import {
   listarModulosDaTrilha,
   listarPreRequisitosDaTrilha,
 } from "@/lib/catalogo";
-import type { Modulo, NivelModulo, Trilha } from "@klass/types";
+import { inscreverAluno, listarTurmasDisponiveisDaTrilha, type TurmaDisponivel } from "@/lib/selecao";
+import type { Modulo, NivelModulo, StatusMatricula, Trilha } from "@klass/types";
 
 const NIVEL_LABEL: Record<NivelModulo, string> = {
   iniciante: "Iniciante",
@@ -17,37 +21,79 @@ const NIVEL_LABEL: Record<NivelModulo, string> = {
   avancado: "Avançado",
 };
 
+const STATUS_LABEL: Record<StatusMatricula, string> = {
+  inscrita: "Inscrição em análise",
+  matriculada: "Matriculado(a)",
+  rejeitada: "Inscrição rejeitada",
+  cancelada: "Inscrição cancelada",
+  concluida: "Concluída",
+};
+
 export function DetalheTrilha() {
   const { slug } = useParams<{ slug: string }>();
+  const { usuario, profile } = useAuth();
   const [trilha, setTrilha] = useState<Trilha | null | undefined>(undefined);
   const [modulos, setModulos] = useState<Modulo[]>([]);
   const [preRequisitos, setPreRequisitos] = useState<Map<string, string[]>>(new Map());
+  const [turmas, setTurmas] = useState<TurmaDisponivel[]>([]);
   const [erro, setErro] = useState<string | null>(null);
+  const [mensagem, setMensagem] = useState<string | null>(null);
+  const [inscrevendoId, setInscrevendoId] = useState<string | null>(null);
+
+  async function carregar() {
+    if (!slug) return;
+    try {
+      const encontrada = await buscarTrilhaPorSlug(slug);
+      setTrilha(encontrada);
+      if (!encontrada) return;
+      const [listaModulos, mapaPreRequisitos, listaTurmas] = await Promise.all([
+        listarModulosDaTrilha(encontrada.id),
+        listarPreRequisitosDaTrilha(encontrada.id),
+        listarTurmasDisponiveisDaTrilha(encontrada.id, usuario?.id ?? null),
+      ]);
+      setModulos(listaModulos);
+      setPreRequisitos(mapaPreRequisitos);
+      setTurmas(listaTurmas);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Não foi possível carregar a trilha.");
+    }
+  }
 
   useEffect(() => {
-    if (!slug) return;
-    buscarTrilhaPorSlug(slug)
-      .then(async (encontrada) => {
-        setTrilha(encontrada);
-        if (!encontrada) return;
-        const [listaModulos, mapaPreRequisitos] = await Promise.all([
-          listarModulosDaTrilha(encontrada.id),
-          listarPreRequisitosDaTrilha(encontrada.id),
-        ]);
-        setModulos(listaModulos);
-        setPreRequisitos(mapaPreRequisitos);
-      })
-      .catch((e) =>
-        setErro(e instanceof Error ? e.message : "Não foi possível carregar a trilha."),
-      );
+    void carregar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug]);
+
+  async function aoInscrever(turmaId: string) {
+    setErro(null);
+    setMensagem(null);
+    setInscrevendoId(turmaId);
+    try {
+      await inscreverAluno(turmaId);
+      setMensagem("Inscrição enviada — a coordenação vai avaliar em breve.");
+      await carregar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Não foi possível se inscrever nesta turma.");
+    } finally {
+      setInscrevendoId(null);
+    }
+  }
 
   return (
     <div className="min-h-screen bg-background">
       <Cabecalho />
       <div className="mx-auto max-w-3xl p-6">
         <BotaoVoltar />
-        {erro && <p className="text-body-sm text-danger">{erro}</p>}
+        {erro && (
+          <Aviso variant="danger" className="mb-4">
+            {erro}
+          </Aviso>
+        )}
+        {mensagem && (
+          <Aviso variant="success" className="mb-4">
+            {mensagem}
+          </Aviso>
+        )}
         {trilha === null && (
           <p className="text-body-sm text-text-secondary">Trilha não encontrada.</p>
         )}
@@ -83,9 +129,51 @@ export function DetalheTrilha() {
               ))}
             </div>
 
-            <Card className="mt-6 text-center text-body-sm text-text-secondary">
-              A inscrição nesta trilha chega na próxima fase.
-            </Card>
+            <h2 className="mb-3 mt-8 font-serif text-klass-lg text-text-primary">
+              Turmas disponíveis
+            </h2>
+            {turmas.length === 0 && (
+              <p className="text-body-sm text-text-secondary">
+                Nenhuma turma aberta para esta trilha no momento.
+              </p>
+            )}
+            <div className="flex flex-col gap-3">
+              {turmas.map((turma) => (
+                <Card key={turma.id} className="flex items-center justify-between gap-4">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-klass-md text-text-primary">{turma.codigo}</span>
+                    <span className="text-label text-text-muted">
+                      {turma.professorNome} · {turma.periodoInicio} a {turma.periodoFim} ·{" "}
+                      {turma.vagasRestantes} vaga(s) restante(s)
+                    </span>
+                  </div>
+
+                  {turma.minhaMatricula ? (
+                    <Badge
+                      variant={
+                        turma.minhaMatricula.status === "matriculada" ||
+                        turma.minhaMatricula.status === "concluida"
+                          ? "success"
+                          : "neutral"
+                      }
+                    >
+                      {STATUS_LABEL[turma.minhaMatricula.status]}
+                    </Badge>
+                  ) : profile?.papel === "aluno" ? (
+                    <Button
+                      disabled={turma.vagasRestantes <= 0 || inscrevendoId === turma.id}
+                      onClick={() => void aoInscrever(turma.id)}
+                    >
+                      {inscrevendoId === turma.id
+                        ? "Inscrevendo..."
+                        : turma.vagasRestantes <= 0
+                          ? "Sem vagas"
+                          : "Inscrever-se"}
+                    </Button>
+                  ) : null}
+                </Card>
+              ))}
+            </div>
           </>
         )}
       </div>
