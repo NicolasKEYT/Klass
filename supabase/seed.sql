@@ -250,34 +250,150 @@ begin
     (v_turma_ml_id, v_modulo_ml_id, 'ML-2026-1', v_professor_id, '2026-08-01', '2026-12-20', 30)
   on conflict (id) do nothing;
 
+  -- "on conflict (id) do nothing" não basta aqui: o trigger de negócio
+  -- (before INSERT) roda ANTES do Postgres resolver o conflito, então
+  -- re-rodar este seed contra um banco que já tem a linha dispara
+  -- "matrícula ativa" mesmo a inserção sendo um no-op. Guarda por
+  -- existência em vez de depender só do ON CONFLICT.
+
   -- Concluída: turma de um semestre passado (fevereiro a junho), pra
   -- "concluida" fazer sentido cronologicamente antes da turma atual de
   -- Programação (agosto). O MS4 pendura o histórico de notas/aulas nesta
   -- mesma matrícula.
-  insert into selecao.matriculas (
-    id, aluno_id, turma_id, status, deferido_em, deferido_por, criado_em, atualizado_em
-  )
-  values (
-    'f1000000-0000-4000-8000-000000000001', v_aluno_id, v_turma_estatistica_id, 'concluida',
-    '2026-06-20 12:00:00+00', v_coordenacao_id, '2026-01-15 12:00:00+00', '2026-06-20 12:00:00+00'
-  )
-  on conflict (id) do nothing;
+  if not exists (select 1 from selecao.matriculas where id = 'f1000000-0000-4000-8000-000000000001') then
+    insert into selecao.matriculas (
+      id, aluno_id, turma_id, status, deferido_em, deferido_por, criado_em, atualizado_em
+    )
+    values (
+      'f1000000-0000-4000-8000-000000000001', v_aluno_id, v_turma_estatistica_id, 'concluida',
+      '2026-06-20 12:00:00+00', v_coordenacao_id, '2026-01-15 12:00:00+00', '2026-06-20 12:00:00+00'
+    );
+  end if;
 
   -- Matriculada: turma em andamento agora — é nela que o MS4 lança
   -- avaliações/aulas ainda sem nota/chamada, pro professor preencher
   -- durante a validação end-to-end.
-  insert into selecao.matriculas (
-    id, aluno_id, turma_id, status, deferido_em, deferido_por
-  )
-  values (
-    'f1000000-0000-4000-8000-000000000002', v_aluno_id, v_turma_programacao_id, 'matriculada',
-    '2026-08-05 12:00:00+00', v_coordenacao_id
-  )
-  on conflict (id) do nothing;
+  if not exists (select 1 from selecao.matriculas where id = 'f1000000-0000-4000-8000-000000000002') then
+    insert into selecao.matriculas (
+      id, aluno_id, turma_id, status, deferido_em, deferido_por
+    )
+    values (
+      'f1000000-0000-4000-8000-000000000002', v_aluno_id, v_turma_programacao_id, 'matriculada',
+      '2026-08-05 12:00:00+00', v_coordenacao_id
+    );
+  end if;
 
   -- Em análise: dá à coordenação algo para aprovar/rejeitar no teste.
-  insert into selecao.matriculas (id, aluno_id, turma_id, status)
-  values ('f1000000-0000-4000-8000-000000000003', v_aluno_id, v_turma_calculo_id, 'inscrita')
-  on conflict (id) do nothing;
+  if not exists (select 1 from selecao.matriculas where id = 'f1000000-0000-4000-8000-000000000003') then
+    insert into selecao.matriculas (id, aluno_id, turma_id, status)
+    values ('f1000000-0000-4000-8000-000000000003', v_aluno_id, v_turma_calculo_id, 'inscrita');
+  end if;
 end
 $$;
+
+-- MS4 — diário de classe. Duas situações, como pede o prompt: histórico
+-- completo (3 avaliações com nota, 10 aulas com 9 presenças), terminando
+-- em diario.encerrar_matricula() de verdade, na matrícula que o MS3
+-- seed deixou 'concluida' em Fundamentos de Estatística; e avaliações/
+-- aulas SEM lançamento na matrícula ativa ('matriculada') em Programação
+-- para Dados, pro professor preencher durante a validação end-to-end.
+--
+-- diario.avaliacoes/aulas/notas/presencas e diario.encerrar_matricula()
+-- são as primeiras coisas do projeto cujo trigger/função de autorização
+-- olham auth.uid() em vez de só validar a LINHA sendo escrita — então,
+-- ao contrário do resto deste seed, essa parte não roda como o role de
+-- serviço puro: precisa personificar professor/coordenação via
+-- request.jwt.claims pra auth.uid() resolver certo.
+set local role authenticated;
+
+-- Reabre a matrícula pra poder lançar nota/presença nela (os triggers
+-- do MS4 travam lançamento em matrícula que já não está 'matriculada')
+-- — só coordenação passa livre por restringir_alteracoes_matricula pra
+-- fazer essa transição "de trás pra frente" que não existe no fluxo normal.
+set local request.jwt.claims = '{"sub":"a1000000-0000-4000-8000-000000000003","role":"authenticated"}';
+
+do $$
+begin
+  update selecao.matriculas
+  set status = 'matriculada'
+  where id = 'f1000000-0000-4000-8000-000000000001' and status = 'concluida';
+end
+$$;
+
+set local request.jwt.claims = '{"sub":"a1000000-0000-4000-8000-000000000002","role":"authenticated"}';
+
+do $$
+declare
+  v_turma_estatistica_id uuid := 'e1000000-0000-4000-8000-000000000001';
+  v_turma_programacao_id uuid := 'e1000000-0000-4000-8000-000000000002';
+  v_matricula_concluida_id uuid := 'f1000000-0000-4000-8000-000000000001';
+  v_professor_id uuid := 'a1000000-0000-4000-8000-000000000002';
+  v_avaliacao_prova1_id uuid := '10000000-0000-4000-8000-000000000001';
+  v_avaliacao_trabalho_id uuid := '10000000-0000-4000-8000-000000000002';
+  v_avaliacao_final_id uuid := '10000000-0000-4000-8000-000000000003';
+  v_aula_id uuid;
+  v_data date;
+  i integer;
+begin
+  insert into diario.avaliacoes (id, turma_id, titulo, peso, ordem)
+  values
+    (v_avaliacao_prova1_id, v_turma_estatistica_id, 'Prova 1', 2, 1),
+    (v_avaliacao_trabalho_id, v_turma_estatistica_id, 'Trabalho', 3, 2),
+    (v_avaliacao_final_id, v_turma_estatistica_id, 'Prova Final', 5, 3)
+  on conflict (id) do nothing;
+
+  -- Média ponderada: (7*2 + 7*3 + 8*5) / 10 = 7.5 — acima do mínimo 6.0.
+  insert into diario.notas (avaliacao_id, matricula_id, valor, lancada_por)
+  values
+    (v_avaliacao_prova1_id, v_matricula_concluida_id, 7.0, v_professor_id),
+    (v_avaliacao_trabalho_id, v_matricula_concluida_id, 7.0, v_professor_id),
+    (v_avaliacao_final_id, v_matricula_concluida_id, 8.0, v_professor_id)
+  on conflict (avaliacao_id, matricula_id) do nothing;
+
+  -- 10 aulas dentro do período real da turma (2026-02-01 a 2026-06-20).
+  -- Presença em 9, ausência na última (i = 10) — 90% de frequência,
+  -- acima do mínimo padrão de 75%.
+  for i in 1..10 loop
+    v_data := date '2026-02-10' + (i - 1) * interval '10 days';
+    v_aula_id := ('20000000-0000-4000-8000-' || lpad(i::text, 12, '0'))::uuid;
+
+    insert into diario.aulas (id, turma_id, data)
+    values (v_aula_id, v_turma_estatistica_id, v_data)
+    on conflict (id) do nothing;
+
+    insert into diario.presencas (aula_id, matricula_id, presente, registrada_por)
+    values (v_aula_id, v_matricula_concluida_id, i <> 10, v_professor_id)
+    on conflict (aula_id, matricula_id) do nothing;
+  end loop;
+
+  -- Turma ativa (matriculada): avaliações e aulas criadas, mas SEM nota
+  -- nem chamada ainda — é nelas que o professor lança durante o teste.
+  insert into diario.avaliacoes (id, turma_id, titulo, peso, ordem)
+  values
+    ('10000000-0000-4000-8000-000000000011', v_turma_programacao_id, 'Prova 1', 4, 1),
+    ('10000000-0000-4000-8000-000000000012', v_turma_programacao_id, 'Trabalho', 6, 2)
+  on conflict (id) do nothing;
+
+  for i in 1..4 loop
+    v_data := date '2026-08-25' + (i - 1) * interval '7 days';
+    v_aula_id := ('20000000-0000-4000-8000-' || lpad((10 + i)::text, 12, '0'))::uuid;
+
+    insert into diario.aulas (id, turma_id, data)
+    values (v_aula_id, v_turma_programacao_id, v_data)
+    on conflict (id) do nothing;
+  end loop;
+end
+$$;
+
+-- Encerra de verdade, pelo mesmo caminho que o professor usaria na UI:
+-- diario.encerrar_matricula() calcula média/frequência sozinho e decide
+-- o status — não escrevemos 'concluida'/motivo_conclusao à mão.
+do $$
+begin
+  if (select status from selecao.matriculas where id = 'f1000000-0000-4000-8000-000000000001') = 'matriculada' then
+    perform diario.encerrar_matricula('f1000000-0000-4000-8000-000000000001');
+  end if;
+end
+$$;
+
+reset role;
