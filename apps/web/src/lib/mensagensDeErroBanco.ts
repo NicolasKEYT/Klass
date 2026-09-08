@@ -73,6 +73,16 @@ const REGRAS: Array<{ contem: string; mensagem: string }> = [
     contem: "turmas_frequencia_minima_valida",
     mensagem: "A frequência mínima precisa estar entre 0 e 100.",
   },
+  {
+    contem: "avaliacoes_titulo_minimo",
+    mensagem: "O título precisa ter pelo menos 2 caracteres.",
+  },
+  { contem: "avaliacoes_peso_positivo", mensagem: "O peso precisa ser maior que zero." },
+  {
+    contem: "avaliacoes_turma_ordem_unica",
+    mensagem: "Já existe uma avaliação nessa posição nesta turma.",
+  },
+  { contem: "notas_valor_na_faixa", mensagem: "A nota precisa estar entre 0 e 10." },
 ];
 
 export function mensagemDeErroBanco(error: unknown): string {

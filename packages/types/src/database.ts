@@ -186,6 +186,172 @@ export type Database = {
       [_ in never]: never
     }
   }
+  diario: {
+    Tables: {
+      aulas: {
+        Row: {
+          atualizada_em: string
+          criada_em: string
+          data: string
+          descricao: string | null
+          horario: string | null
+          id: string
+          turma_id: string
+        }
+        Insert: {
+          atualizada_em?: string
+          criada_em?: string
+          data: string
+          descricao?: string | null
+          horario?: string | null
+          id?: string
+          turma_id: string
+        }
+        Update: {
+          atualizada_em?: string
+          criada_em?: string
+          data?: string
+          descricao?: string | null
+          horario?: string | null
+          id?: string
+          turma_id?: string
+        }
+        Relationships: []
+      }
+      avaliacoes: {
+        Row: {
+          atualizado_em: string
+          criado_em: string
+          descricao: string | null
+          id: string
+          ordem: number
+          peso: number
+          titulo: string
+          turma_id: string
+        }
+        Insert: {
+          atualizado_em?: string
+          criado_em?: string
+          descricao?: string | null
+          id?: string
+          ordem: number
+          peso: number
+          titulo: string
+          turma_id: string
+        }
+        Update: {
+          atualizado_em?: string
+          criado_em?: string
+          descricao?: string | null
+          id?: string
+          ordem?: number
+          peso?: number
+          titulo?: string
+          turma_id?: string
+        }
+        Relationships: []
+      }
+      notas: {
+        Row: {
+          avaliacao_id: string
+          id: string
+          lancada_em: string
+          lancada_por: string
+          matricula_id: string
+          valor: number
+        }
+        Insert: {
+          avaliacao_id: string
+          id?: string
+          lancada_em?: string
+          lancada_por: string
+          matricula_id: string
+          valor: number
+        }
+        Update: {
+          avaliacao_id?: string
+          id?: string
+          lancada_em?: string
+          lancada_por?: string
+          matricula_id?: string
+          valor?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notas_avaliacao_id_fkey"
+            columns: ["avaliacao_id"]
+            isOneToOne: false
+            referencedRelation: "avaliacoes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      presencas: {
+        Row: {
+          aula_id: string
+          id: string
+          matricula_id: string
+          presente: boolean
+          registrada_em: string
+          registrada_por: string
+        }
+        Insert: {
+          aula_id: string
+          id?: string
+          matricula_id: string
+          presente: boolean
+          registrada_em?: string
+          registrada_por: string
+        }
+        Update: {
+          aula_id?: string
+          id?: string
+          matricula_id?: string
+          presente?: boolean
+          registrada_em?: string
+          registrada_por?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "presencas_aula_id_fkey"
+            columns: ["aula_id"]
+            isOneToOne: false
+            referencedRelation: "aulas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      desfazer_encerramento: {
+        Args: { p_matricula_id: string }
+        Returns: undefined
+      }
+      encerrar_matricula: {
+        Args: { p_matricula_id: string }
+        Returns: undefined
+      }
+      frequencia_percentual: {
+        Args: { p_matricula_id: string }
+        Returns: number
+      }
+      media_ponderada: { Args: { p_matricula_id: string }; Returns: number }
+      pode_gerenciar_turma: { Args: { p_turma_id: string }; Returns: boolean }
+      pronto_para_encerrar: {
+        Args: { p_matricula_id: string }
+        Returns: boolean
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   graphql_public: {
     Tables: {
       [_ in never]: never
@@ -288,7 +454,10 @@ export type Database = {
           criado_em: string
           deferido_em: string | null
           deferido_por: string | null
+          encerrada_em: string | null
+          encerrada_por: string | null
           id: string
+          motivo_conclusao: string | null
           motivo_rejeicao: string | null
           status: Database["selecao"]["Enums"]["status_matricula"]
           turma_id: string
@@ -299,7 +468,10 @@ export type Database = {
           criado_em?: string
           deferido_em?: string | null
           deferido_por?: string | null
+          encerrada_em?: string | null
+          encerrada_por?: string | null
           id?: string
+          motivo_conclusao?: string | null
           motivo_rejeicao?: string | null
           status?: Database["selecao"]["Enums"]["status_matricula"]
           turma_id: string
@@ -310,7 +482,10 @@ export type Database = {
           criado_em?: string
           deferido_em?: string | null
           deferido_por?: string | null
+          encerrada_em?: string | null
+          encerrada_por?: string | null
           id?: string
+          motivo_conclusao?: string | null
           motivo_rejeicao?: string | null
           status?: Database["selecao"]["Enums"]["status_matricula"]
           turma_id?: string
@@ -396,6 +571,7 @@ export type Database = {
         | "rejeitada"
         | "cancelada"
         | "concluida"
+        | "reprovada"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -526,6 +702,9 @@ export const Constants = {
       nivel_modulo: ["iniciante", "intermediario", "avancado"],
     },
   },
+  diario: {
+    Enums: {},
+  },
   graphql_public: {
     Enums: {},
   },
@@ -545,6 +724,7 @@ export const Constants = {
         "rejeitada",
         "cancelada",
         "concluida",
+        "reprovada",
       ],
     },
   },

@@ -1,7 +1,9 @@
 // MS4 — Diário de Classe (schema `diario`)
-// Notas, frequência e progresso do aluno.
-//
-// Os tipos de nota, frequência e progresso entram na fase de implementação
-// deste módulo.
+// Avaliações, notas, aulas e presenças.
 
-export {};
+import type { Database } from "./database";
+
+export type Avaliacao = Database["diario"]["Tables"]["avaliacoes"]["Row"];
+export type Nota = Database["diario"]["Tables"]["notas"]["Row"];
+export type Aula = Database["diario"]["Tables"]["aulas"]["Row"];
+export type Presenca = Database["diario"]["Tables"]["presencas"]["Row"];
