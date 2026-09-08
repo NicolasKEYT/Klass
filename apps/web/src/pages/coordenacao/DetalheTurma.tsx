@@ -8,6 +8,17 @@ import { Cabecalho } from "@/components/Cabecalho";
 import { Card } from "@/components/Card";
 import { useAuth } from "@/auth";
 import {
+  buscarProgressoMatricula,
+  desfazerEncerramento,
+  listarAlunosDoDiario,
+  listarAulasDaTurma,
+  listarAvaliacoesDaTurma,
+  type AlunoDoDiario,
+  type Aula,
+  type Avaliacao,
+  type ProgressoMatricula,
+} from "@/lib/diario";
+import {
   aprovarMatricula,
   buscarTurmaDetalhada,
   listarMatriculasDaTurma,
@@ -21,8 +32,13 @@ const STATUS_LABEL: Record<string, string> = {
   matriculada: "Matriculada",
   rejeitada: "Rejeitada",
   cancelada: "Cancelada",
-  concluida: "Concluída",
+  concluida: "Aprovado(a)",
+  reprovada: "Reprovado(a)",
 };
+
+interface AlunoComProgresso extends AlunoDoDiario {
+  progresso: ProgressoMatricula;
+}
 
 export function DetalheTurma() {
   const { id } = useParams<{ id: string }>();
@@ -33,16 +49,31 @@ export function DetalheTurma() {
   const [mensagem, setMensagem] = useState<string | null>(null);
   const [rejeitandoId, setRejeitandoId] = useState<string | null>(null);
   const [motivo, setMotivo] = useState("");
+  const [avaliacoes, setAvaliacoes] = useState<Avaliacao[]>([]);
+  const [aulas, setAulas] = useState<Aula[]>([]);
+  const [alunosDiario, setAlunosDiario] = useState<AlunoComProgresso[]>([]);
+  const [desfazendoId, setDesfazendoId] = useState<string | null>(null);
 
   async function carregar() {
     if (!id) return;
     try {
-      const [dadosTurma, dadosMatriculas] = await Promise.all([
-        buscarTurmaDetalhada(id),
-        listarMatriculasDaTurma(id),
-      ]);
+      const [dadosTurma, dadosMatriculas, listaAvaliacoes, listaAulas, listaAlunosDiario] =
+        await Promise.all([
+          buscarTurmaDetalhada(id),
+          listarMatriculasDaTurma(id),
+          listarAvaliacoesDaTurma(id),
+          listarAulasDaTurma(id),
+          listarAlunosDoDiario(id),
+        ]);
       setTurma(dadosTurma);
       setMatriculas(dadosMatriculas);
+      setAvaliacoes(listaAvaliacoes);
+      setAulas(listaAulas);
+
+      const progressos = await Promise.all(
+        listaAlunosDiario.map((a) => buscarProgressoMatricula(a.matriculaId)),
+      );
+      setAlunosDiario(listaAlunosDiario.map((a, i) => ({ ...a, progresso: progressos[i] })));
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível carregar a turma.");
     }
@@ -81,10 +112,23 @@ export function DetalheTurma() {
     }
   }
 
+  async function aoDesfazer(matriculaId: string) {
+    setErro(null);
+    setMensagem(null);
+    try {
+      await desfazerEncerramento(matriculaId);
+      setMensagem("Encerramento desfeito — a matrícula voltou a 'matriculada'.");
+      setDesfazendoId(null);
+      await carregar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Não foi possível desfazer o encerramento.");
+    }
+  }
+
   const pendentes = matriculas.filter((m) => m.status === "inscrita");
   const matriculados = matriculas.filter((m) => m.status === "matriculada");
   const historico = matriculas.filter((m) =>
-    ["rejeitada", "cancelada", "concluida"].includes(m.status),
+    ["rejeitada", "cancelada", "concluida", "reprovada"].includes(m.status),
   );
 
   return (
@@ -201,25 +245,113 @@ export function DetalheTurma() {
             {historico.length > 0 && (
               <>
                 <h2 className="mb-3 font-serif text-klass-lg text-text-primary">Histórico</h2>
-                <div className="flex flex-col gap-2">
-                  {historico.map((matricula) => (
-                    <Card key={matricula.id} className="flex items-center justify-between gap-4">
-                      <div className="flex flex-col">
-                        <span className="text-body-sm text-text-primary">
-                          {matricula.alunoNome}
-                        </span>
-                        {matricula.motivoRejeicao && (
-                          <span className="text-label text-text-muted">
-                            {matricula.motivoRejeicao}
-                          </span>
+                <div className="mb-6 flex flex-col gap-2">
+                  {historico.map((matricula) => {
+                    const podeDesfazer =
+                      matricula.status === "concluida" || matricula.status === "reprovada";
+                    return (
+                      <Card key={matricula.id} className="flex flex-col gap-2">
+                        <div className="flex items-center justify-between gap-4">
+                          <div className="flex flex-col">
+                            <span className="text-body-sm text-text-primary">
+                              {matricula.alunoNome}
+                            </span>
+                            {matricula.motivoRejeicao && (
+                              <span className="text-label text-text-muted">
+                                {matricula.motivoRejeicao}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="neutral">{STATUS_LABEL[matricula.status]}</Badge>
+                            {podeDesfazer && desfazendoId !== matricula.id && (
+                              <Button
+                                variant="secondary"
+                                onClick={() => setDesfazendoId(matricula.id)}
+                              >
+                                Desfazer encerramento
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                        {podeDesfazer && desfazendoId === matricula.id && (
+                          <div className="flex items-center justify-end gap-2">
+                            <span className="text-label text-text-secondary">
+                              Volta pra "matriculada" — o professor pode lançar de novo. Desfazer
+                              mesmo assim?
+                            </span>
+                            <Button variant="secondary" onClick={() => void aoDesfazer(matricula.id)}>
+                              Sim
+                            </Button>
+                            <Button variant="secondary" onClick={() => setDesfazendoId(null)}>
+                              Não
+                            </Button>
+                          </div>
                         )}
-                      </div>
-                      <Badge variant="neutral">{STATUS_LABEL[matricula.status]}</Badge>
-                    </Card>
-                  ))}
+                      </Card>
+                    );
+                  })}
                 </div>
               </>
             )}
+
+            {/* Diário (MS4) — coordenação só consulta, quem lança nota/presença é o professor. */}
+            <h2 className="mb-3 font-serif text-klass-lg text-text-primary">Diário</h2>
+            <Card className="mb-4">
+              <p className="mb-2 text-label font-medium text-text-secondary">
+                Avaliações ({avaliacoes.length})
+              </p>
+              {avaliacoes.length === 0 ? (
+                <p className="text-body-sm text-text-secondary">Nenhuma avaliação cadastrada.</p>
+              ) : (
+                <ul className="flex flex-col gap-1">
+                  {avaliacoes.map((a) => (
+                    <li key={a.id} className="text-body-sm text-text-secondary">
+                      {a.titulo} (peso {a.peso})
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Card>
+            <Card className="mb-4">
+              <p className="mb-2 text-label font-medium text-text-secondary">
+                Aulas ({aulas.length})
+              </p>
+              {aulas.length === 0 ? (
+                <p className="text-body-sm text-text-secondary">Nenhuma aula cadastrada.</p>
+              ) : (
+                <ul className="flex flex-col gap-1">
+                  {aulas.map((au) => (
+                    <li key={au.id} className="text-body-sm text-text-secondary">
+                      {au.data}
+                      {au.horario ? ` · ${au.horario}` : ""}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Card>
+            <div className="flex flex-col gap-2">
+              {alunosDiario.length === 0 && (
+                <p className="text-body-sm text-text-secondary">
+                  Nenhum aluno com matrícula ativa ou encerrada nesta turma ainda.
+                </p>
+              )}
+              {alunosDiario.map((aluno) => (
+                <Card key={aluno.matriculaId} className="flex items-center justify-between">
+                  <span className="text-body-sm text-text-primary">{aluno.alunoNome}</span>
+                  <span className="text-label text-text-muted">
+                    Média: {aluno.progresso.media !== null ? aluno.progresso.media.toFixed(1) : "—"}
+                    {" · "}
+                    Frequência:{" "}
+                    {aluno.progresso.frequencia !== null
+                      ? `${aluno.progresso.frequencia.toFixed(0)}%`
+                      : "—"}
+                    {" · "}
+                    {STATUS_LABEL[aluno.status]}
+                  </span>
+                </Card>
+              ))}
+            </div>
           </>
         )}
       </div>
