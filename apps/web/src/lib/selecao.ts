@@ -223,6 +223,45 @@ export async function criarTurma(input: {
   return data;
 }
 
+export interface MatriculaDetalhada {
+  id: string;
+  status: StatusMatricula;
+  motivoConclusao: string | null;
+  turmaId: string;
+  turmaCodigo: string;
+  moduloNome: string;
+  trilhaNome: string;
+  professorNome: string;
+  periodoInicio: string;
+  periodoFim: string;
+}
+
+export async function buscarMatriculaDetalhada(matriculaId: string): Promise<MatriculaDetalhada | null> {
+  const { data: matricula, error } = await selecao()
+    .from("matriculas")
+    .select("*")
+    .eq("id", matriculaId)
+    .maybeSingle();
+  if (error) throw new Error(mensagemDeErroBanco(error));
+  if (!matricula) return null;
+
+  const turma = await buscarTurmaDetalhada(matricula.turma_id);
+  if (!turma) return null;
+
+  return {
+    id: matricula.id,
+    status: matricula.status,
+    motivoConclusao: matricula.motivo_conclusao,
+    turmaId: turma.id,
+    turmaCodigo: turma.codigo,
+    moduloNome: turma.moduloNome,
+    trilhaNome: turma.trilhaNome,
+    professorNome: turma.professorNome,
+    periodoInicio: turma.periodoInicio,
+    periodoFim: turma.periodoFim,
+  };
+}
+
 export async function aprovarMatricula(matriculaId: string, deferidoPor: string): Promise<void> {
   const { error } = await selecao()
     .from("matriculas")

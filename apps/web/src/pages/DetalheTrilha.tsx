@@ -30,7 +30,8 @@ const STATUS_LABEL: Record<StatusMatricula, string> = {
   matriculada: "Matriculado(a)",
   rejeitada: "Inscrição rejeitada",
   cancelada: "Inscrição cancelada",
-  concluida: "Concluída",
+  concluida: "Aprovado(a)",
+  reprovada: "Reprovado(a)",
 };
 
 export function DetalheTrilha() {

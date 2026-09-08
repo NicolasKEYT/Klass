@@ -6,6 +6,7 @@ import { Catalogo } from "@/pages/Catalogo";
 import { DetalheTrilha } from "@/pages/DetalheTrilha";
 import { Entrar } from "@/pages/Entrar";
 import { Home } from "@/pages/Home";
+import { Boletim } from "@/pages/aluno/Boletim";
 import { Matriculas as MatriculasDoAluno } from "@/pages/aluno/Matriculas";
 import { DetalheTurma as DetalheTurmaCoordenacao } from "@/pages/coordenacao/DetalheTurma";
 import { EditarTrilha } from "@/pages/coordenacao/EditarTrilha";
@@ -14,6 +15,8 @@ import { NovaTurma } from "@/pages/coordenacao/NovaTurma";
 import { Trilhas } from "@/pages/coordenacao/Trilhas";
 import { Turmas as TurmasDaCoordenacao } from "@/pages/coordenacao/Turmas";
 import { DetalheTurma as DetalheTurmaProfessor } from "@/pages/professor/DetalheTurma";
+import { FazerChamada } from "@/pages/professor/FazerChamada";
+import { LancarNotas } from "@/pages/professor/LancarNotas";
 import { Turmas as TurmasDoProfessor } from "@/pages/professor/Turmas";
 
 export default function App() {
@@ -105,6 +108,14 @@ export default function App() {
             </Autenticado>
           }
         />
+        <Route
+          path="/aluno/matriculas/:id"
+          element={
+            <Autenticado papel="aluno">
+              <Boletim />
+            </Autenticado>
+          }
+        />
 
         <Route
           path="/professor/turmas"
@@ -119,6 +130,22 @@ export default function App() {
           element={
             <Autenticado papel="professor">
               <DetalheTurmaProfessor />
+            </Autenticado>
+          }
+        />
+        <Route
+          path="/professor/turmas/:id/avaliacoes/:avaliacao_id"
+          element={
+            <Autenticado papel="professor">
+              <LancarNotas />
+            </Autenticado>
+          }
+        />
+        <Route
+          path="/professor/turmas/:id/aulas/:aula_id/chamada"
+          element={
+            <Autenticado papel="professor">
+              <FazerChamada />
             </Autenticado>
           }
         />
