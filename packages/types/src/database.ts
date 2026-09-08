@@ -325,53 +325,41 @@ export type Database = {
           },
         ]
       }
-      pre_requisitos_trilha: {
-        Row: {
-          trilha_id: string
-          trilha_requisito_id: string
-        }
-        Insert: {
-          trilha_id: string
-          trilha_requisito_id: string
-        }
-        Update: {
-          trilha_id?: string
-          trilha_requisito_id?: string
-        }
-        Relationships: []
-      }
       turmas: {
         Row: {
           atualizado_em: string
           codigo: string
           criado_em: string
+          frequencia_minima_percentual: number
           id: string
+          modulo_id: string
           periodo_fim: string
           periodo_inicio: string
           professor_id: string
-          trilha_id: string
           vagas_total: number
         }
         Insert: {
           atualizado_em?: string
           codigo: string
           criado_em?: string
+          frequencia_minima_percentual?: number
           id?: string
+          modulo_id: string
           periodo_fim: string
           periodo_inicio: string
           professor_id: string
-          trilha_id: string
           vagas_total: number
         }
         Update: {
           atualizado_em?: string
           codigo?: string
           criado_em?: string
+          frequencia_minima_percentual?: number
           id?: string
+          modulo_id?: string
           periodo_fim?: string
           periodo_inicio?: string
           professor_id?: string
-          trilha_id?: string
           vagas_total?: number
         }
         Relationships: []
@@ -386,8 +374,8 @@ export type Database = {
         Args: { p_matricula_id: string }
         Returns: undefined
       }
-      checar_matricula_ativa_na_trilha: {
-        Args: { p_aluno_id: string; p_trilha_id: string }
+      checar_matricula_ativa_no_modulo: {
+        Args: { p_aluno_id: string; p_modulo_id: string }
         Returns: undefined
       }
       checar_vaga_disponivel: {
@@ -396,8 +384,8 @@ export type Database = {
       }
       inscrever_aluno: { Args: { p_turma_id: string }; Returns: string }
       professor_da_turma: { Args: { p_profile_id: string }; Returns: boolean }
-      validar_pre_requisitos_trilha: {
-        Args: { p_aluno_id: string; p_trilha_id: string }
+      validar_pre_requisitos_modulo: {
+        Args: { p_aluno_id: string; p_modulo_id: string }
         Returns: undefined
       }
     }
