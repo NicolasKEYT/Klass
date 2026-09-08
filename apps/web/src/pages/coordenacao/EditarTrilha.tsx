@@ -16,11 +16,9 @@ import {
   definirPreRequisito,
   listarModulosDaTrilha,
   listarPreRequisitosIdsDaTrilha,
-  listarTrilhas,
   proximaOrdemDisponivel,
   trocarOrdemModulos,
 } from "@/lib/catalogo";
-import { definirPreRequisitoTrilha, listarIdsTrilhasRequisito } from "@/lib/selecao";
 import type { Modulo, NivelModulo, Trilha } from "@klass/types";
 
 const NIVEIS: NivelModulo[] = ["iniciante", "intermediario", "avancado"];
@@ -37,8 +35,6 @@ export function EditarTrilha() {
   const [trilha, setTrilha] = useState<Trilha | null>(null);
   const [modulos, setModulos] = useState<Modulo[]>([]);
   const [preRequisitos, setPreRequisitos] = useState<Map<string, Set<string>>>(new Map());
-  const [outrasTrilhas, setOutrasTrilhas] = useState<Trilha[]>([]);
-  const [trilhasRequisito, setTrilhasRequisito] = useState<Set<string>>(new Set());
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [mensagem, setMensagem] = useState<string | null>(null);
@@ -80,18 +76,12 @@ export function EditarTrilha() {
       setDescricao(encontrada.descricao);
       setDescricaoCurta(encontrada.descricao_curta ?? "");
 
-      const [listaModulos, mapaPreRequisitos, todasTrilhas, idsRequisito] = await Promise.all([
+      const [listaModulos, mapaPreRequisitos] = await Promise.all([
         listarModulosDaTrilha(encontrada.id),
         listarPreRequisitosIdsDaTrilha(encontrada.id),
-        listarTrilhas(),
-        listarIdsTrilhasRequisito(encontrada.id),
       ]);
       setModulos(listaModulos);
       setPreRequisitos(mapaPreRequisitos);
-      setOutrasTrilhas(
-        todasTrilhas.filter((t) => t.id !== encontrada.id && t.publicada),
-      );
-      setTrilhasRequisito(new Set(idsRequisito));
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível carregar a trilha.");
     } finally {
@@ -229,17 +219,6 @@ export function EditarTrilha() {
     }
   }
 
-  async function aoAlternarPreRequisitoTrilha(trilhaRequisitoId: string, ativo: boolean) {
-    if (!trilha) return;
-    setErro(null);
-    try {
-      await definirPreRequisitoTrilha(trilha.id, trilhaRequisitoId, ativo);
-      await carregar();
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : "Não foi possível atualizar o pré-requisito.");
-    }
-  }
-
   if (carregando) {
     return (
       <div className="min-h-screen bg-background">
@@ -319,36 +298,6 @@ export function EditarTrilha() {
               </Button>
             </div>
           </form>
-        </Card>
-
-        {/* Pré-requisito ENTRE TRILHAS (MS3) — diferente do "este módulo
-            requer" abaixo, que é entre módulos DENTRO desta trilha (MS2). */}
-        <Card className="mb-6">
-          <h2 className="mb-1 font-serif text-klass-lg text-text-primary">Pré-requisitos</h2>
-          <p className="mb-3 text-body-sm text-text-secondary">
-            Para se inscrever em "{trilha.nome}", o aluno precisa ter concluído:
-          </p>
-          {outrasTrilhas.length === 0 ? (
-            <p className="text-label text-text-muted">
-              Nenhuma outra trilha publicada ainda para ser pré-requisito.
-            </p>
-          ) : (
-            <div className="flex flex-wrap gap-3">
-              {outrasTrilhas.map((outra) => (
-                <label
-                  key={outra.id}
-                  className="flex items-center gap-1.5 text-body-sm text-text-secondary"
-                >
-                  <input
-                    type="checkbox"
-                    checked={trilhasRequisito.has(outra.id)}
-                    onChange={(e) => void aoAlternarPreRequisitoTrilha(outra.id, e.target.checked)}
-                  />
-                  {outra.nome}
-                </label>
-              ))}
-            </div>
-          )}
         </Card>
 
         <div className="mb-4 flex items-center justify-between">

@@ -20,6 +20,7 @@ interface PayloadWebhookMatricula {
 
 function montarEmailMatriculaAprovada(dados: {
   nomeAluno: string;
+  nomeModulo: string;
   nomeTrilha: string;
   codigoTurma: string;
   periodoInicio: string;
@@ -29,8 +30,8 @@ function montarEmailMatriculaAprovada(dados: {
   });
   return (
     `<p>Olá, ${dados.nomeAluno}!</p>` +
-    `<p>Sua matrícula na trilha <strong>${dados.nomeTrilha}</strong> ` +
-    `(turma ${dados.codigoTurma}) foi aprovada.</p>` +
+    `<p>Sua matrícula em <strong>${dados.nomeModulo}</strong> (${dados.nomeTrilha}, ` +
+    `turma ${dados.codigoTurma}) foi aprovada.</p>` +
     `<p>As aulas começam em ${dataFormatada}. Seja bem-vindo(a)!</p>`
   );
 }
@@ -72,7 +73,7 @@ export async function receberMatriculaDeferida(c: Context<{ Bindings: Env }>) {
   const { data: turma, error: erroTurma } = await admin
     .schema("selecao")
     .from("turmas")
-    .select("codigo, periodo_inicio, trilha_id")
+    .select("codigo, periodo_inicio, modulo_id")
     .eq("id", payload.record.turma_id)
     .single();
   if (erroTurma || !turma) {
@@ -80,11 +81,22 @@ export async function receberMatriculaDeferida(c: Context<{ Bindings: Env }>) {
     return c.json({ error: "turma não encontrada" }, 500);
   }
 
+  const { data: modulo, error: erroModulo } = await admin
+    .schema("catalogo")
+    .from("modulos")
+    .select("nome, trilha_id")
+    .eq("id", turma.modulo_id)
+    .single();
+  if (erroModulo || !modulo) {
+    console.error("matricula-deferida: módulo não encontrado", erroModulo);
+    return c.json({ error: "módulo não encontrado" }, 500);
+  }
+
   const { data: trilha, error: erroTrilha } = await admin
     .schema("catalogo")
     .from("trilhas")
     .select("nome")
-    .eq("id", turma.trilha_id)
+    .eq("id", modulo.trilha_id)
     .single();
   if (erroTrilha || !trilha) {
     console.error("matricula-deferida: trilha não encontrada", erroTrilha);
@@ -115,9 +127,10 @@ export async function receberMatriculaDeferida(c: Context<{ Bindings: Env }>) {
   try {
     await enviarEmail(c.env, {
       para: usuarioAuth.user.email,
-      assunto: `Matrícula aprovada — ${trilha.nome}`,
+      assunto: `Matrícula aprovada — ${modulo.nome}`,
       html: montarEmailMatriculaAprovada({
         nomeAluno: perfil.nome_completo,
+        nomeModulo: modulo.nome,
         nomeTrilha: trilha.nome,
         codigoTurma: turma.codigo,
         periodoInicio: turma.periodo_inicio,

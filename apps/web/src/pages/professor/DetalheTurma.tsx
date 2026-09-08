@@ -48,7 +48,9 @@ export function DetalheTurma() {
           <>
             <Card className="mb-6">
               <h1 className="font-serif text-klass-xl text-text-primary">{turma.codigo}</h1>
-              <p className="mt-1 text-body-sm text-text-secondary">{turma.trilhaNome}</p>
+              <p className="mt-1 text-body-sm text-text-secondary">
+                {turma.moduloNome} · {turma.trilhaNome}
+              </p>
               <p className="mt-2 text-label text-text-muted">
                 {turma.periodoInicio} a {turma.periodoFim}
               </p>

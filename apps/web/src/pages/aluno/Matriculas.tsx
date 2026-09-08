@@ -98,14 +98,14 @@ export function Matriculas() {
             <Card key={matricula.id} className="flex items-center justify-between gap-4">
               <div className="flex flex-col gap-1">
                 <div className="flex items-center gap-2">
-                  <h2 className="text-klass-md text-text-primary">{matricula.trilhaNome}</h2>
+                  <h2 className="text-klass-md text-text-primary">{matricula.moduloNome}</h2>
                   <Badge variant={STATUS_VARIANTE[matricula.status]}>
                     {STATUS_LABEL[matricula.status]}
                   </Badge>
                 </div>
                 <p className="text-label text-text-muted">
-                  Turma {matricula.turmaCodigo} · {matricula.professorNome} ·{" "}
-                  {matricula.periodoInicio} a {matricula.periodoFim}
+                  {matricula.trilhaNome} · Turma {matricula.turmaCodigo} ·{" "}
+                  {matricula.professorNome} · {matricula.periodoInicio} a {matricula.periodoFim}
                 </p>
               </div>
 

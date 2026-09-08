@@ -6,23 +6,29 @@ import { Button } from "@/components/Button";
 import { Cabecalho } from "@/components/Cabecalho";
 import { Card } from "@/components/Card";
 import { Input } from "@/components/Input";
-import { listarTrilhas } from "@/lib/catalogo";
+import { listarModulosDaTrilha, listarTrilhas } from "@/lib/catalogo";
 import { criarTurma, listarProfessores } from "@/lib/selecao";
-import type { Trilha } from "@klass/types";
+import type { Modulo, Trilha } from "@klass/types";
 
 const ATRASO_ANTES_DE_NAVEGAR_MS = 700;
+const FREQUENCIA_MINIMA_PADRAO = 75;
 
 export function NovaTurma() {
   const navigate = useNavigate();
   const [trilhas, setTrilhas] = useState<Trilha[]>([]);
+  const [modulos, setModulos] = useState<Modulo[]>([]);
   const [professores, setProfessores] = useState<Array<{ id: string; nomeCompleto: string }>>([]);
 
   const [trilhaId, setTrilhaId] = useState("");
+  const [moduloId, setModuloId] = useState("");
   const [codigo, setCodigo] = useState("");
   const [professorId, setProfessorId] = useState("");
   const [periodoInicio, setPeriodoInicio] = useState("");
   const [periodoFim, setPeriodoFim] = useState("");
   const [vagasTotal, setVagasTotal] = useState(30);
+  const [frequenciaMinimaPercentual, setFrequenciaMinimaPercentual] = useState(
+    FREQUENCIA_MINIMA_PADRAO,
+  );
 
   const [erro, setErro] = useState<string | null>(null);
   const [mensagem, setMensagem] = useState<string | null>(null);
@@ -40,6 +46,22 @@ export function NovaTurma() {
       .catch((e) => setErro(e instanceof Error ? e.message : "Não foi possível carregar o formulário."));
   }, []);
 
+  // Turma é oferta de um módulo específico — a trilha só existe aqui pra
+  // filtrar a lista de módulos, não é gravada em lugar nenhum.
+  useEffect(() => {
+    if (!trilhaId) {
+      setModulos([]);
+      setModuloId("");
+      return;
+    }
+    listarModulosDaTrilha(trilhaId)
+      .then((lista) => {
+        setModulos(lista);
+        setModuloId(lista[0]?.id ?? "");
+      })
+      .catch((e) => setErro(e instanceof Error ? e.message : "Não foi possível carregar os módulos."));
+  }, [trilhaId]);
+
   // "Ficar na tela" não existe pra turma como existe pra trilha — não há
   // uma edição de turma neste módulo. O equivalente de "continuar
   // trabalhando" é ir para a tela de detalhes, não repetir o envio.
@@ -49,12 +71,13 @@ export function NovaTurma() {
     setEnviando(true);
     try {
       const turma = await criarTurma({
-        trilhaId,
+        moduloId,
         codigo,
         professorId,
         periodoInicio,
         periodoFim,
         vagasTotal,
+        frequenciaMinimaPercentual,
       });
       setMensagem("Turma criada.");
       await new Promise((resolve) => setTimeout(resolve, ATRASO_ANTES_DE_NAVEGAR_MS));
@@ -102,10 +125,33 @@ export function NovaTurma() {
             </label>
 
             <label className="flex flex-col gap-1.5">
+              <span className="text-label font-medium text-text-secondary">
+                Módulo (disciplina)
+              </span>
+              <select
+                required
+                className="h-9 rounded-klass-control border border-border bg-surface px-3.5 text-body-sm text-text-primary"
+                value={moduloId}
+                onChange={(e) => setModuloId(e.target.value)}
+              >
+                {modulos.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.nome}
+                  </option>
+                ))}
+              </select>
+              {trilhaId && modulos.length === 0 && (
+                <span className="text-label text-text-muted">
+                  Essa trilha ainda não tem módulos cadastrados.
+                </span>
+              )}
+            </label>
+
+            <label className="flex flex-col gap-1.5">
               <span className="text-label font-medium text-text-secondary">Código</span>
               <Input
                 required
-                placeholder="CDA-2026-1"
+                placeholder="PROG-2026-1"
                 value={codigo}
                 onChange={(e) => setCodigo(e.target.value.toUpperCase())}
               />
@@ -158,16 +204,31 @@ export function NovaTurma() {
               </label>
             </div>
 
-            <label className="flex flex-col gap-1.5">
-              <span className="text-label font-medium text-text-secondary">Vagas</span>
-              <Input
-                type="number"
-                min={1}
-                required
-                value={vagasTotal}
-                onChange={(e) => setVagasTotal(Number(e.target.value))}
-              />
-            </label>
+            <div className="flex gap-4">
+              <label className="flex flex-1 flex-col gap-1.5">
+                <span className="text-label font-medium text-text-secondary">Vagas</span>
+                <Input
+                  type="number"
+                  min={1}
+                  required
+                  value={vagasTotal}
+                  onChange={(e) => setVagasTotal(Number(e.target.value))}
+                />
+              </label>
+              <label className="flex flex-1 flex-col gap-1.5">
+                <span className="text-label font-medium text-text-secondary">
+                  Frequência mínima (%)
+                </span>
+                <Input
+                  type="number"
+                  min={0}
+                  max={100}
+                  required
+                  value={frequenciaMinimaPercentual}
+                  onChange={(e) => setFrequenciaMinimaPercentual(Number(e.target.value))}
+                />
+              </label>
+            </div>
 
             {erro && <Aviso variant="danger">{erro}</Aviso>}
             {mensagem && <Aviso variant="success">{mensagem}</Aviso>}

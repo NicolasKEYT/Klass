@@ -70,8 +70,8 @@ const REGRAS: Array<{ contem: string; mensagem: string }> = [
     mensagem: "Informe o motivo da rejeição.",
   },
   {
-    contem: "pre_requisitos_trilha_nao_autorreferencia",
-    mensagem: "Uma trilha não pode ser pré-requisito de si mesma.",
+    contem: "turmas_frequencia_minima_valida",
+    mensagem: "A frequência mínima precisa estar entre 0 e 100.",
   },
 ];
 

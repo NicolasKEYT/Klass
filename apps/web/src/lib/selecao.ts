@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { mensagemDeErroBanco } from "@/lib/mensagensDeErroBanco";
+import { listarModulosDaTrilha } from "@/lib/catalogo";
 import type { Matricula, StatusMatricula, Turma } from "@klass/types";
 
 // Ponto único de acesso a selecao.* — mesmo padrão de apps/web/src/lib/catalogo.ts.
@@ -30,10 +31,43 @@ async function buscarNomesCompletos(ids: string[]): Promise<Map<string, string>>
   return new Map((data ?? []).map((p) => [p.id, p.nome_completo]));
 }
 
+interface ContextoModulo {
+  nome: string;
+  trilhaNome: string;
+}
+
+// turma referencia um módulo, não uma trilha inteira — para exibir "qual
+// disciplina, de qual trilha" numa tela, precisa desse salto extra
+// (turma -> catalogo.modulos -> catalogo.trilhas).
+async function buscarContextoModulos(moduloIds: string[]): Promise<Map<string, ContextoModulo>> {
+  if (moduloIds.length === 0) return new Map();
+  const { data: modulos, error } = await catalogo()
+    .from("modulos")
+    .select("id, nome, trilha_id")
+    .in("id", moduloIds);
+  if (error) throw new Error(mensagemDeErroBanco(error));
+
+  const trilhaIds = [...new Set((modulos ?? []).map((m) => m.trilha_id))];
+  const { data: trilhas, error: erroTrilhas } = await catalogo()
+    .from("trilhas")
+    .select("id, nome")
+    .in("id", trilhaIds);
+  if (erroTrilhas) throw new Error(mensagemDeErroBanco(erroTrilhas));
+
+  const nomeTrilha = new Map((trilhas ?? []).map((t) => [t.id, t.nome]));
+  return new Map(
+    (modulos ?? []).map((m) => [
+      m.id,
+      { nome: m.nome, trilhaNome: nomeTrilha.get(m.trilha_id) ?? "—" },
+    ]),
+  );
+}
+
 export interface TurmaListagem {
   id: string;
   codigo: string;
-  trilhaId: string;
+  moduloId: string;
+  moduloNome: string;
   trilhaNome: string;
   professorNome: string;
   periodoInicio: string;
@@ -44,8 +78,8 @@ export interface TurmaListagem {
 }
 
 // Junta em código, não via embed do PostgREST: turmas referencia
-// catalogo.trilhas e identidade.profiles, schemas diferentes do que a
-// query "principal" — mesma estratégia de apps/web/src/lib/catalogo.ts.
+// catalogo.modulos/trilhas e identidade.profiles, schemas diferentes do
+// que a query "principal" — mesma estratégia de apps/web/src/lib/catalogo.ts.
 export async function listarTurmasParaCoordenacao(): Promise<TurmaListagem[]> {
   const { data: turmas, error } = await selecao()
     .from("turmas")
@@ -54,27 +88,26 @@ export async function listarTurmasParaCoordenacao(): Promise<TurmaListagem[]> {
   if (error) throw new Error(mensagemDeErroBanco(error));
   if (turmas.length === 0) return [];
 
-  const trilhaIds = [...new Set(turmas.map((t) => t.trilha_id))];
+  const moduloIds = [...new Set(turmas.map((t) => t.modulo_id))];
   const professorIds = [...new Set(turmas.map((t) => t.professor_id))];
   const turmaIds = turmas.map((t) => t.id);
 
-  const [trilhasResp, nomeProfessor, matriculasResp] = await Promise.all([
-    catalogo().from("trilhas").select("id, nome").in("id", trilhaIds),
+  const [contextoModulo, nomeProfessor, matriculasResp] = await Promise.all([
+    buscarContextoModulos(moduloIds),
     buscarNomesCompletos(professorIds),
     selecao().from("matriculas").select("turma_id, status").in("turma_id", turmaIds),
   ]);
-  if (trilhasResp.error) throw new Error(mensagemDeErroBanco(trilhasResp.error));
   if (matriculasResp.error) throw new Error(mensagemDeErroBanco(matriculasResp.error));
-
-  const nomeTrilha = new Map((trilhasResp.data ?? []).map((t) => [t.id, t.nome]));
 
   return turmas.map((turma) => {
     const doTurma = (matriculasResp.data ?? []).filter((m) => m.turma_id === turma.id);
+    const contexto = contextoModulo.get(turma.modulo_id);
     return {
       id: turma.id,
       codigo: turma.codigo,
-      trilhaId: turma.trilha_id,
-      trilhaNome: nomeTrilha.get(turma.trilha_id) ?? "—",
+      moduloId: turma.modulo_id,
+      moduloNome: contexto?.nome ?? "—",
+      trilhaNome: contexto?.trilhaNome ?? "—",
       professorNome: nomeProfessor.get(turma.professor_id) ?? "—",
       periodoInicio: turma.periodo_inicio,
       periodoFim: turma.periodo_fim,
@@ -88,11 +121,13 @@ export async function listarTurmasParaCoordenacao(): Promise<TurmaListagem[]> {
 export interface TurmaDetalhada {
   id: string;
   codigo: string;
+  moduloNome: string;
   trilhaNome: string;
   professorNome: string;
   periodoInicio: string;
   periodoFim: string;
   vagasTotal: number;
+  frequenciaMinimaPercentual: number;
 }
 
 export async function buscarTurmaDetalhada(turmaId: string): Promise<TurmaDetalhada | null> {
@@ -104,20 +139,22 @@ export async function buscarTurmaDetalhada(turmaId: string): Promise<TurmaDetalh
   if (error) throw new Error(mensagemDeErroBanco(error));
   if (!turma) return null;
 
-  const [trilhaResp, nomeProfessor] = await Promise.all([
-    catalogo().from("trilhas").select("nome").eq("id", turma.trilha_id).single(),
+  const [contextoModulo, nomeProfessor] = await Promise.all([
+    buscarContextoModulos([turma.modulo_id]),
     buscarNomesCompletos([turma.professor_id]),
   ]);
-  if (trilhaResp.error) throw new Error(mensagemDeErroBanco(trilhaResp.error));
+  const contexto = contextoModulo.get(turma.modulo_id);
 
   return {
     id: turma.id,
     codigo: turma.codigo,
-    trilhaNome: trilhaResp.data.nome,
+    moduloNome: contexto?.nome ?? "—",
+    trilhaNome: contexto?.trilhaNome ?? "—",
     professorNome: nomeProfessor.get(turma.professor_id) ?? "—",
     periodoInicio: turma.periodo_inicio,
     periodoFim: turma.periodo_fim,
     vagasTotal: turma.vagas_total,
+    frequenciaMinimaPercentual: turma.frequencia_minima_percentual,
   };
 }
 
@@ -161,22 +198,24 @@ export async function listarProfessores(): Promise<Array<{ id: string; nomeCompl
 }
 
 export async function criarTurma(input: {
-  trilhaId: string;
+  moduloId: string;
   codigo: string;
   professorId: string;
   periodoInicio: string;
   periodoFim: string;
   vagasTotal: number;
+  frequenciaMinimaPercentual: number;
 }): Promise<Turma> {
   const { data, error } = await selecao()
     .from("turmas")
     .insert({
-      trilha_id: input.trilhaId,
+      modulo_id: input.moduloId,
       codigo: input.codigo,
       professor_id: input.professorId,
       periodo_inicio: input.periodoInicio,
       periodo_fim: input.periodoFim,
       vagas_total: input.vagasTotal,
+      frequencia_minima_percentual: input.frequenciaMinimaPercentual,
     })
     .select("*")
     .single();
@@ -219,6 +258,7 @@ export interface MatriculaDoAluno {
   id: string;
   status: StatusMatricula;
   turmaCodigo: string;
+  moduloNome: string;
   trilhaNome: string;
   professorNome: string;
   periodoInicio: string;
@@ -241,26 +281,26 @@ export async function listarMatriculasDoAluno(alunoId: string): Promise<Matricul
     .in("id", turmaIds);
   if (erroTurmas) throw new Error(mensagemDeErroBanco(erroTurmas));
 
-  const trilhaIds = [...new Set((turmas ?? []).map((t) => t.trilha_id))];
+  const moduloIds = [...new Set((turmas ?? []).map((t) => t.modulo_id))];
   const professorIds = [...new Set((turmas ?? []).map((t) => t.professor_id))];
 
-  const [trilhasResp, nomeProfessor] = await Promise.all([
-    catalogo().from("trilhas").select("id, nome").in("id", trilhaIds),
+  const [contextoModulo, nomeProfessor] = await Promise.all([
+    buscarContextoModulos(moduloIds),
     buscarNomesCompletos(professorIds),
   ]);
-  if (trilhasResp.error) throw new Error(mensagemDeErroBanco(trilhasResp.error));
 
   const turmaPorId = new Map((turmas ?? []).map((t) => [t.id, t]));
-  const nomeTrilha = new Map((trilhasResp.data ?? []).map((t) => [t.id, t.nome]));
 
   return matriculas.map((m) => {
     const turma = turmaPorId.get(m.turma_id);
+    const contexto = turma ? contextoModulo.get(turma.modulo_id) : undefined;
     return {
       id: m.id,
       status: m.status,
       turmaCodigo: turma?.codigo ?? "—",
-      trilhaNome: turma ? (nomeTrilha.get(turma.trilha_id) ?? "—") : "—",
-      professorNome: turma ? (nomeProfessor.get(turma.professor_id) ?? "—") : "—",
+      moduloNome: contexto?.nome ?? "—",
+      trilhaNome: contexto?.trilhaNome ?? "—",
+      professorNome: turma ? nomeProfessor.get(turma.professor_id) ?? "—" : "—",
       periodoInicio: turma?.periodo_inicio ?? "",
       periodoFim: turma?.periodo_fim ?? "",
     };
@@ -270,6 +310,7 @@ export async function listarMatriculasDoAluno(alunoId: string): Promise<Matricul
 export interface TurmaDoProfessor {
   id: string;
   codigo: string;
+  moduloNome: string;
   trilhaNome: string;
   periodoInicio: string;
   periodoFim: string;
@@ -285,28 +326,29 @@ export async function listarTurmasDoProfessor(professorId: string): Promise<Turm
   if (error) throw new Error(mensagemDeErroBanco(error));
   if (turmas.length === 0) return [];
 
-  const trilhaIds = [...new Set(turmas.map((t) => t.trilha_id))];
+  const moduloIds = [...new Set(turmas.map((t) => t.modulo_id))];
   const turmaIds = turmas.map((t) => t.id);
 
-  const [trilhasResp, matriculasResp] = await Promise.all([
-    catalogo().from("trilhas").select("id, nome").in("id", trilhaIds),
+  const [contextoModulo, matriculasResp] = await Promise.all([
+    buscarContextoModulos(moduloIds),
     selecao().from("matriculas").select("turma_id, status").in("turma_id", turmaIds),
   ]);
-  if (trilhasResp.error) throw new Error(mensagemDeErroBanco(trilhasResp.error));
   if (matriculasResp.error) throw new Error(mensagemDeErroBanco(matriculasResp.error));
 
-  const nomeTrilha = new Map((trilhasResp.data ?? []).map((t) => [t.id, t.nome]));
-
-  return turmas.map((turma) => ({
-    id: turma.id,
-    codigo: turma.codigo,
-    trilhaNome: nomeTrilha.get(turma.trilha_id) ?? "—",
-    periodoInicio: turma.periodo_inicio,
-    periodoFim: turma.periodo_fim,
-    matriculados: (matriculasResp.data ?? []).filter(
-      (m) => m.turma_id === turma.id && m.status === "matriculada",
-    ).length,
-  }));
+  return turmas.map((turma) => {
+    const contexto = contextoModulo.get(turma.modulo_id);
+    return {
+      id: turma.id,
+      codigo: turma.codigo,
+      moduloNome: contexto?.nome ?? "—",
+      trilhaNome: contexto?.trilhaNome ?? "—",
+      periodoInicio: turma.periodo_inicio,
+      periodoFim: turma.periodo_fim,
+      matriculados: (matriculasResp.data ?? []).filter(
+        (m) => m.turma_id === turma.id && m.status === "matriculada",
+      ).length,
+    };
+  });
 }
 
 export interface TurmaDisponivel {
@@ -320,27 +362,48 @@ export interface TurmaDisponivel {
   minhaMatricula: { id: string; status: StatusMatricula } | null;
 }
 
-/** Turmas de uma trilha para a tela pública — já cruza com a matrícula do próprio aluno, se houver. */
-export async function listarTurmasDisponiveisDaTrilha(
+export interface ModuloComTurmas {
+  moduloId: string;
+  moduloNome: string;
+  moduloOrdem: number;
+  turmas: TurmaDisponivel[];
+}
+
+/**
+ * Turmas de uma trilha para a tela pública, agrupadas por módulo — cada
+ * módulo é uma disciplina com turma (e professor) próprios, não existe
+ * mais "a turma da trilha inteira". Já cruza com a matrícula do próprio
+ * aluno em cada turma, se houver.
+ */
+export async function listarModulosComTurmasDaTrilha(
   trilhaId: string,
   alunoId: string | null,
-): Promise<TurmaDisponivel[]> {
+): Promise<ModuloComTurmas[]> {
+  const modulos = await listarModulosDaTrilha(trilhaId);
+  if (modulos.length === 0) return [];
+
+  const moduloIds = modulos.map((m) => m.id);
   const { data: turmas, error } = await selecao()
     .from("turmas")
     .select("*")
-    .eq("trilha_id", trilhaId)
+    .in("modulo_id", moduloIds)
     .order("periodo_inicio", { ascending: true });
   if (error) throw new Error(mensagemDeErroBanco(error));
-  if (turmas.length === 0) return [];
 
-  const turmaIds = turmas.map((t) => t.id);
-  const professorIds = [...new Set(turmas.map((t) => t.professor_id))];
+  const turmaIds = (turmas ?? []).map((t) => t.id);
+  const professorIds = [...new Set((turmas ?? []).map((t) => t.professor_id))];
 
   const [nomeProfessor, matriculasResp, minhasMatriculasResp] = await Promise.all([
     buscarNomesCompletos(professorIds),
-    selecao().from("matriculas").select("turma_id, status").in("turma_id", turmaIds),
-    alunoId
-      ? selecao().from("matriculas").select("id, turma_id, status").eq("aluno_id", alunoId).in("turma_id", turmaIds)
+    turmaIds.length > 0
+      ? selecao().from("matriculas").select("turma_id, status").in("turma_id", turmaIds)
+      : Promise.resolve({ data: [], error: null }),
+    alunoId && turmaIds.length > 0
+      ? selecao()
+          .from("matriculas")
+          .select("id, turma_id, status")
+          .eq("aluno_id", alunoId)
+          .in("turma_id", turmaIds)
       : Promise.resolve({ data: [], error: null }),
   ]);
   if (matriculasResp.error) throw new Error(mensagemDeErroBanco(matriculasResp.error));
@@ -350,11 +413,13 @@ export async function listarTurmasDisponiveisDaTrilha(
     (minhasMatriculasResp.data ?? []).map((m) => [m.turma_id, { id: m.id, status: m.status }]),
   );
 
-  return turmas.map((turma) => {
+  const turmasPorModulo = new Map<string, TurmaDisponivel[]>();
+  for (const turma of turmas ?? []) {
     const ocupadas = (matriculasResp.data ?? []).filter(
       (m) => m.turma_id === turma.id && (m.status === "inscrita" || m.status === "matriculada"),
     ).length;
-    return {
+    const lista = turmasPorModulo.get(turma.modulo_id) ?? [];
+    lista.push({
       id: turma.id,
       codigo: turma.codigo,
       professorNome: nomeProfessor.get(turma.professor_id) ?? "—",
@@ -362,42 +427,16 @@ export async function listarTurmasDisponiveisDaTrilha(
       periodoFim: turma.periodo_fim,
       vagasRestantes: turma.vagas_total - ocupadas,
       minhaMatricula: minhaPorTurma.get(turma.id) ?? null,
-    };
-  });
-}
-
-// ---- Pré-requisitos ENTRE TRILHAS (usado na edição de trilha do MS2) ----
-// Nome diferente de catalogo.listarPreRequisitosIdsDaTrilha() de propósito
-// — aquela é sobre módulos DENTRO de uma trilha; esta é sobre trilhas
-// inteiras que essa trilha exige.
-
-export async function listarIdsTrilhasRequisito(trilhaId: string): Promise<string[]> {
-  const { data, error } = await selecao()
-    .from("pre_requisitos_trilha")
-    .select("trilha_requisito_id")
-    .eq("trilha_id", trilhaId);
-  if (error) throw new Error(mensagemDeErroBanco(error));
-  return (data ?? []).map((linha) => linha.trilha_requisito_id);
-}
-
-export async function definirPreRequisitoTrilha(
-  trilhaId: string,
-  trilhaRequisitoId: string,
-  ativo: boolean,
-): Promise<void> {
-  if (ativo) {
-    const { error } = await selecao()
-      .from("pre_requisitos_trilha")
-      .insert({ trilha_id: trilhaId, trilha_requisito_id: trilhaRequisitoId });
-    if (error) throw new Error(mensagemDeErroBanco(error));
-    return;
+    });
+    turmasPorModulo.set(turma.modulo_id, lista);
   }
-  const { error } = await selecao()
-    .from("pre_requisitos_trilha")
-    .delete()
-    .eq("trilha_id", trilhaId)
-    .eq("trilha_requisito_id", trilhaRequisitoId);
-  if (error) throw new Error(mensagemDeErroBanco(error));
+
+  return modulos.map((modulo) => ({
+    moduloId: modulo.id,
+    moduloNome: modulo.nome,
+    moduloOrdem: modulo.ordem,
+    turmas: turmasPorModulo.get(modulo.id) ?? [],
+  }));
 }
 
 export type { Matricula, StatusMatricula, Turma };

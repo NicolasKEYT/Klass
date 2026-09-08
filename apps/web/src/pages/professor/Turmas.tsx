@@ -44,8 +44,8 @@ export function Turmas() {
               <div className="flex flex-col gap-1">
                 <h2 className="text-klass-md text-text-primary">{turma.codigo}</h2>
                 <p className="text-label text-text-muted">
-                  {turma.trilhaNome} · {turma.periodoInicio} a {turma.periodoFim} ·{" "}
-                  {turma.matriculados} aluno(s) matriculado(s)
+                  {turma.moduloNome} · {turma.trilhaNome} · {turma.periodoInicio} a{" "}
+                  {turma.periodoFim} · {turma.matriculados} aluno(s) matriculado(s)
                 </p>
               </div>
               <Link

@@ -46,7 +46,9 @@ export function Turmas() {
               <div className="flex flex-col gap-1">
                 <div className="flex items-center gap-2">
                   <h2 className="text-klass-md text-text-primary">{turma.codigo}</h2>
-                  <span className="text-body-sm text-text-secondary">{turma.trilhaNome}</span>
+                  <span className="text-body-sm text-text-secondary">
+                    {turma.moduloNome} · {turma.trilhaNome}
+                  </span>
                   {turma.pendentes > 0 && (
                     <Badge variant="neutral">{turma.pendentes} pendente(s)</Badge>
                   )}
