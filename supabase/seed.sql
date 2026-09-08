@@ -152,12 +152,14 @@ begin
 end
 $$;
 
--- MS3 — segunda trilha, para demonstrar pré-requisito ENTRE trilhas
--- (diferente do pré-requisito entre módulos do MS2). Nenhum SVG mostra
--- uma trilha de nível 2 — o próprio prompt do MS3 pede este exemplo
--- nomeado explicitamente, então o conteúdo dos módulos abaixo é meu,
--- continuando o tema de Nível 1 (que termina em Aprendizado de
--- Máquina), não uma invenção sem direção.
+-- Segunda trilha — conteúdo de catálogo adicional (sem turma própria
+-- ainda). Existia originalmente para demonstrar pré-requisito ENTRE
+-- trilhas inteiras; esse conceito saiu do MS3 (turma passou a ser oferta
+-- de um módulo, não de uma trilha — ver comentário da migration
+-- selecao_turma_por_modulo), então o vínculo de pré-requisito com a
+-- trilha de Nível 1 foi removido. Os módulos continuam de pé como
+-- catálogo válido, dando conteúdo pra testar inscrição em módulos de
+-- trilhas diferentes ao mesmo tempo.
 do $$
 declare
   v_trilha_id uuid := 'd1000000-0000-4000-8000-000000000001';
@@ -205,59 +207,77 @@ begin
       'avancado', 100
     )
   on conflict (id) do nothing;
-
-  -- Nível 2 exige Nível 1 concluído — é isso que selecao.validar_pre_requisitos_trilha() consulta.
-  insert into selecao.pre_requisitos_trilha (trilha_id, trilha_requisito_id)
-  values (v_trilha_id, 'c1000000-0000-4000-8000-000000000001')
-  on conflict (trilha_id, trilha_requisito_id) do nothing;
 end
 $$;
 
--- MS3 — turmas e matrículas de demonstração. Os códigos CDA-2026-1 e
--- CDA-2025-2 são reais, extraídos de 01-gestor-visao-geral.svg e
--- 02-gestor-turmas.svg (mesma trilha Ciência de Dados Aplicada). O
--- código da turma de Nível 2 (CDA2-2026-1) segue o mesmo padrão real,
--- mas não vem do design — Nível 2 não existe em nenhum SVG.
+-- MS3 — turmas e matrículas de demonstração, uma por MÓDULO da trilha
+-- Ciência de Dados Aplicada (turma passou a ser oferta de um módulo, não
+-- de uma trilha inteira — ver comentário da migration
+-- selecao_turma_por_modulo). Os códigos (EST/PROG/CALC/ML-2026-1) não
+-- vêm de nenhum SVG — nenhum design mostra turma por disciplina desta
+-- trilha especificamente — mas seguem o mesmo padrão SIGLA-ANO-SEQUÊNCIA
+-- de 02-gestor-turmas.svg, aplicado a cada disciplina.
 --
--- Datas escolhidas para o cenário de teste fazer sentido "agora"
--- (setembro de 2026): CDA-2025-2 já terminou (turma da matrícula
--- concluída), CDA-2026-1 está em andamento (turma da matrícula em
--- análise e disponível para nova inscrição), CDA2-2026-1 é a turma nova
--- de Nível 2 — não literalmente os semestres que os códigos sugerem.
+-- Cenário de aluno.teste, pensado para exercitar os três estados de uma
+-- vez: concluiu Fundamentos de Estatística (libera a inscrição em
+-- Programação para Dados, que exige Estatística via
+-- catalogo.pre_requisitos_modulo); está cursando Programação para Dados
+-- agora (matriculada — turma "ativa" que o MS4 usa pra lançar nota e
+-- chamada durante o teste); tem uma inscrição em Cálculo Aplicado ainda
+-- em análise (dá à coordenação algo pra aprovar). Aprendizado de Máquina
+-- fica sem matrícula nenhuma — exige Programação E Cálculo concluídos,
+-- nenhum dos dois ainda está `concluida`, então serve pra testar o
+-- bloqueio de pré-requisito.
 do $$
 declare
-  v_turma_nivel1_atual_id uuid := 'e1000000-0000-4000-8000-000000000001'; -- CDA-2026-1
-  v_turma_nivel1_passada_id uuid := 'e1000000-0000-4000-8000-000000000002'; -- CDA-2025-2
-  v_turma_nivel2_id uuid := 'e1000000-0000-4000-8000-000000000003'; -- CDA2-2026-1
-  v_trilha_nivel1_id uuid := 'c1000000-0000-4000-8000-000000000001';
-  v_trilha_nivel2_id uuid := 'd1000000-0000-4000-8000-000000000001';
+  v_turma_estatistica_id uuid := 'e1000000-0000-4000-8000-000000000001'; -- EST-2026-1
+  v_turma_programacao_id uuid := 'e1000000-0000-4000-8000-000000000002'; -- PROG-2026-1
+  v_turma_calculo_id uuid := 'e1000000-0000-4000-8000-000000000003'; -- CALC-2026-1
+  v_turma_ml_id uuid := 'e1000000-0000-4000-8000-000000000004'; -- ML-2026-1
+  v_modulo_estatistica_id uuid := 'c1000000-0000-4000-8000-000000000011';
+  v_modulo_programacao_id uuid := 'c1000000-0000-4000-8000-000000000012';
+  v_modulo_calculo_id uuid := 'c1000000-0000-4000-8000-000000000013';
+  v_modulo_ml_id uuid := 'c1000000-0000-4000-8000-000000000014';
   v_professor_id uuid := 'a1000000-0000-4000-8000-000000000002';
   v_coordenacao_id uuid := 'a1000000-0000-4000-8000-000000000003';
   v_aluno_id uuid := 'a1000000-0000-4000-8000-000000000001';
 begin
-  insert into selecao.turmas (id, trilha_id, codigo, professor_id, periodo_inicio, periodo_fim, vagas_total)
+  insert into selecao.turmas (id, modulo_id, codigo, professor_id, periodo_inicio, periodo_fim, vagas_total)
   values
-    (v_turma_nivel1_atual_id, v_trilha_nivel1_id, 'CDA-2026-1', v_professor_id, '2026-08-01', '2026-12-20', 40),
-    (v_turma_nivel1_passada_id, v_trilha_nivel1_id, 'CDA-2025-2', v_professor_id, '2025-08-01', '2025-12-20', 35),
-    (v_turma_nivel2_id, v_trilha_nivel2_id, 'CDA2-2026-1', v_professor_id, '2026-09-15', '2027-02-15', 30)
+    (v_turma_estatistica_id, v_modulo_estatistica_id, 'EST-2026-1', v_professor_id, '2026-02-01', '2026-06-20', 40),
+    (v_turma_programacao_id, v_modulo_programacao_id, 'PROG-2026-1', v_professor_id, '2026-08-01', '2026-12-20', 40),
+    (v_turma_calculo_id, v_modulo_calculo_id, 'CALC-2026-1', v_professor_id, '2026-08-01', '2026-12-20', 35),
+    (v_turma_ml_id, v_modulo_ml_id, 'ML-2026-1', v_professor_id, '2026-08-01', '2026-12-20', 30)
   on conflict (id) do nothing;
 
-  -- Matrícula concluída simulada: aluno.teste já terminou Nível 1 (na
-  -- turma passada) — é o que libera a inscrição em Nível 2 no primeiro
-  -- teste, sem precisar mexer no banco manualmente.
+  -- Concluída: turma de um semestre passado (fevereiro a junho), pra
+  -- "concluida" fazer sentido cronologicamente antes da turma atual de
+  -- Programação (agosto). O MS4 pendura o histórico de notas/aulas nesta
+  -- mesma matrícula.
   insert into selecao.matriculas (
     id, aluno_id, turma_id, status, deferido_em, deferido_por, criado_em, atualizado_em
   )
   values (
-    'f1000000-0000-4000-8000-000000000001', v_aluno_id, v_turma_nivel1_passada_id, 'concluida',
-    '2025-12-20 12:00:00+00', v_coordenacao_id, '2025-07-15 12:00:00+00', '2025-12-20 12:00:00+00'
+    'f1000000-0000-4000-8000-000000000001', v_aluno_id, v_turma_estatistica_id, 'concluida',
+    '2026-06-20 12:00:00+00', v_coordenacao_id, '2026-01-15 12:00:00+00', '2026-06-20 12:00:00+00'
   )
   on conflict (id) do nothing;
 
-  -- Matrícula em análise: aluno.teste inscrito na turma atual de Nível 1
-  -- — dá à coordenação algo para aprovar no primeiro teste.
+  -- Matriculada: turma em andamento agora — é nela que o MS4 lança
+  -- avaliações/aulas ainda sem nota/chamada, pro professor preencher
+  -- durante a validação end-to-end.
+  insert into selecao.matriculas (
+    id, aluno_id, turma_id, status, deferido_em, deferido_por
+  )
+  values (
+    'f1000000-0000-4000-8000-000000000002', v_aluno_id, v_turma_programacao_id, 'matriculada',
+    '2026-08-05 12:00:00+00', v_coordenacao_id
+  )
+  on conflict (id) do nothing;
+
+  -- Em análise: dá à coordenação algo para aprovar/rejeitar no teste.
   insert into selecao.matriculas (id, aluno_id, turma_id, status)
-  values ('f1000000-0000-4000-8000-000000000002', v_aluno_id, v_turma_nivel1_atual_id, 'inscrita')
+  values ('f1000000-0000-4000-8000-000000000003', v_aluno_id, v_turma_calculo_id, 'inscrita')
   on conflict (id) do nothing;
 end
 $$;
