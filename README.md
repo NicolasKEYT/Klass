@@ -89,6 +89,11 @@ pnpm typecheck
 pnpm build
 ```
 
+## Ambiente de produção
+
+- **Worker:** https://klass-workers.nicolasbr56.workers.dev
+- **Pages:** *(pendente — configurado na Fase 2 do deploy)*
+
 ## Deploy no Cloudflare
 
 ### 1. `apps/web` no Cloudflare Pages
