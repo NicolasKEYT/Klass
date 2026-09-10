@@ -1,7 +1,8 @@
 name = "klass-workers"
 main = "src/index.ts"
-compatibility_date = "2025-01-01"
+compatibility_date = "2026-09-10"
 compatibility_flags = ["nodejs_compat"]
+workers_dev = true
 
 # Nenhum valor de segredo entra neste arquivo. As variáveis abaixo são
 # configuradas com `wrangler secret put <NOME>` (produção) ou num arquivo
