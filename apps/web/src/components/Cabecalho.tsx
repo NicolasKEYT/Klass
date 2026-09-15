@@ -40,15 +40,29 @@ export function Cabecalho() {
             >
               Turmas
             </Link>
+            <Link
+              to="/coordenacao/certificados"
+              className="text-body-sm font-medium text-text-secondary hover:text-text-primary"
+            >
+              Certificados
+            </Link>
           </>
         )}
         {profile?.papel === "aluno" && (
-          <Link
-            to="/aluno/matriculas"
-            className="text-body-sm font-medium text-text-secondary hover:text-text-primary"
-          >
-            Minhas matrículas
-          </Link>
+          <>
+            <Link
+              to="/aluno/matriculas"
+              className="text-body-sm font-medium text-text-secondary hover:text-text-primary"
+            >
+              Minhas matrículas
+            </Link>
+            <Link
+              to="/aluno/certificados"
+              className="text-body-sm font-medium text-text-secondary hover:text-text-primary"
+            >
+              Meus certificados
+            </Link>
+          </>
         )}
         {profile?.papel === "professor" && (
           <Link

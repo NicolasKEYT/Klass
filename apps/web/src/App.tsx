@@ -6,8 +6,11 @@ import { Catalogo } from "@/pages/Catalogo";
 import { DetalheTrilha } from "@/pages/DetalheTrilha";
 import { Entrar } from "@/pages/Entrar";
 import { Home } from "@/pages/Home";
+import { VerificarCertificado } from "@/pages/VerificarCertificado";
 import { Boletim } from "@/pages/aluno/Boletim";
+import { Certificados as CertificadosDoAluno } from "@/pages/aluno/Certificados";
 import { Matriculas as MatriculasDoAluno } from "@/pages/aluno/Matriculas";
+import { Certificados as CertificadosDaCoordenacao } from "@/pages/coordenacao/Certificados";
 import { DetalheTurma as DetalheTurmaCoordenacao } from "@/pages/coordenacao/DetalheTurma";
 import { EditarTrilha } from "@/pages/coordenacao/EditarTrilha";
 import { NovaTrilha } from "@/pages/coordenacao/NovaTrilha";
@@ -26,6 +29,8 @@ export default function App() {
         <Route path="/entrar" element={<Entrar />} />
         <Route path="/cadastrar" element={<Cadastrar />} />
         <Route path="/acesso-negado" element={<AcessoNegado />} />
+        {/* Pública, sem <Autenticado>: verificação de certificado por hash. */}
+        <Route path="/verificar/:hash" element={<VerificarCertificado />} />
         <Route
           path="/"
           element={
@@ -99,6 +104,14 @@ export default function App() {
             </Autenticado>
           }
         />
+        <Route
+          path="/coordenacao/certificados"
+          element={
+            <Autenticado papel="coordenacao">
+              <CertificadosDaCoordenacao />
+            </Autenticado>
+          }
+        />
 
         <Route
           path="/aluno/matriculas"
@@ -113,6 +126,14 @@ export default function App() {
           element={
             <Autenticado papel="aluno">
               <Boletim />
+            </Autenticado>
+          }
+        />
+        <Route
+          path="/aluno/certificados"
+          element={
+            <Autenticado papel="aluno">
+              <CertificadosDoAluno />
             </Autenticado>
           }
         />
