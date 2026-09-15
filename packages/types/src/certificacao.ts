@@ -1,6 +1,25 @@
 // MS5 — Certificação (schema `certificacao`)
-// Emissão do certificado em PDF.
-//
-// Os tipos de certificado entram na fase de implementação deste módulo.
+// Certificado de conclusão de trilha, com dados congelados na emissão.
 
-export {};
+import type { Database } from "./database";
+
+export type Certificado = Database["certificacao"]["Tables"]["certificados"]["Row"];
+
+// Dados mínimos devolvidos pela verificação pública (função
+// certificacao.verificar_por_hash, exposta ao role anon).
+export type CertificadoVerificado =
+  Database["certificacao"]["Functions"]["verificar_por_hash"]["Returns"][number];
+
+// jsonb não tem esquema forte no tipo gerado (metadata: Json), então o
+// formato congelado é documentado aqui como interface. Espelha o que
+// certificacao.verificar_e_emitir monta na emissão.
+export interface MetadataCertificado {
+  modulos: Array<{
+    nome: string;
+    professor: string;
+    carga_horaria_horas: number;
+    nota_final: number | null;
+    periodo_inicio: string;
+    periodo_fim: string;
+  }>;
+}

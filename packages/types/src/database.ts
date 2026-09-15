@@ -1,8 +1,3 @@
-// ARQUIVO GERADO — não edite à mão.
-// Gerado via `supabase gen types typescript --linked > packages/types/src/database.ts`.
-// Qualquer mudança de schema entra por migration em supabase/migrations/,
-// depois roda o comando de novo para regenerar este arquivo.
-
 export type Json =
   | string
   | number
@@ -181,6 +176,70 @@ export type Database = {
     }
     Enums: {
       nivel_modulo: "iniciante" | "intermediario" | "avancado"
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
+  certificacao: {
+    Tables: {
+      certificados: {
+        Row: {
+          aluno_id: string
+          aluno_nome: string
+          emitido_em: string
+          hash_publico: string
+          id: string
+          metadata: Json
+          trilha_carga_horaria_total: number
+          trilha_id: string
+          trilha_nome: string
+        }
+        Insert: {
+          aluno_id: string
+          aluno_nome: string
+          emitido_em?: string
+          hash_publico: string
+          id?: string
+          metadata?: Json
+          trilha_carga_horaria_total: number
+          trilha_id: string
+          trilha_nome: string
+        }
+        Update: {
+          aluno_id?: string
+          aluno_nome?: string
+          emitido_em?: string
+          hash_publico?: string
+          id?: string
+          metadata?: Json
+          trilha_carga_horaria_total?: number
+          trilha_id?: string
+          trilha_nome?: string
+        }
+        Relationships: []
+      }
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      gerar_hash_publico: { Args: never; Returns: string }
+      verificar_e_emitir: {
+        Args: { p_aluno_id: string; p_trilha_id: string }
+        Returns: string
+      }
+      verificar_por_hash: {
+        Args: { p_hash: string }
+        Returns: {
+          aluno_nome: string
+          emitido_em: string
+          trilha_nome: string
+        }[]
+      }
+    }
+    Enums: {
+      [_ in never]: never
     }
     CompositeTypes: {
       [_ in never]: never
@@ -701,6 +760,9 @@ export const Constants = {
     Enums: {
       nivel_modulo: ["iniciante", "intermediario", "avancado"],
     },
+  },
+  certificacao: {
+    Enums: {},
   },
   diario: {
     Enums: {},
