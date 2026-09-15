@@ -397,3 +397,199 @@ end
 $$;
 
 reset role;
+
+-- MS5 — Certificação. Completa artificialmente os outros três módulos da
+-- trilha "Ciência de Dados Aplicada" para aluno.teste, pelo mesmo caminho
+-- real do MS4 (lançar notas/presenças + diario.encerrar_matricula). Ao
+-- encerrar o QUARTO e último módulo, o trigger matriculas_emitir_certificado
+-- dispara certificacao.verificar_e_emitir e o certificado é EMITIDO como
+-- SIDE EFFECT — não há (nem deve haver) insert explícito em
+-- certificacao.certificados neste seed.
+--
+-- Efeito colateral consciente: isso consome os estados que o MS3/MS4
+-- deixavam para demonstrar lançamento (Programação, 'matriculada') e
+-- aprovação (Cálculo, 'inscrita'). O fluxo segue demonstrável ao vivo —
+-- 'concluida' não é matrícula ativa, então aluno.teste pode se reinscrever
+-- num módulo já concluído para gerar uma nova inscrição pendente.
+--
+-- Mesma observação do bloco MS4: encerrar/lançar dependem de auth.uid(),
+-- então esta parte personifica professor/coordenação via request.jwt.claims.
+
+-- 1) Programação para Dados (módulo 2): matrícula f...0002 já está
+--    'matriculada', com as avaliações (Prova 1 peso 4, Trabalho peso 6) e
+--    4 aulas criadas pelo MS4, mas sem nota/chamada. Como professor,
+--    preenche e encerra: média (8*4 + 8*6)/10 = 8.0, frequência 100%.
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"a1000000-0000-4000-8000-000000000002","role":"authenticated"}';
+
+do $$
+declare
+  v_matricula_id uuid := 'f1000000-0000-4000-8000-000000000002';
+  v_professor_id uuid := 'a1000000-0000-4000-8000-000000000002';
+  v_aula_id uuid;
+  i integer;
+begin
+  if (select status from selecao.matriculas where id = v_matricula_id) = 'matriculada' then
+    insert into diario.notas (avaliacao_id, matricula_id, valor, lancada_por)
+    values
+      ('10000000-0000-4000-8000-000000000011', v_matricula_id, 8.0, v_professor_id),
+      ('10000000-0000-4000-8000-000000000012', v_matricula_id, 8.0, v_professor_id)
+    on conflict (avaliacao_id, matricula_id) do nothing;
+
+    for i in 1..4 loop
+      v_aula_id := ('20000000-0000-4000-8000-' || lpad((10 + i)::text, 12, '0'))::uuid;
+      insert into diario.presencas (aula_id, matricula_id, presente, registrada_por)
+      values (v_aula_id, v_matricula_id, true, v_professor_id)
+      on conflict (aula_id, matricula_id) do nothing;
+    end loop;
+
+    perform diario.encerrar_matricula(v_matricula_id);
+  end if;
+end
+$$;
+
+-- 2) Cálculo Aplicado (módulo 3): matrícula f...0003 está 'inscrita'.
+--    Como coordenação, aprova (inscrita -> matriculada) para o professor
+--    poder lançar o diário.
+set local request.jwt.claims = '{"sub":"a1000000-0000-4000-8000-000000000003","role":"authenticated"}';
+
+do $$
+begin
+  update selecao.matriculas
+  set status = 'matriculada', deferido_por = 'a1000000-0000-4000-8000-000000000003'
+  where id = 'f1000000-0000-4000-8000-000000000003' and status = 'inscrita';
+end
+$$;
+
+-- 3) Cálculo Aplicado: como professor, cria avaliações/aulas, lança e
+--    encerra. Média (7*5 + 7*5)/10 = 7.0, frequência 100%.
+set local request.jwt.claims = '{"sub":"a1000000-0000-4000-8000-000000000002","role":"authenticated"}';
+
+do $$
+declare
+  v_matricula_id uuid := 'f1000000-0000-4000-8000-000000000003';
+  v_turma_id uuid := 'e1000000-0000-4000-8000-000000000003';
+  v_professor_id uuid := 'a1000000-0000-4000-8000-000000000002';
+  v_aula_id uuid;
+  v_data date;
+  i integer;
+begin
+  -- "not exists avaliação" além do status: num banco que já divergiu do
+  -- seed (ex.: produção com dados de teste), a turma pode já ter avaliações
+  -- em outra ordem — recriar aqui colidiria em unique(turma_id, ordem) e
+  -- abortaria o seed inteiro. O guard torna o bloco um no-op nesse caso.
+  if (select status from selecao.matriculas where id = v_matricula_id) = 'matriculada'
+     and not exists (select 1 from diario.avaliacoes where turma_id = v_turma_id) then
+    insert into diario.avaliacoes (id, turma_id, titulo, peso, ordem)
+    values
+      ('10000000-0000-4000-8000-000000000021', v_turma_id, 'Prova 1', 5, 1),
+      ('10000000-0000-4000-8000-000000000022', v_turma_id, 'Prova Final', 5, 2)
+    on conflict (id) do nothing;
+
+    insert into diario.notas (avaliacao_id, matricula_id, valor, lancada_por)
+    values
+      ('10000000-0000-4000-8000-000000000021', v_matricula_id, 7.0, v_professor_id),
+      ('10000000-0000-4000-8000-000000000022', v_matricula_id, 7.0, v_professor_id)
+    on conflict (avaliacao_id, matricula_id) do nothing;
+
+    for i in 1..4 loop
+      v_data := date '2026-08-25' + (i - 1) * interval '7 days';
+      v_aula_id := ('20000000-0000-4000-8000-' || lpad((20 + i)::text, 12, '0'))::uuid;
+      insert into diario.aulas (id, turma_id, data)
+      values (v_aula_id, v_turma_id, v_data)
+      on conflict (id) do nothing;
+      insert into diario.presencas (aula_id, matricula_id, presente, registrada_por)
+      values (v_aula_id, v_matricula_id, true, v_professor_id)
+      on conflict (aula_id, matricula_id) do nothing;
+    end loop;
+
+    perform diario.encerrar_matricula(v_matricula_id);
+  end if;
+end
+$$;
+
+-- 4) Aprendizado de Máquina (módulo 4): ainda sem matrícula. Agora que
+--    Programação e Cálculo (pré-requisitos deste módulo) estão 'concluida',
+--    o insert passa pela validação de pré-requisito do MS3. Insere direto
+--    (role de seed, sem RLS) como fez o bloco MS3 com Programação — o
+--    trigger BEFORE de regras de negócio ainda roda e valida.
+reset role;
+
+do $$
+begin
+  if not exists (select 1 from selecao.matriculas where id = 'f1000000-0000-4000-8000-000000000004') then
+    insert into selecao.matriculas (id, aluno_id, turma_id, status, deferido_em, deferido_por)
+    values (
+      'f1000000-0000-4000-8000-000000000004',
+      'a1000000-0000-4000-8000-000000000001',
+      'e1000000-0000-4000-8000-000000000004',
+      'matriculada', now(), 'a1000000-0000-4000-8000-000000000003'
+    );
+  end if;
+end
+$$;
+
+-- 5) Aprendizado de Máquina: como professor, lança e encerra. Média
+--    (9*5 + 9*5)/10 = 9.0, frequência 100%. Este é o quarto módulo — ao
+--    virar 'concluida', o trigger emite o certificado da trilha.
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"a1000000-0000-4000-8000-000000000002","role":"authenticated"}';
+
+do $$
+declare
+  v_matricula_id uuid := 'f1000000-0000-4000-8000-000000000004';
+  v_turma_id uuid := 'e1000000-0000-4000-8000-000000000004';
+  v_professor_id uuid := 'a1000000-0000-4000-8000-000000000002';
+  v_aula_id uuid;
+  v_data date;
+  i integer;
+begin
+  -- Mesmo guard de "not exists avaliação" do bloco de Cálculo, pelo mesmo
+  -- motivo (idempotência num banco divergido do seed).
+  if (select status from selecao.matriculas where id = v_matricula_id) = 'matriculada'
+     and not exists (select 1 from diario.avaliacoes where turma_id = v_turma_id) then
+    insert into diario.avaliacoes (id, turma_id, titulo, peso, ordem)
+    values
+      ('10000000-0000-4000-8000-000000000031', v_turma_id, 'Projeto', 5, 1),
+      ('10000000-0000-4000-8000-000000000032', v_turma_id, 'Prova Final', 5, 2)
+    on conflict (id) do nothing;
+
+    insert into diario.notas (avaliacao_id, matricula_id, valor, lancada_por)
+    values
+      ('10000000-0000-4000-8000-000000000031', v_matricula_id, 9.0, v_professor_id),
+      ('10000000-0000-4000-8000-000000000032', v_matricula_id, 9.0, v_professor_id)
+    on conflict (avaliacao_id, matricula_id) do nothing;
+
+    for i in 1..4 loop
+      v_data := date '2026-08-25' + (i - 1) * interval '7 days';
+      v_aula_id := ('20000000-0000-4000-8000-' || lpad((30 + i)::text, 12, '0'))::uuid;
+      insert into diario.aulas (id, turma_id, data)
+      values (v_aula_id, v_turma_id, v_data)
+      on conflict (id) do nothing;
+      insert into diario.presencas (aula_id, matricula_id, presente, registrada_por)
+      values (v_aula_id, v_matricula_id, true, v_professor_id)
+      on conflict (aula_id, matricula_id) do nothing;
+    end loop;
+
+    perform diario.encerrar_matricula(v_matricula_id);
+  end if;
+end
+$$;
+
+reset role;
+
+-- Confirmação (não emite nada — só avisa): o certificado da trilha
+-- Ciência de Dados Aplicada deve existir para aluno.teste após o passo 5.
+do $$
+begin
+  if exists (
+    select 1 from certificacao.certificados
+    where aluno_id = 'a1000000-0000-4000-8000-000000000001'
+      and trilha_id = 'c1000000-0000-4000-8000-000000000001'
+  ) then
+    raise notice 'MS5: certificado de aluno.teste emitido com sucesso pelo trigger.';
+  else
+    raise warning 'MS5: certificado NÃO foi emitido — verifique se os 4 módulos ficaram concluida.';
+  end if;
+end
+$$;
