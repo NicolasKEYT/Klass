@@ -8,10 +8,11 @@ Universidade Presbiteriana Mackenzie. Arquitetura, stack e convenções do
 projeto estão documentadas em [`CLAUDE.md`](./CLAUDE.md) — leia antes de
 mexer em qualquer coisa de domínio ou infraestrutura.
 
-> MS1 (Identidade), MS2 (Catálogo) e MS3 (Motor de Seleção) estão
-> implementados — autenticação, catálogo de trilhas e o fluxo de
-> inscrição/matrícula. MS4 (Diário de Classe) e MS5 (Certificação) ainda
-> não existem.
+> Os cinco bounded contexts estão implementados: MS1 (Identidade),
+> MS2 (Catálogo), MS3 (Motor de Seleção), MS4 (Diário de Classe) e
+> MS5 (Certificação) — da autenticação e do catálogo ao fluxo de
+> inscrição/matrícula, lançamento de notas/frequência e emissão do
+> certificado em PDF com verificação pública.
 
 ## Stack
 
@@ -36,7 +37,7 @@ apps/
 packages/
   types/                Tipos de domínio compartilhados
 supabase/
-  migrations/           Schemas identidade, catalogo, selecao — RLS, triggers, funções
+  migrations/           Schemas identidade, catalogo, selecao, diario, certificacao — RLS, triggers, funções
   seed.sql              Dados de demonstração (usuários, trilhas, turmas, matrículas)
 docs/design/             SVGs de design (fonte dos tokens do Tailwind)
 ```
@@ -91,8 +92,8 @@ pnpm build
 
 ## Ambiente de produção
 
-- **Worker:** https://klass-workers.nicolasbr56.workers.dev
-- **Pages:** *(pendente — configurado na Fase 2 do deploy)*
+- **Pages (frontend):** https://klass-91y.pages.dev
+- **Worker (integrações):** https://klass-workers.nicolasbr56.workers.dev
 
 ## Deploy no Cloudflare
 
@@ -168,6 +169,28 @@ publicamente. Duas opções:
   ```
 - Para ver os logs do Worker publicado em tempo real (produção ou
   `--remote`), use `npx wrangler tail`.
+
+### 4. Database Webhook do MS5 (e-mail de certificado emitido)
+
+Segundo webhook, mesma sequência do MS3 — reusa o **mesmo** `WEBHOOK_SECRET`,
+nenhum secret novo. Aponta para o endpoint `/webhooks/certificado-emitido`
+do Worker, que envia o e-mail de conclusão via Resend quando um certificado
+é inserido.
+
+1. No painel do Supabase: **Database → Webhooks → Create a new hook**.
+2. Configure:
+   - **Name:** `certificado_emitido`
+   - **Schema:** `certificacao`
+   - **Table:** `certificados`
+   - **Events:** só `Insert`
+   - **Type:** `HTTP Request`
+   - **URL:** `https://<seu-worker>.workers.dev/webhooks/certificado-emitido`
+   - **HTTP Headers:** `Authorization: Bearer <WEBHOOK_SECRET>` — o mesmo
+     valor do webhook do MS3.
+
+> O endpoint só existe no Worker publicado após um `npx wrangler deploy`
+> com o código do MS5 (o Worker não faz deploy automático no push — só o
+> Pages faz). Redeploy o Worker antes de criar/testar este webhook.
 
 ## Design system
 
