@@ -4,3 +4,4 @@
 // receptor aqui, registrado nas rotas de `src/index.ts`.
 
 export { receberMatriculaDeferida } from "./matriculaDeferida";
+export { receberCertificadoEmitido } from "./certificadoEmitido";
