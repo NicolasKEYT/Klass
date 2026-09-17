@@ -55,6 +55,7 @@ export async function criarTrilha(input: {
   slug: string;
   descricao: string;
   descricaoCurta: string;
+  icone: string | null;
 }): Promise<Trilha> {
   const { data, error } = await catalogo()
     .from("trilhas")
@@ -63,6 +64,7 @@ export async function criarTrilha(input: {
       slug: input.slug,
       descricao: input.descricao,
       descricao_curta: input.descricaoCurta || null,
+      icone: input.icone,
     })
     .select("*")
     .single();
@@ -72,7 +74,7 @@ export async function criarTrilha(input: {
 
 export async function atualizarTrilha(
   id: string,
-  patch: Partial<Pick<Trilha, "nome" | "slug" | "descricao" | "descricao_curta">>,
+  patch: Partial<Pick<Trilha, "nome" | "slug" | "descricao" | "descricao_curta" | "icone">>,
 ): Promise<Trilha> {
   const { data, error } = await catalogo().from("trilhas").update(patch).eq("id", id).select("*").single();
   if (error) throw new Error(mensagemDeErroBanco(error));
@@ -111,6 +113,7 @@ export async function criarModulo(input: {
   descricao: string;
   nivel: NivelModulo;
   cargaHorariaHoras: number;
+  icone: string | null;
 }): Promise<Modulo> {
   const { data, error } = await catalogo()
     .from("modulos")
@@ -121,6 +124,7 @@ export async function criarModulo(input: {
       descricao: input.descricao,
       nivel: input.nivel,
       carga_horaria_horas: input.cargaHorariaHoras,
+      icone: input.icone,
     })
     .select("*")
     .single();
@@ -135,6 +139,7 @@ export async function atualizarModulo(
     descricao: string;
     nivel: NivelModulo;
     carga_horaria_horas: number;
+    icone: string | null;
   }>,
 ): Promise<Modulo> {
   const { data, error } = await catalogo().from("modulos").update(patch).eq("id", id).select("*").single();
@@ -152,6 +157,13 @@ export async function trocarOrdemModulos(moduloA: string, moduloB: string): Prom
     p_modulo_a: moduloA,
     p_modulo_b: moduloB,
   });
+  if (error) throw new Error(mensagemDeErroBanco(error));
+}
+
+// Reordena todos os módulos de uma vez (usado pelo drag-and-drop): os ids
+// na ordem desejada viram ordem 1..n no banco.
+export async function reordenarModulos(idsNaOrdem: string[]): Promise<void> {
+  const { error } = await catalogo().rpc("reordenar_modulos", { p_ids: idsNaOrdem });
   if (error) throw new Error(mensagemDeErroBanco(error));
 }
 

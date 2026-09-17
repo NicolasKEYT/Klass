@@ -4,6 +4,7 @@ import { Aviso } from "@/components/Aviso";
 import { BotaoVoltar } from "@/components/BotaoVoltar";
 import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
+import { IconePicker } from "@/components/IconeCatalogo";
 import { Input } from "@/components/Input";
 import { PaginaAutenticada } from "@/components/PaginaAutenticada";
 import { Titulo } from "@/components/Titulo";
@@ -20,6 +21,7 @@ export function NovaTrilha() {
   const [slugEditadoManualmente, setSlugEditadoManualmente] = useState(false);
   const [descricao, setDescricao] = useState("");
   const [descricaoCurta, setDescricaoCurta] = useState("");
+  const [icone, setIcone] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [mensagem, setMensagem] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
@@ -40,7 +42,7 @@ export function NovaTrilha() {
     setMensagem(null);
     setEnviando(true);
     try {
-      const trilha = await criarTrilha({ nome, slug, descricao, descricaoCurta });
+      const trilha = await criarTrilha({ nome, slug, descricao, descricaoCurta, icone });
       setMensagem("Trilha criada.");
       await new Promise((resolve) => setTimeout(resolve, ATRASO_ANTES_DE_NAVEGAR_MS));
       navigate(
@@ -69,6 +71,11 @@ export function NovaTrilha() {
               <span className="text-label font-medium text-text-secondary">Nome</span>
               <Input required value={nome} onChange={(e) => aoMudarNome(e.target.value)} />
             </label>
+
+            <div className="flex flex-col gap-1.5">
+              <span className="text-label font-medium text-text-secondary">Ícone</span>
+              <IconePicker valor={icone} onChange={setIcone} />
+            </div>
 
             <label className="flex flex-col gap-1.5">
               <div className="flex items-center justify-between">

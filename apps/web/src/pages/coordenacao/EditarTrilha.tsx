@@ -4,7 +4,24 @@ import { Aviso } from "@/components/Aviso";
 import { Badge } from "@/components/Badge";
 import { BotaoVoltar } from "@/components/BotaoVoltar";
 import { Button } from "@/components/Button";
+import {
+  DndContext,
+  PointerSensor,
+  KeyboardSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
 import { Card } from "@/components/Card";
+import { Arrastavel } from "@/components/Arrastavel";
+import { IconeCatalogo, IconePicker } from "@/components/IconeCatalogo";
 import { Input } from "@/components/Input";
 import { PaginaAutenticada } from "@/components/PaginaAutenticada";
 import { Titulo } from "@/components/Titulo";
@@ -19,6 +36,7 @@ import {
   listarModulosDaTrilha,
   listarPreRequisitosIdsDaTrilha,
   proximaOrdemDisponivel,
+  reordenarModulos,
   trocarOrdemModulos,
 } from "@/lib/catalogo";
 import type { Modulo, NivelModulo, Trilha } from "@klass/types";
@@ -45,6 +63,7 @@ export function EditarTrilha() {
   const [slug, setSlug] = useState("");
   const [descricao, setDescricao] = useState("");
   const [descricaoCurta, setDescricaoCurta] = useState("");
+  const [icone, setIcone] = useState<string | null>(null);
   const [salvandoTrilha, setSalvandoTrilha] = useState(false);
 
   const [mostrarNovoModulo, setMostrarNovoModulo] = useState(false);
@@ -52,6 +71,7 @@ export function EditarTrilha() {
   const [novoModuloDescricao, setNovoModuloDescricao] = useState("");
   const [novoModuloNivel, setNovoModuloNivel] = useState<NivelModulo>("iniciante");
   const [novoModuloCarga, setNovoModuloCarga] = useState(10);
+  const [novoModuloIcone, setNovoModuloIcone] = useState<string | null>(null);
   const [salvandoModulo, setSalvandoModulo] = useState(false);
 
   const [moduloEmEdicaoId, setModuloEmEdicaoId] = useState<string | null>(null);
@@ -59,6 +79,14 @@ export function EditarTrilha() {
   const [edicaoDescricao, setEdicaoDescricao] = useState("");
   const [edicaoNivel, setEdicaoNivel] = useState<NivelModulo>("iniciante");
   const [edicaoCarga, setEdicaoCarga] = useState(10);
+  const [edicaoIcone, setEdicaoIcone] = useState<string | null>(null);
+
+  // dnd-kit: PointerSensor com pequena distância para o clique nos botões
+  // internos não virar arraste; KeyboardSensor mantém acessível.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   // Confirmação inline, não window.confirm — dialogs nativos ficam
   // desabilitados em vários contextos embutidos/automatizados de browser.
@@ -79,6 +107,7 @@ export function EditarTrilha() {
       setSlug(encontrada.slug);
       setDescricao(encontrada.descricao);
       setDescricaoCurta(encontrada.descricao_curta ?? "");
+      setIcone(encontrada.icone);
 
       const [listaModulos, mapaPreRequisitos] = await Promise.all([
         listarModulosDaTrilha(encontrada.id),
@@ -109,6 +138,7 @@ export function EditarTrilha() {
         slug,
         descricao,
         descricao_curta: descricaoCurta || null,
+        icone,
       });
       setTrilha(atualizada);
       setMensagem("Dados da trilha salvos.");
@@ -149,11 +179,13 @@ export function EditarTrilha() {
         descricao: novoModuloDescricao,
         nivel: novoModuloNivel,
         cargaHorariaHoras: novoModuloCarga,
+        icone: novoModuloIcone,
       });
       setNovoModuloNome("");
       setNovoModuloDescricao("");
       setNovoModuloNivel("iniciante");
       setNovoModuloCarga(10);
+      setNovoModuloIcone(null);
       setMostrarNovoModulo(false);
       setMensagem("Módulo adicionado.");
       await carregar();
@@ -170,6 +202,7 @@ export function EditarTrilha() {
     setEdicaoDescricao(modulo.descricao);
     setEdicaoNivel(modulo.nivel);
     setEdicaoCarga(modulo.carga_horaria_horas);
+    setEdicaoIcone(modulo.icone);
   }
 
   async function salvarEdicaoModulo(evento: FormEvent) {
@@ -183,6 +216,7 @@ export function EditarTrilha() {
         descricao: edicaoDescricao,
         nivel: edicaoNivel,
         carga_horaria_horas: edicaoCarga,
+        icone: edicaoIcone,
       });
       setModuloEmEdicaoId(null);
       setMensagem("Módulo atualizado.");
@@ -215,6 +249,27 @@ export function EditarTrilha() {
       await carregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível reordenar.");
+    }
+  }
+
+  // Drag-and-drop: aplica a nova ordem na hora (otimista) e persiste em
+  // lote; se o banco recusar, recarrega para voltar ao estado real.
+  async function aoArrastar(evento: DragEndEvent) {
+    const { active, over } = evento;
+    if (!over || active.id === over.id) return;
+    const de = modulos.findIndex((m) => m.id === active.id);
+    const para = modulos.findIndex((m) => m.id === over.id);
+    if (de < 0 || para < 0) return;
+
+    const nova = arrayMove(modulos, de, para);
+    setModulos(nova);
+    setErro(null);
+    try {
+      await reordenarModulos(nova.map((m) => m.id));
+      await carregar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Não foi possível reordenar.");
+      await carregar();
     }
   }
 
@@ -267,6 +322,11 @@ export function EditarTrilha() {
               <span className="text-label font-medium text-text-secondary">Nome</span>
               <Input required value={nome} onChange={(e) => setNome(e.target.value)} />
             </label>
+
+            <div className="flex flex-col gap-1.5">
+              <span className="text-label font-medium text-text-secondary">Ícone</span>
+              <IconePicker valor={icone} onChange={setIcone} />
+            </div>
 
             <label className="flex flex-col gap-1.5">
               <div className="flex items-center justify-between">
@@ -363,6 +423,10 @@ export function EditarTrilha() {
                   onChange={(e) => setNovoModuloDescricao(e.target.value)}
                 />
               </label>
+              <div className="flex flex-col gap-1.5">
+                <span className="text-label font-medium text-text-secondary">Ícone</span>
+                <IconePicker valor={novoModuloIcone} onChange={setNovoModuloIcone} />
+              </div>
               <div className="flex gap-4">
                 <label className="flex flex-1 flex-col gap-1.5">
                   <span className="text-label font-medium text-text-secondary">Nível</span>
@@ -398,10 +462,16 @@ export function EditarTrilha() {
           </Card>
         )}
 
-        <div className="flex flex-col gap-3">
-          {modulos.map((modulo, indice) => (
-            <Card key={modulo.id} className="flex flex-col gap-3">
-              {moduloEmEdicaoId === modulo.id ? (
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={aoArrastar}>
+          <SortableContext
+            items={modulos.map((m) => m.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            <div className="flex flex-col gap-3">
+              {modulos.map((modulo, indice) => (
+                <Arrastavel key={modulo.id} id={modulo.id}>
+                  <Card className="flex flex-col gap-3">
+                    {moduloEmEdicaoId === modulo.id ? (
                 <form className="flex flex-col gap-3" onSubmit={salvarEdicaoModulo}>
                   <Input value={edicaoNome} onChange={(e) => setEdicaoNome(e.target.value)} required />
                   <Input
@@ -429,6 +499,10 @@ export function EditarTrilha() {
                       onChange={(e) => setEdicaoCarga(Number(e.target.value))}
                     />
                   </div>
+                  <div className="flex flex-col gap-1.5">
+                    <span className="text-label font-medium text-text-secondary">Ícone</span>
+                    <IconePicker valor={edicaoIcone} onChange={setEdicaoIcone} />
+                  </div>
                   <div className="flex gap-2">
                     <Button type="submit">Salvar</Button>
                     <Button variant="secondary" type="button" onClick={() => setModuloEmEdicaoId(null)}>
@@ -441,6 +515,7 @@ export function EditarTrilha() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <span className="text-label text-text-muted">#{modulo.ordem}</span>
+                      <IconeCatalogo nome={modulo.icone} className="h-4 w-4 text-text-muted" />
                       <Titulo nivel="item" as="h3">
                         {modulo.nome}
                       </Titulo>
@@ -521,9 +596,12 @@ export function EditarTrilha() {
                   </div>
                 </>
               )}
-            </Card>
-          ))}
-        </div>
+                  </Card>
+                </Arrastavel>
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
     </PaginaAutenticada>
   );
 }

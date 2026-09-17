@@ -4,6 +4,7 @@ import { Aviso } from "@/components/Aviso";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
+import { IconeCatalogo } from "@/components/IconeCatalogo";
 import { PaginaAutenticada } from "@/components/PaginaAutenticada";
 import { Titulo } from "@/components/Titulo";
 import { apagarTrilha, definirPublicacaoTrilha, listarTrilhasComContagem } from "@/lib/catalogo";
@@ -94,6 +95,7 @@ export function Trilhas() {
             <Card key={trilha.id} className="flex items-center justify-between gap-4">
               <div className="flex flex-col gap-1">
                 <div className="flex items-center gap-2">
+                  <IconeCatalogo nome={trilha.icone} className="h-5 w-5 text-text-secondary" />
                   <Titulo nivel="item" as="h2">
                     {trilha.nome}
                   </Titulo>

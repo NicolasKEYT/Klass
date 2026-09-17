@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Card } from "@/components/Card";
+import { IconeCatalogo } from "@/components/IconeCatalogo";
 import { PaginaAutenticada } from "@/components/PaginaAutenticada";
 import { Titulo } from "@/components/Titulo";
 import { listarTrilhasComContagem } from "@/lib/catalogo";
@@ -38,9 +39,12 @@ export function Catalogo() {
         <div className="grid gap-4 sm:grid-cols-2">
           {trilhas?.map((trilha) => (
             <Card key={trilha.id} className="flex flex-col gap-3">
-              <Titulo nivel="item" as="h2">
-                {trilha.nome}
-              </Titulo>
+              <div className="flex items-center gap-2">
+                <IconeCatalogo nome={trilha.icone} className="h-5 w-5 text-primary" />
+                <Titulo nivel="item" as="h2">
+                  {trilha.nome}
+                </Titulo>
+              </div>
               <p className="text-body-sm text-text-secondary">
                 {trilha.descricao_curta ?? trilha.descricao}
               </p>
