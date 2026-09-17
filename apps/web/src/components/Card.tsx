@@ -5,12 +5,13 @@ interface CardProps extends HTMLAttributes<HTMLDivElement> {
   dense?: boolean;
 }
 
-// Card de conteúdo: fundo branco, borda e raio recorrentes em todas as
-// telas de app (01, 02, 04, 05). Padding horizontal 22px por padrão.
+// Card de conteúdo: superfície branca com borda hairline + sombra sutil
+// (reforma flat/moderna — antes era só borda, o que dava aparência chapada
+// e "bordery"). Raio e padding vêm dos tokens do design.
 export function Card({ dense = false, className = "", ...props }: CardProps) {
   return (
     <div
-      className={`rounded-klass-card border border-border bg-surface py-6 ${dense ? "px-klass-card-x-dense" : "px-klass-card-x"} ${className}`}
+      className={`rounded-klass-card border border-border bg-surface shadow-klass-card py-6 ${dense ? "px-klass-card-x-dense" : "px-klass-card-x"} ${className}`}
       {...props}
     />
   );

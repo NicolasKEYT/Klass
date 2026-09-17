@@ -116,10 +116,20 @@ export default {
       },
 
       spacing: {
-        "klass-card-x": "22px", // padding horizontal padrão dos cards — 01, 02, 04, 05
+        "klass-card-x": "24px", // padding horizontal padrão dos cards (era 22px; +2 pra dar respiro na reforma flat)
         "klass-card-x-dense": "24px", // variante densa, uso pontual (ex.: card com headline maior) — 03
         "klass-card-y": "34px", // topo do card até o primeiro texto — 01, 02, 04, 05 (stat cards usam ~30px, a confirmar)
         "klass-gutter": "16px", // espaço entre cards do dashboard
+      },
+
+      // Escala de sombra própria, calibrada para o visual flat/moderno
+      // (referência: Linear/Stripe/Vercel). Blur maior + opacidade baixa,
+      // na cor da tinta do texto (#191A1C) para não puxar cinza. Substitui
+      // os shadow-md/lg genéricos do Tailwind — só três níveis:
+      boxShadow: {
+        "klass-card": "0 1px 2px rgba(25,26,28,0.05), 0 4px 10px rgba(25,26,28,0.05)", // repouso dos cards
+        "klass-hover": "0 2px 6px rgba(25,26,28,0.06), 0 8px 20px rgba(25,26,28,0.10)", // hover de superfície interativa
+        "klass-elevated": "0 10px 32px rgba(25,26,28,0.16), 0 2px 8px rgba(25,26,28,0.07)", // modal / dropdown
       },
     },
   },

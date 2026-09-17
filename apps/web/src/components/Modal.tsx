@@ -34,7 +34,7 @@ export function Modal({ aberto, titulo, onFechar, children, rodape }: ModalProps
       onClick={onFechar}
     >
       <div
-        className="w-full max-w-md rounded-klass-card border border-border bg-surface shadow-lg"
+        className="w-full max-w-md rounded-klass-card border border-border bg-surface shadow-klass-elevated"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-border px-5 py-4">
