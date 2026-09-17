@@ -593,3 +593,122 @@ begin
   end if;
 end
 $$;
+
+-- Ajuste pós-teste (prompt 09, item 11): o colega não conseguia testar a
+-- visão do professor por falta de alunos matriculados. Adiciona três
+-- alunos ativos na turma de Fundamentos de Estatística (EST-2026-1), com
+-- estados de diário VARIADOS, para exercitar a tela do professor:
+--   Ana   — todas as notas + presença completa (pronta para encerrar);
+--   Bruno — só uma nota, sem chamada (estado parcial);
+--   Carla — nenhuma nota nem chamada (recém-matriculada).
+--
+-- Foco em Estatística de propósito: é o módulo 1 (sem pré-requisito, então
+-- a matrícula direta passa na validação do MS3) e suas avaliações têm ids
+-- fixos e estáveis (10...0001/0002/0003), o que mantém o seed seguro de
+-- rodar tanto num banco novo quanto no de produção já divergido. Módulos
+-- 2-4 exigiriam concluir os anteriores primeiro; ficam com o histórico do
+-- aluno.teste.
+do $$
+declare
+  v_ana_id uuid := 'a2000000-0000-4000-8000-000000000001';
+  v_bruno_id uuid := 'a2000000-0000-4000-8000-000000000002';
+  v_carla_id uuid := 'a2000000-0000-4000-8000-000000000003';
+begin
+  insert into auth.users (
+    instance_id, id, aud, role, email, encrypted_password,
+    email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+    created_at, updated_at, confirmation_token, recovery_token,
+    email_change_token_new, email_change
+  ) values
+    ('00000000-0000-0000-0000-000000000000', v_ana_id, 'authenticated', 'authenticated',
+     'aluno.ana@klass.dev', extensions.crypt('klass-aluno-2026', extensions.gen_salt('bf')),
+     now(), '{"provider":"email","providers":["email"]}',
+     jsonb_build_object('nome_completo', 'Ana Ribeiro'), now(), now(), '', '', '', ''),
+    ('00000000-0000-0000-0000-000000000000', v_bruno_id, 'authenticated', 'authenticated',
+     'aluno.bruno@klass.dev', extensions.crypt('klass-aluno-2026', extensions.gen_salt('bf')),
+     now(), '{"provider":"email","providers":["email"]}',
+     jsonb_build_object('nome_completo', 'Bruno Martins'), now(), now(), '', '', '', ''),
+    ('00000000-0000-0000-0000-000000000000', v_carla_id, 'authenticated', 'authenticated',
+     'aluno.carla@klass.dev', extensions.crypt('klass-aluno-2026', extensions.gen_salt('bf')),
+     now(), '{"provider":"email","providers":["email"]}',
+     jsonb_build_object('nome_completo', 'Carla Nogueira'), now(), now(), '', '', '', '')
+  on conflict (id) do nothing;
+
+  insert into auth.identities (
+    id, provider_id, user_id, identity_data, provider,
+    last_sign_in_at, created_at, updated_at
+  ) values
+    ('b2000000-0000-4000-8000-000000000001', v_ana_id::text, v_ana_id,
+     jsonb_build_object('sub', v_ana_id::text, 'email', 'aluno.ana@klass.dev'),
+     'email', now(), now(), now()),
+    ('b2000000-0000-4000-8000-000000000002', v_bruno_id::text, v_bruno_id,
+     jsonb_build_object('sub', v_bruno_id::text, 'email', 'aluno.bruno@klass.dev'),
+     'email', now(), now(), now()),
+    ('b2000000-0000-4000-8000-000000000003', v_carla_id::text, v_carla_id,
+     jsonb_build_object('sub', v_carla_id::text, 'email', 'aluno.carla@klass.dev'),
+     'email', now(), now(), now())
+  on conflict (id) do nothing;
+
+  -- Matrículas ativas em EST-2026-1 (módulo 1, sem pré-requisito). Insert
+  -- direto (role de seed); o trigger de regras de negócio ainda valida.
+  if not exists (select 1 from selecao.matriculas where id = 'f2000000-0000-4000-8000-000000000001') then
+    insert into selecao.matriculas (id, aluno_id, turma_id, status, deferido_em, deferido_por)
+    values ('f2000000-0000-4000-8000-000000000001', v_ana_id, 'e1000000-0000-4000-8000-000000000001',
+            'matriculada', now(), 'a1000000-0000-4000-8000-000000000003');
+  end if;
+  if not exists (select 1 from selecao.matriculas where id = 'f2000000-0000-4000-8000-000000000002') then
+    insert into selecao.matriculas (id, aluno_id, turma_id, status, deferido_em, deferido_por)
+    values ('f2000000-0000-4000-8000-000000000002', v_bruno_id, 'e1000000-0000-4000-8000-000000000001',
+            'matriculada', now(), 'a1000000-0000-4000-8000-000000000003');
+  end if;
+  if not exists (select 1 from selecao.matriculas where id = 'f2000000-0000-4000-8000-000000000003') then
+    insert into selecao.matriculas (id, aluno_id, turma_id, status, deferido_em, deferido_por)
+    values ('f2000000-0000-4000-8000-000000000003', v_carla_id, 'e1000000-0000-4000-8000-000000000001',
+            'matriculada', now(), 'a1000000-0000-4000-8000-000000000003');
+  end if;
+end
+$$;
+
+-- Diário variado dos três alunos, como professor (auth.uid precisa ser o
+-- professor da turma). Reusa as avaliações/aulas de EST-2026-1 que o MS4
+-- já criou (ids fixos 10...0001/0002/0003 e 20...0001..0010).
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"a1000000-0000-4000-8000-000000000002","role":"authenticated"}';
+
+do $$
+declare
+  v_ana uuid := 'f2000000-0000-4000-8000-000000000001';
+  v_bruno uuid := 'f2000000-0000-4000-8000-000000000002';
+  v_professor_id uuid := 'a1000000-0000-4000-8000-000000000002';
+  v_aula_id uuid;
+  i integer;
+begin
+  -- Ana: notas completas (Prova 1 = 8, Trabalho = 7, Prova Final = 9) e
+  -- presença em todas as 10 aulas -> fica "pronta para encerrar".
+  if (select status from selecao.matriculas where id = v_ana) = 'matriculada' then
+    insert into diario.notas (avaliacao_id, matricula_id, valor, lancada_por)
+    values
+      ('10000000-0000-4000-8000-000000000001', v_ana, 8.0, v_professor_id),
+      ('10000000-0000-4000-8000-000000000002', v_ana, 7.0, v_professor_id),
+      ('10000000-0000-4000-8000-000000000003', v_ana, 9.0, v_professor_id)
+    on conflict (avaliacao_id, matricula_id) do nothing;
+    for i in 1..10 loop
+      v_aula_id := ('20000000-0000-4000-8000-' || lpad(i::text, 12, '0'))::uuid;
+      insert into diario.presencas (aula_id, matricula_id, presente, registrada_por)
+      values (v_aula_id, v_ana, true, v_professor_id)
+      on conflict (aula_id, matricula_id) do nothing;
+    end loop;
+  end if;
+
+  -- Bruno: só a Prova 1 lançada, sem chamada -> estado parcial.
+  if (select status from selecao.matriculas where id = v_bruno) = 'matriculada' then
+    insert into diario.notas (avaliacao_id, matricula_id, valor, lancada_por)
+    values ('10000000-0000-4000-8000-000000000001', v_bruno, 6.0, v_professor_id)
+    on conflict (avaliacao_id, matricula_id) do nothing;
+  end if;
+
+  -- Carla: nada lançado — recém-matriculada, tudo pendente.
+end
+$$;
+
+reset role;

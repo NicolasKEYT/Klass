@@ -83,6 +83,24 @@ pnpm dev:workers
 Com os dois no ar, `GET http://localhost:8787/health` deve responder
 `{"status":"ok"}`.
 
+## Usuários de demonstração
+
+Criados pelo `supabase/seed.sql` (e-mails `@klass.dev` são reservados, só
+para teste). Senha de todos abaixo: a indicada.
+
+| Papel | E-mail | Senha |
+| --- | --- | --- |
+| Coordenação | `coordenacao.teste@klass.dev` | `klass-coord-2026` |
+| Professor | `professor.teste@klass.dev` | `klass-prof-2026` |
+| Aluno | `aluno.teste@klass.dev` | `klass-aluno-2026` |
+| Aluno (Ana) | `aluno.ana@klass.dev` | `klass-aluno-2026` |
+| Aluno (Bruno) | `aluno.bruno@klass.dev` | `klass-aluno-2026` |
+| Aluno (Carla) | `aluno.carla@klass.dev` | `klass-aluno-2026` |
+
+Ana, Bruno e Carla estão matriculados na turma **EST-2026-1** com dados de
+diário variados (Ana com tudo lançado, Bruno com nota parcial, Carla sem
+nada) — servem para testar a visão do professor.
+
 ## Build e typecheck
 
 ```bash
