@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/auth";
 import { Aviso } from "@/components/Aviso";
-import { Cabecalho } from "@/components/Cabecalho";
 import { Card } from "@/components/Card";
+import { PaginaAutenticada } from "@/components/PaginaAutenticada";
+import { Titulo } from "@/components/Titulo";
 import { listarTurmasDoProfessor, type TurmaDoProfessor } from "@/lib/selecao";
 
 export function Turmas() {
@@ -19,10 +20,8 @@ export function Turmas() {
   }, [usuario]);
 
   return (
-    <div className="min-h-screen bg-background">
-      <Cabecalho />
-      <div className="mx-auto max-w-4xl p-6">
-        <h1 className="mb-6 font-serif text-klass-xl text-text-primary">Minhas turmas</h1>
+    <PaginaAutenticada>
+        <Titulo className="mb-6">Minhas turmas</Titulo>
 
         {erro && (
           <Aviso variant="danger" className="mb-4">
@@ -42,7 +41,9 @@ export function Turmas() {
           {turmas?.map((turma) => (
             <Card key={turma.id} className="flex items-center justify-between gap-4">
               <div className="flex flex-col gap-1">
-                <h2 className="text-klass-md text-text-primary">{turma.codigo}</h2>
+                <Titulo nivel="item" as="h2">
+                  {turma.codigo}
+                </Titulo>
                 <p className="text-label text-text-muted">
                   {turma.moduloNome} · {turma.trilhaNome} · {turma.periodoInicio} a{" "}
                   {turma.periodoFim} · {turma.matriculados} aluno(s) matriculado(s)
@@ -57,7 +58,6 @@ export function Turmas() {
             </Card>
           ))}
         </div>
-      </div>
-    </div>
+    </PaginaAutenticada>
   );
 }

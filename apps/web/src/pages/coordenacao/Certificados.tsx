@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { pdf } from "@react-pdf/renderer";
 import { Aviso } from "@/components/Aviso";
-import { Cabecalho } from "@/components/Cabecalho";
 import { Card } from "@/components/Card";
 import { Input } from "@/components/Input";
+import { PaginaAutenticada } from "@/components/PaginaAutenticada";
+import { Titulo } from "@/components/Titulo";
 import { listarTodosCertificados } from "@/lib/certificacao";
 import { CertificadoPDF } from "@/pdf/CertificadoPDF";
 import type { Certificado } from "@klass/types";
@@ -47,10 +48,8 @@ export function Certificados() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <Cabecalho />
-      <div className="mx-auto max-w-5xl p-6">
-        <h1 className="mb-6 font-serif text-klass-xl text-text-primary">Certificados</h1>
+    <PaginaAutenticada largura="ampla">
+        <Titulo className="mb-6">Certificados</Titulo>
 
         {erro && (
           <Aviso variant="danger" className="mb-4">
@@ -139,7 +138,6 @@ export function Certificados() {
             </table>
           </Card>
         )}
-      </div>
-    </div>
+    </PaginaAutenticada>
   );
 }

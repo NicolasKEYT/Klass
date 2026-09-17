@@ -4,8 +4,9 @@ import { useAuth } from "@/auth";
 import { Aviso } from "@/components/Aviso";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
-import { Cabecalho } from "@/components/Cabecalho";
 import { Card } from "@/components/Card";
+import { PaginaAutenticada } from "@/components/PaginaAutenticada";
+import { Titulo } from "@/components/Titulo";
 import { buscarProgressoMatricula, type ProgressoMatricula } from "@/lib/diario";
 import {
   cancelarInscricao,
@@ -77,10 +78,8 @@ export function Matriculas() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <Cabecalho />
-      <div className="mx-auto max-w-3xl p-6">
-        <h1 className="mb-6 font-serif text-klass-xl text-text-primary">Minhas matrículas</h1>
+    <PaginaAutenticada>
+        <Titulo className="mb-6">Minhas matrículas</Titulo>
 
         {erro && (
           <Aviso variant="danger" className="mb-4">
@@ -113,7 +112,9 @@ export function Matriculas() {
               <Card key={matricula.id} className="flex items-center justify-between gap-4">
                 <div className="flex flex-col gap-1">
                   <div className="flex items-center gap-2">
-                    <h2 className="text-klass-md text-text-primary">{matricula.moduloNome}</h2>
+                    <Titulo nivel="item" as="h2">
+                      {matricula.moduloNome}
+                    </Titulo>
                     <Badge variant={STATUS_VARIANTE[matricula.status]}>
                       {STATUS_LABEL[matricula.status]}
                     </Badge>
@@ -133,11 +134,10 @@ export function Matriculas() {
 
                 <div className="flex items-center gap-2">
                   {STATUS_COM_DIARIO.includes(matricula.status) && (
-                    <Link
-                      to={`/aluno/matriculas/${matricula.id}`}
-                      className="text-body-sm font-medium text-primary hover:underline"
-                    >
-                      Ver boletim
+                    <Link to={`/aluno/matriculas/${matricula.id}`}>
+                      <Button variant="secondary" className="whitespace-nowrap">
+                        Ver boletim
+                      </Button>
                     </Link>
                   )}
 
@@ -162,7 +162,6 @@ export function Matriculas() {
             );
           })}
         </div>
-      </div>
-    </div>
+    </PaginaAutenticada>
   );
 }

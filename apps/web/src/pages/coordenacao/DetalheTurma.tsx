@@ -4,8 +4,9 @@ import { Aviso } from "@/components/Aviso";
 import { Badge } from "@/components/Badge";
 import { BotaoVoltar } from "@/components/BotaoVoltar";
 import { Button } from "@/components/Button";
-import { Cabecalho } from "@/components/Cabecalho";
 import { Card } from "@/components/Card";
+import { PaginaAutenticada } from "@/components/PaginaAutenticada";
+import { Titulo } from "@/components/Titulo";
 import { useAuth } from "@/auth";
 import {
   buscarProgressoMatricula,
@@ -132,9 +133,7 @@ export function DetalheTurma() {
   );
 
   return (
-    <div className="min-h-screen bg-background">
-      <Cabecalho />
-      <div className="mx-auto max-w-3xl p-6">
+    <PaginaAutenticada>
         <BotaoVoltar />
 
         {erro && (
@@ -158,7 +157,7 @@ export function DetalheTurma() {
         {turma && (
           <>
             <Card className="mb-6">
-              <h1 className="font-serif text-klass-xl text-text-primary">{turma.codigo}</h1>
+              <Titulo>{turma.codigo}</Titulo>
               <p className="mt-1 text-body-sm text-text-secondary">
                 {turma.moduloNome} · {turma.trilhaNome}
               </p>
@@ -168,9 +167,9 @@ export function DetalheTurma() {
               </p>
             </Card>
 
-            <h2 className="mb-3 font-serif text-klass-lg text-text-primary">
+            <Titulo nivel="secao" className="mb-3">
               Inscrições pendentes ({pendentes.length})
-            </h2>
+            </Titulo>
             <div className="mb-6 flex flex-col gap-3">
               {pendentes.length === 0 && (
                 <p className="text-body-sm text-text-secondary">Nenhuma inscrição pendente.</p>
@@ -227,9 +226,9 @@ export function DetalheTurma() {
               ))}
             </div>
 
-            <h2 className="mb-3 font-serif text-klass-lg text-text-primary">
+            <Titulo nivel="secao" className="mb-3">
               Matriculados ({matriculados.length})
-            </h2>
+            </Titulo>
             <div className="mb-6 flex flex-col gap-2">
               {matriculados.length === 0 && (
                 <p className="text-body-sm text-text-secondary">Nenhum aluno matriculado ainda.</p>
@@ -244,7 +243,9 @@ export function DetalheTurma() {
 
             {historico.length > 0 && (
               <>
-                <h2 className="mb-3 font-serif text-klass-lg text-text-primary">Histórico</h2>
+                <Titulo nivel="secao" className="mb-3">
+                  Histórico
+                </Titulo>
                 <div className="mb-6 flex flex-col gap-2">
                   {historico.map((matricula) => {
                     const podeDesfazer =
@@ -296,7 +297,9 @@ export function DetalheTurma() {
             )}
 
             {/* Diário (MS4) — coordenação só consulta, quem lança nota/presença é o professor. */}
-            <h2 className="mb-3 font-serif text-klass-lg text-text-primary">Diário</h2>
+            <Titulo nivel="secao" className="mb-3">
+              Diário
+            </Titulo>
             <Card className="mb-4">
               <p className="mb-2 text-label font-medium text-text-secondary">
                 Avaliações ({avaliacoes.length})
@@ -354,7 +357,6 @@ export function DetalheTurma() {
             </div>
           </>
         )}
-      </div>
-    </div>
+    </PaginaAutenticada>
   );
 }

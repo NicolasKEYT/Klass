@@ -3,8 +3,9 @@ import { Link } from "react-router-dom";
 import { Aviso } from "@/components/Aviso";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
-import { Cabecalho } from "@/components/Cabecalho";
 import { Card } from "@/components/Card";
+import { PaginaAutenticada } from "@/components/PaginaAutenticada";
+import { Titulo } from "@/components/Titulo";
 import { apagarTrilha, definirPublicacaoTrilha, listarTrilhasComContagem } from "@/lib/catalogo";
 import type { Trilha } from "@klass/types";
 
@@ -35,7 +36,7 @@ export function Trilhas() {
     setMensagem(null);
     try {
       await definirPublicacaoTrilha(trilha.id, !trilha.publicada);
-      setMensagem(trilha.publicada ? "Trilha despublicada." : "Trilha publicada.");
+      setMensagem(trilha.publicada ? "Trilha voltou para rascunho." : "Trilha publicada.");
       await carregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível atualizar a trilha.");
@@ -56,11 +57,9 @@ export function Trilhas() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <Cabecalho />
-      <div className="mx-auto max-w-4xl p-6">
+    <PaginaAutenticada>
         <div className="mb-6 flex items-center justify-between">
-          <h1 className="font-serif text-klass-xl text-text-primary">Trilhas</h1>
+          <Titulo>Trilhas</Titulo>
           <Link to="/coordenacao/trilhas/nova">
             <Button>Nova trilha</Button>
           </Link>
@@ -95,7 +94,9 @@ export function Trilhas() {
             <Card key={trilha.id} className="flex items-center justify-between gap-4">
               <div className="flex flex-col gap-1">
                 <div className="flex items-center gap-2">
-                  <h2 className="text-klass-md text-text-primary">{trilha.nome}</h2>
+                  <Titulo nivel="item" as="h2">
+                    {trilha.nome}
+                  </Titulo>
                   <Badge variant={trilha.publicada ? "success" : "neutral"}>
                     {trilha.publicada ? "Publicada" : "Rascunho"}
                   </Badge>
@@ -125,7 +126,7 @@ export function Trilhas() {
                       Editar
                     </Link>
                     <Button variant="secondary" onClick={() => void alternarPublicacao(trilha)}>
-                      {trilha.publicada ? "Despublicar" : "Publicar"}
+                      {trilha.publicada ? "Voltar para rascunho" : "Publicar"}
                     </Button>
                     <Button
                       variant="secondary"
@@ -140,7 +141,6 @@ export function Trilhas() {
             </Card>
           ))}
         </div>
-      </div>
-    </div>
+    </PaginaAutenticada>
   );
 }

@@ -4,8 +4,9 @@ import { useAuth } from "@/auth";
 import { Aviso } from "@/components/Aviso";
 import { BotaoVoltar } from "@/components/BotaoVoltar";
 import { Button } from "@/components/Button";
-import { Cabecalho } from "@/components/Cabecalho";
 import { Card } from "@/components/Card";
+import { PaginaAutenticada } from "@/components/PaginaAutenticada";
+import { Titulo } from "@/components/Titulo";
 import {
   buscarAula,
   buscarPresencasDaAula,
@@ -63,9 +64,7 @@ export function FazerChamada() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <Cabecalho />
-      <div className="mx-auto max-w-2xl p-6">
+    <PaginaAutenticada largura="estreita">
         <BotaoVoltar />
 
         {erro && (
@@ -86,10 +85,10 @@ export function FazerChamada() {
 
         {aula && (
           <>
-            <h1 className="mb-1 font-serif text-klass-xl text-text-primary">
+            <Titulo className="mb-1">
               Chamada — {aula.data}
               {aula.horario ? ` · ${aula.horario}` : ""}
-            </h1>
+            </Titulo>
             {aula.descricao && (
               <p className="mb-6 text-body-sm text-text-secondary">{aula.descricao}</p>
             )}
@@ -139,7 +138,6 @@ export function FazerChamada() {
             </Card>
           </>
         )}
-      </div>
-    </div>
+    </PaginaAutenticada>
   );
 }

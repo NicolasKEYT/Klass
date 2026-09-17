@@ -3,8 +3,9 @@ import { Link } from "react-router-dom";
 import { PDFDownloadLink } from "@react-pdf/renderer";
 import { useAuth } from "@/auth";
 import { Aviso } from "@/components/Aviso";
-import { Cabecalho } from "@/components/Cabecalho";
 import { Card } from "@/components/Card";
+import { PaginaAutenticada } from "@/components/PaginaAutenticada";
+import { Titulo } from "@/components/Titulo";
 import { listarCertificadosDoAluno } from "@/lib/certificacao";
 import { CertificadoPDF } from "@/pdf/CertificadoPDF";
 import type { Certificado } from "@klass/types";
@@ -28,10 +29,8 @@ export function Certificados() {
   }, [usuario?.id]);
 
   return (
-    <div className="min-h-screen bg-background">
-      <Cabecalho />
-      <div className="mx-auto max-w-3xl p-6">
-        <h1 className="mb-6 font-serif text-klass-xl text-text-primary">Meus certificados</h1>
+    <PaginaAutenticada>
+        <Titulo className="mb-6">Meus certificados</Titulo>
 
         {erro && (
           <Aviso variant="danger" className="mb-4">
@@ -60,7 +59,9 @@ export function Certificados() {
           {certificados?.map((certificado) => (
             <Card key={certificado.id} className="flex items-center justify-between gap-4">
               <div className="flex flex-col gap-1">
-                <h2 className="text-klass-md text-text-primary">{certificado.trilha_nome}</h2>
+                <Titulo nivel="item" as="h2">
+                  {certificado.trilha_nome}
+                </Titulo>
                 <p className="text-label text-text-muted">
                   Emitido em {formatarData(certificado.emitido_em)} ·{" "}
                   {certificado.trilha_carga_horaria_total} horas
@@ -78,7 +79,6 @@ export function Certificados() {
             </Card>
           ))}
         </div>
-      </div>
-    </div>
+    </PaginaAutenticada>
   );
 }

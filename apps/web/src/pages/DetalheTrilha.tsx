@@ -5,8 +5,9 @@ import { Aviso } from "@/components/Aviso";
 import { Badge } from "@/components/Badge";
 import { BotaoVoltar } from "@/components/BotaoVoltar";
 import { Button } from "@/components/Button";
-import { Cabecalho } from "@/components/Cabecalho";
 import { Card } from "@/components/Card";
+import { PaginaAutenticada } from "@/components/PaginaAutenticada";
+import { Titulo } from "@/components/Titulo";
 import {
   buscarTrilhaPorSlug,
   listarModulosDaTrilha,
@@ -85,9 +86,7 @@ export function DetalheTrilha() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <Cabecalho />
-      <div className="mx-auto max-w-3xl p-6">
+    <PaginaAutenticada>
         <BotaoVoltar />
         {erro && (
           <Aviso variant="danger" className="mb-4">
@@ -108,7 +107,7 @@ export function DetalheTrilha() {
 
         {trilha && (
           <>
-            <h1 className="font-serif text-klass-xl text-text-primary">{trilha.nome}</h1>
+            <Titulo>{trilha.nome}</Titulo>
             <p className="mt-2 text-body-sm text-text-secondary">{trilha.descricao}</p>
             <p className="mt-2 text-label text-text-muted">
               Carga horária total: {trilha.carga_horaria_total}h
@@ -120,9 +119,9 @@ export function DetalheTrilha() {
                 return (
                   <Card key={modulo.id} className="flex flex-col gap-2">
                     <div className="flex items-center justify-between">
-                      <h2 className="text-klass-md text-text-primary">
+                      <Titulo nivel="item" as="h2">
                         {modulo.ordem}. {modulo.nome}
-                      </h2>
+                      </Titulo>
                       <Badge variant="neutral">{NIVEL_LABEL[modulo.nivel]}</Badge>
                     </div>
                     <p className="text-body-sm text-text-secondary">{modulo.descricao}</p>
@@ -188,7 +187,6 @@ export function DetalheTrilha() {
             </div>
           </>
         )}
-      </div>
-    </div>
+    </PaginaAutenticada>
   );
 }

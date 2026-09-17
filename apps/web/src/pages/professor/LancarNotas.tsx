@@ -4,9 +4,10 @@ import { useAuth } from "@/auth";
 import { Aviso } from "@/components/Aviso";
 import { BotaoVoltar } from "@/components/BotaoVoltar";
 import { Button } from "@/components/Button";
-import { Cabecalho } from "@/components/Cabecalho";
 import { Card } from "@/components/Card";
 import { Input } from "@/components/Input";
+import { PaginaAutenticada } from "@/components/PaginaAutenticada";
+import { Titulo } from "@/components/Titulo";
 import {
   buscarAvaliacao,
   buscarNotasDaAvaliacao,
@@ -66,9 +67,7 @@ export function LancarNotas() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <Cabecalho />
-      <div className="mx-auto max-w-2xl p-6">
+    <PaginaAutenticada largura="estreita">
         <BotaoVoltar />
 
         {erro && (
@@ -91,7 +90,7 @@ export function LancarNotas() {
 
         {avaliacao && (
           <>
-            <h1 className="mb-1 font-serif text-klass-xl text-text-primary">{avaliacao.titulo}</h1>
+            <Titulo className="mb-1">{avaliacao.titulo}</Titulo>
             <p className="mb-6 text-body-sm text-text-secondary">Peso {avaliacao.peso}</p>
 
             <Card>
@@ -132,7 +131,6 @@ export function LancarNotas() {
             </Card>
           </>
         )}
-      </div>
-    </div>
+    </PaginaAutenticada>
   );
 }

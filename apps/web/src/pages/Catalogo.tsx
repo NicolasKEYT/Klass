@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Cabecalho } from "@/components/Cabecalho";
 import { Card } from "@/components/Card";
+import { PaginaAutenticada } from "@/components/PaginaAutenticada";
+import { Titulo } from "@/components/Titulo";
 import { listarTrilhasComContagem } from "@/lib/catalogo";
 import type { Trilha } from "@klass/types";
 
@@ -23,10 +24,8 @@ export function Catalogo() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-background">
-      <Cabecalho />
-      <div className="mx-auto max-w-4xl p-6">
-        <h1 className="mb-6 font-serif text-klass-xl text-text-primary">Catálogo de trilhas</h1>
+    <PaginaAutenticada>
+        <Titulo className="mb-6">Catálogo de trilhas</Titulo>
 
         {erro && <p className="text-body-sm text-danger">{erro}</p>}
         {!erro && trilhas === null && (
@@ -39,7 +38,9 @@ export function Catalogo() {
         <div className="grid gap-4 sm:grid-cols-2">
           {trilhas?.map((trilha) => (
             <Card key={trilha.id} className="flex flex-col gap-3">
-              <h2 className="font-serif text-klass-lg text-text-primary">{trilha.nome}</h2>
+              <Titulo nivel="item" as="h2">
+                {trilha.nome}
+              </Titulo>
               <p className="text-body-sm text-text-secondary">
                 {trilha.descricao_curta ?? trilha.descricao}
               </p>
@@ -55,7 +56,6 @@ export function Catalogo() {
             </Card>
           ))}
         </div>
-      </div>
-    </div>
+    </PaginaAutenticada>
   );
 }

@@ -3,9 +3,10 @@ import { useNavigate } from "react-router-dom";
 import { Aviso } from "@/components/Aviso";
 import { BotaoVoltar } from "@/components/BotaoVoltar";
 import { Button } from "@/components/Button";
-import { Cabecalho } from "@/components/Cabecalho";
 import { Card } from "@/components/Card";
 import { Input } from "@/components/Input";
+import { PaginaAutenticada } from "@/components/PaginaAutenticada";
+import { Titulo } from "@/components/Titulo";
 import { criarTrilha, gerarSlug } from "@/lib/catalogo";
 
 // Tempo pra o aviso de sucesso ficar visível antes de navegar — sem
@@ -58,11 +59,9 @@ export function NovaTrilha() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <Cabecalho />
-      <div className="mx-auto max-w-lg p-6">
+    <PaginaAutenticada largura="estreita">
         <BotaoVoltar />
-        <h1 className="mb-6 font-serif text-klass-xl text-text-primary">Nova trilha</h1>
+        <Titulo className="mb-6">Nova trilha</Titulo>
 
         <Card>
           <form className="flex flex-col gap-4" onSubmit={aoSubmeter}>
@@ -72,7 +71,19 @@ export function NovaTrilha() {
             </label>
 
             <label className="flex flex-col gap-1.5">
-              <span className="text-label font-medium text-text-secondary">Slug</span>
+              <div className="flex items-center justify-between">
+                <span className="text-label font-medium text-text-secondary">Endereço da página</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSlugEditadoManualmente(false);
+                    setSlug(gerarSlug(nome));
+                  }}
+                  className="text-label font-medium text-primary hover:underline"
+                >
+                  Sincronizar com o nome
+                </button>
+              </div>
               <Input
                 required
                 value={slug}
@@ -82,7 +93,8 @@ export function NovaTrilha() {
                 }}
               />
               <span className="text-label text-text-muted">
-                Aparece na URL pública: /catalogo/{slug || "..."}
+                Esse texto aparece no link da trilha (/catalogo/{slug || "..."}). Evite espaços e
+                acentos. Mudar depois de publicado pode quebrar links já compartilhados.
               </span>
             </label>
 
@@ -93,6 +105,10 @@ export function NovaTrilha() {
                 maxLength={200}
                 onChange={(e) => setDescricaoCurta(e.target.value)}
               />
+              <span className="text-label text-text-muted">
+                Aparece nos cards do catálogo, onde o aluno navega entre várias trilhas. Seja breve
+                (até ~150 caracteres).
+              </span>
             </label>
 
             <label className="flex flex-col gap-1.5">
@@ -104,6 +120,10 @@ export function NovaTrilha() {
                 value={descricao}
                 onChange={(e) => setDescricao(e.target.value)}
               />
+              <span className="text-label text-text-muted">
+                Aparece na página de detalhe da trilha, quando o aluno já demonstrou interesse. Pode
+                ser mais detalhada.
+              </span>
             </label>
 
             {erro && <Aviso variant="danger">{erro}</Aviso>}
@@ -124,7 +144,6 @@ export function NovaTrilha() {
             </div>
           </form>
         </Card>
-      </div>
-    </div>
+    </PaginaAutenticada>
   );
 }

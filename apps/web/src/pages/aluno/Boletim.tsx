@@ -3,8 +3,9 @@ import { useParams } from "react-router-dom";
 import { Aviso } from "@/components/Aviso";
 import { Badge } from "@/components/Badge";
 import { BotaoVoltar } from "@/components/BotaoVoltar";
-import { Cabecalho } from "@/components/Cabecalho";
 import { Card } from "@/components/Card";
+import { PaginaAutenticada } from "@/components/PaginaAutenticada";
+import { Titulo } from "@/components/Titulo";
 import {
   buscarProgressoMatricula,
   listarAulasComPresencaDoAluno,
@@ -90,9 +91,7 @@ export function Boletim() {
   }, [id]);
 
   return (
-    <div className="min-h-screen bg-background">
-      <Cabecalho />
-      <div className="mx-auto max-w-2xl p-6">
+    <PaginaAutenticada largura="estreita">
         <BotaoVoltar />
 
         {erro && (
@@ -112,7 +111,7 @@ export function Boletim() {
           <>
             <Card className="mb-6">
               <div className="flex items-center gap-2">
-                <h1 className="font-serif text-klass-xl text-text-primary">{matricula.moduloNome}</h1>
+                <Titulo>{matricula.moduloNome}</Titulo>
                 <Badge
                   variant={
                     matricula.status === "reprovada"
@@ -136,9 +135,9 @@ export function Boletim() {
               )}
             </Card>
 
-            <h2 className="mb-3 font-serif text-klass-lg text-text-primary">
+            <Titulo nivel="secao" className="mb-3">
               Notas {media !== null && `— média parcial ${media.toFixed(1)}`}
-            </h2>
+            </Titulo>
             <div className="mb-6 flex flex-col gap-2">
               {avaliacoes.length === 0 && (
                 <p className="text-body-sm text-text-secondary">
@@ -155,9 +154,9 @@ export function Boletim() {
               ))}
             </div>
 
-            <h2 className="mb-3 font-serif text-klass-lg text-text-primary">
+            <Titulo nivel="secao" className="mb-3">
               Frequência {frequencia !== null && `— ${frequencia.toFixed(0)}%`}
-            </h2>
+            </Titulo>
             <div className="flex flex-col gap-2">
               {aulas.length === 0 && (
                 <p className="text-body-sm text-text-secondary">Nenhuma aula cadastrada ainda.</p>
@@ -176,7 +175,6 @@ export function Boletim() {
             </div>
           </>
         )}
-      </div>
-    </div>
+    </PaginaAutenticada>
   );
 }

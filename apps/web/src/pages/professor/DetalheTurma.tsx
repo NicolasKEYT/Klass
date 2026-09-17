@@ -5,9 +5,10 @@ import { Aviso } from "@/components/Aviso";
 import { Badge } from "@/components/Badge";
 import { BotaoVoltar } from "@/components/BotaoVoltar";
 import { Button } from "@/components/Button";
-import { Cabecalho } from "@/components/Cabecalho";
 import { Card } from "@/components/Card";
 import { Input } from "@/components/Input";
+import { PaginaAutenticada } from "@/components/PaginaAutenticada";
+import { Titulo } from "@/components/Titulo";
 import {
   buscarProgressoMatricula,
   criarAula,
@@ -159,10 +160,16 @@ export function DetalheTurma() {
 
   if (!usuario) return null;
 
+  // Peso não tem teto (decisão de manter flexibilidade) — mostrar quanto
+  // cada avaliação representa da média final deixa o efeito prático claro
+  // sem impor limite. Recalcula sozinho porque `avaliacoes` é estado.
+  const somaPesos = avaliacoes.reduce((soma, a) => soma + a.peso, 0);
+  function percentualDoPeso(peso: number, somaTotal: number): number {
+    return somaTotal > 0 ? Math.round((peso / somaTotal) * 100) : 0;
+  }
+
   return (
-    <div className="min-h-screen bg-background">
-      <Cabecalho />
-      <div className="mx-auto max-w-3xl p-6">
+    <PaginaAutenticada>
         <BotaoVoltar />
 
         {erro && (
@@ -184,7 +191,7 @@ export function DetalheTurma() {
         {turma && (
           <>
             <Card className="mb-6">
-              <h1 className="font-serif text-klass-xl text-text-primary">{turma.codigo}</h1>
+              <Titulo>{turma.codigo}</Titulo>
               <p className="mt-1 text-body-sm text-text-secondary">
                 {turma.moduloNome} · {turma.trilhaNome}
               </p>
@@ -212,9 +219,7 @@ export function DetalheTurma() {
             {aba === "avaliacoes" && (
               <>
                 <div className="mb-4 flex items-center justify-between">
-                  <h2 className="font-serif text-klass-lg text-text-primary">
-                    Avaliações ({avaliacoes.length})
-                  </h2>
+                  <Titulo nivel="secao">Avaliações ({avaliacoes.length})</Titulo>
                   <Button onClick={() => setMostrarNovaAvaliacao((v) => !v)}>
                     {mostrarNovaAvaliacao ? "Cancelar" : "Nova avaliação"}
                   </Button>
@@ -250,6 +255,10 @@ export function DetalheTurma() {
                           value={novoPeso}
                           onChange={(e) => setNovoPeso(Number(e.target.value))}
                         />
+                        <span className="text-label text-text-muted">
+                          Com este peso, a avaliação representará{" "}
+                          {percentualDoPeso(novoPeso, somaPesos + novoPeso)}% da média final.
+                        </span>
                       </label>
                       <Button type="submit" disabled={salvandoAvaliacao} className="self-start">
                         {salvandoAvaliacao ? "Criando..." : "Criar"}
@@ -270,7 +279,10 @@ export function DetalheTurma() {
                         <p className="text-body-sm font-medium text-text-primary">
                           {avaliacao.titulo}
                         </p>
-                        <p className="text-label text-text-muted">Peso {avaliacao.peso}</p>
+                        <p className="text-label text-text-muted">
+                          Peso {avaliacao.peso} · representa{" "}
+                          {percentualDoPeso(avaliacao.peso, somaPesos)}% da média final
+                        </p>
                       </div>
                       <Link
                         to={`/professor/turmas/${id}/avaliacoes/${avaliacao.id}`}
@@ -287,9 +299,7 @@ export function DetalheTurma() {
             {aba === "aulas" && (
               <>
                 <div className="mb-4 flex items-center justify-between">
-                  <h2 className="font-serif text-klass-lg text-text-primary">
-                    Aulas ({aulas.length})
-                  </h2>
+                  <Titulo nivel="secao">Aulas ({aulas.length})</Titulo>
                   <Button onClick={() => setMostrarNovaAula((v) => !v)}>
                     {mostrarNovaAula ? "Cancelar" : "Nova aula"}
                   </Button>
@@ -420,7 +430,6 @@ export function DetalheTurma() {
             )}
           </>
         )}
-      </div>
-    </div>
+    </PaginaAutenticada>
   );
 }

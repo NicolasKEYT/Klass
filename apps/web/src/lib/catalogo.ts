@@ -72,7 +72,7 @@ export async function criarTrilha(input: {
 
 export async function atualizarTrilha(
   id: string,
-  patch: Partial<Pick<Trilha, "nome" | "descricao" | "descricao_curta">>,
+  patch: Partial<Pick<Trilha, "nome" | "slug" | "descricao" | "descricao_curta">>,
 ): Promise<Trilha> {
   const { data, error } = await catalogo().from("trilhas").update(patch).eq("id", id).select("*").single();
   if (error) throw new Error(mensagemDeErroBanco(error));

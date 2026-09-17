@@ -4,9 +4,10 @@ import { Aviso } from "@/components/Aviso";
 import { Badge } from "@/components/Badge";
 import { BotaoVoltar } from "@/components/BotaoVoltar";
 import { Button } from "@/components/Button";
-import { Cabecalho } from "@/components/Cabecalho";
 import { Card } from "@/components/Card";
 import { Input } from "@/components/Input";
+import { PaginaAutenticada } from "@/components/PaginaAutenticada";
+import { Titulo } from "@/components/Titulo";
 import {
   apagarModulo,
   atualizarModulo,
@@ -14,6 +15,7 @@ import {
   buscarTrilhaPorSlug,
   criarModulo,
   definirPreRequisito,
+  gerarSlug,
   listarModulosDaTrilha,
   listarPreRequisitosIdsDaTrilha,
   proximaOrdemDisponivel,
@@ -29,7 +31,7 @@ const NIVEL_LABEL: Record<NivelModulo, string> = {
 };
 
 export function EditarTrilha() {
-  const { slug } = useParams<{ slug: string }>();
+  const { slug: slugRota } = useParams<{ slug: string }>();
   const navigate = useNavigate();
 
   const [trilha, setTrilha] = useState<Trilha | null>(null);
@@ -40,6 +42,7 @@ export function EditarTrilha() {
   const [mensagem, setMensagem] = useState<string | null>(null);
 
   const [nome, setNome] = useState("");
+  const [slug, setSlug] = useState("");
   const [descricao, setDescricao] = useState("");
   const [descricaoCurta, setDescricaoCurta] = useState("");
   const [salvandoTrilha, setSalvandoTrilha] = useState(false);
@@ -62,10 +65,10 @@ export function EditarTrilha() {
   const [confirmandoApagarModuloId, setConfirmandoApagarModuloId] = useState<string | null>(null);
 
   async function carregar() {
-    if (!slug) return;
+    if (!slugRota) return;
     setErro(null);
     try {
-      const encontrada = await buscarTrilhaPorSlug(slug);
+      const encontrada = await buscarTrilhaPorSlug(slugRota);
       if (!encontrada) {
         setErro("Trilha não encontrada.");
         setCarregando(false);
@@ -73,6 +76,7 @@ export function EditarTrilha() {
       }
       setTrilha(encontrada);
       setNome(encontrada.nome);
+      setSlug(encontrada.slug);
       setDescricao(encontrada.descricao);
       setDescricaoCurta(encontrada.descricao_curta ?? "");
 
@@ -92,7 +96,7 @@ export function EditarTrilha() {
   useEffect(() => {
     void carregar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slug]);
+  }, [slugRota]);
 
   async function salvarTrilha(voltarParaLista: boolean) {
     if (!trilha) return;
@@ -102,6 +106,7 @@ export function EditarTrilha() {
     try {
       const atualizada = await atualizarTrilha(trilha.id, {
         nome,
+        slug,
         descricao,
         descricao_curta: descricaoCurta || null,
       });
@@ -112,6 +117,10 @@ export function EditarTrilha() {
         // um redirecionamento instantâneo nunca deixaria o usuário vê-lo.
         await new Promise((resolve) => setTimeout(resolve, 700));
         navigate("/coordenacao/trilhas");
+      } else if (atualizada.slug !== slugRota) {
+        // O slug mudou e é a chave da URL desta tela — troca a rota para o
+        // novo endereço para um refresh não cair em "trilha não encontrada".
+        navigate(`/coordenacao/trilhas/${atualizada.slug}/editar`, { replace: true });
       }
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível salvar a trilha.");
@@ -221,31 +230,25 @@ export function EditarTrilha() {
 
   if (carregando) {
     return (
-      <div className="min-h-screen bg-background">
-        <Cabecalho />
-        <p className="p-6 text-body-sm text-text-secondary">Carregando...</p>
-      </div>
+      <PaginaAutenticada>
+        <p className="text-body-sm text-text-secondary">Carregando...</p>
+      </PaginaAutenticada>
     );
   }
 
   if (!trilha) {
     return (
-      <div className="min-h-screen bg-background">
-        <Cabecalho />
-        <div className="m-6">
-          <BotaoVoltar />
-          <Aviso variant="danger">{erro ?? "Trilha não encontrada."}</Aviso>
-        </div>
-      </div>
+      <PaginaAutenticada>
+        <BotaoVoltar />
+        <Aviso variant="danger">{erro ?? "Trilha não encontrada."}</Aviso>
+      </PaginaAutenticada>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <Cabecalho />
-      <div className="mx-auto max-w-3xl p-6">
+    <PaginaAutenticada>
         <BotaoVoltar />
-        <h1 className="mb-6 font-serif text-klass-xl text-text-primary">Editar trilha</h1>
+        <Titulo className="mb-6">Editar trilha</Titulo>
 
         {erro && (
           <Aviso variant="danger" className="mb-4">
@@ -264,8 +267,32 @@ export function EditarTrilha() {
               <span className="text-label font-medium text-text-secondary">Nome</span>
               <Input required value={nome} onChange={(e) => setNome(e.target.value)} />
             </label>
-            {/* Slug vira parte de URLs já divulgadas — só é definido na criação. */}
-            <p className="text-label text-text-muted">Slug: {trilha.slug} (não pode ser alterado)</p>
+
+            <label className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-label font-medium text-text-secondary">Endereço da página</span>
+                <button
+                  type="button"
+                  onClick={() => setSlug(gerarSlug(nome))}
+                  className="text-label font-medium text-primary hover:underline"
+                >
+                  Sincronizar com o nome
+                </button>
+              </div>
+              <Input required value={slug} onChange={(e) => setSlug(e.target.value)} />
+              <span className="text-label text-text-muted">
+                Esse texto aparece no link da trilha (/catalogo/{slug || "..."}). Evite espaços e
+                acentos. Mudar depois de publicado pode quebrar links já compartilhados.
+              </span>
+              {/* Aviso inline, não bloqueante: coordenador decide se salva assim mesmo. */}
+              {slug !== trilha.slug && (
+                <span className="text-label font-medium text-danger">
+                  Você mudou o endereço: links antigos para /catalogo/{trilha.slug} deixarão de
+                  funcionar.
+                </span>
+              )}
+            </label>
+
             <label className="flex flex-col gap-1.5">
               <span className="text-label font-medium text-text-secondary">Descrição curta</span>
               <Input
@@ -273,6 +300,10 @@ export function EditarTrilha() {
                 value={descricaoCurta}
                 onChange={(e) => setDescricaoCurta(e.target.value)}
               />
+              <span className="text-label text-text-muted">
+                Aparece nos cards do catálogo, onde o aluno navega entre várias trilhas. Seja breve
+                (até ~150 caracteres).
+              </span>
             </label>
             <label className="flex flex-col gap-1.5">
               <span className="text-label font-medium text-text-secondary">Descrição completa</span>
@@ -283,6 +314,10 @@ export function EditarTrilha() {
                 value={descricao}
                 onChange={(e) => setDescricao(e.target.value)}
               />
+              <span className="text-label text-text-muted">
+                Aparece na página de detalhe da trilha, quando o aluno já demonstrou interesse. Pode
+                ser mais detalhada.
+              </span>
             </label>
             <div className="flex gap-3">
               <Button type="submit" disabled={salvandoTrilha}>
@@ -301,9 +336,9 @@ export function EditarTrilha() {
         </Card>
 
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="font-serif text-klass-lg text-text-primary">
+          <Titulo nivel="secao">
             Módulos ({modulos.length}) · {trilha.carga_horaria_total}h
-          </h2>
+          </Titulo>
           <Button onClick={() => setMostrarNovoModulo((v) => !v)}>
             {mostrarNovoModulo ? "Cancelar" : "Adicionar módulo"}
           </Button>
@@ -406,7 +441,9 @@ export function EditarTrilha() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <span className="text-label text-text-muted">#{modulo.ordem}</span>
-                      <h3 className="text-klass-md text-text-primary">{modulo.nome}</h3>
+                      <Titulo nivel="item" as="h3">
+                        {modulo.nome}
+                      </Titulo>
                       <Badge variant="neutral">{NIVEL_LABEL[modulo.nivel]}</Badge>
                     </div>
                     <div className="flex items-center gap-2">
@@ -487,7 +524,6 @@ export function EditarTrilha() {
             </Card>
           ))}
         </div>
-      </div>
-    </div>
+    </PaginaAutenticada>
   );
 }

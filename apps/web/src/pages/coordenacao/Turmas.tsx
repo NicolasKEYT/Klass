@@ -3,8 +3,9 @@ import { Link } from "react-router-dom";
 import { Aviso } from "@/components/Aviso";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
-import { Cabecalho } from "@/components/Cabecalho";
 import { Card } from "@/components/Card";
+import { PaginaAutenticada } from "@/components/PaginaAutenticada";
+import { Titulo } from "@/components/Titulo";
 import { listarTurmasParaCoordenacao, type TurmaListagem } from "@/lib/selecao";
 
 export function Turmas() {
@@ -18,11 +19,9 @@ export function Turmas() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-background">
-      <Cabecalho />
-      <div className="mx-auto max-w-5xl p-6">
+    <PaginaAutenticada largura="ampla">
         <div className="mb-6 flex items-center justify-between">
-          <h1 className="font-serif text-klass-xl text-text-primary">Turmas</h1>
+          <Titulo>Turmas</Titulo>
           <Link to="/coordenacao/turmas/nova">
             <Button>Nova turma</Button>
           </Link>
@@ -45,7 +44,9 @@ export function Turmas() {
             <Card key={turma.id} className="flex items-center justify-between gap-4">
               <div className="flex flex-col gap-1">
                 <div className="flex items-center gap-2">
-                  <h2 className="text-klass-md text-text-primary">{turma.codigo}</h2>
+                  <Titulo nivel="item" as="h2">
+                    {turma.codigo}
+                  </Titulo>
                   <span className="text-body-sm text-text-secondary">
                     {turma.moduloNome} · {turma.trilhaNome}
                   </span>
@@ -68,7 +69,6 @@ export function Turmas() {
             </Card>
           ))}
         </div>
-      </div>
-    </div>
+    </PaginaAutenticada>
   );
 }

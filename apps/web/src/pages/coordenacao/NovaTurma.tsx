@@ -3,9 +3,10 @@ import { useNavigate } from "react-router-dom";
 import { Aviso } from "@/components/Aviso";
 import { BotaoVoltar } from "@/components/BotaoVoltar";
 import { Button } from "@/components/Button";
-import { Cabecalho } from "@/components/Cabecalho";
 import { Card } from "@/components/Card";
 import { Input } from "@/components/Input";
+import { PaginaAutenticada } from "@/components/PaginaAutenticada";
+import { Titulo } from "@/components/Titulo";
 import { listarModulosDaTrilha, listarTrilhas } from "@/lib/catalogo";
 import { criarTurma, listarProfessores } from "@/lib/selecao";
 import type { Modulo, Trilha } from "@klass/types";
@@ -95,11 +96,9 @@ export function NovaTurma() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <Cabecalho />
-      <div className="mx-auto max-w-lg p-6">
+    <PaginaAutenticada largura="estreita">
         <BotaoVoltar />
-        <h1 className="mb-6 font-serif text-klass-xl text-text-primary">Nova turma</h1>
+        <Titulo className="mb-6">Nova turma</Titulo>
 
         <Card>
           <form className="flex flex-col gap-4" onSubmit={aoSubmeter}>
@@ -248,7 +247,6 @@ export function NovaTurma() {
             </div>
           </form>
         </Card>
-      </div>
-    </div>
+    </PaginaAutenticada>
   );
 }
