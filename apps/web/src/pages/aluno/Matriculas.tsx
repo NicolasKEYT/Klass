@@ -130,6 +130,13 @@ export function Matriculas() {
                       {progresso.frequencia !== null ? `${progresso.frequencia.toFixed(0)}%` : "—"}
                     </p>
                   )}
+                  {/* Removido pela coordenação: só 'cancelada' com motivo (o
+                      cancelamento pelo próprio aluno não preenche motivo). */}
+                  {matricula.status === "cancelada" && matricula.motivoConclusao && (
+                    <p className="text-label text-danger">
+                      Removido da turma: {matricula.motivoConclusao}
+                    </p>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-2">

@@ -24,6 +24,7 @@ import {
   buscarTurmaDetalhada,
   listarMatriculasDaTurma,
   rejeitarMatricula,
+  removerAlunoDaTurma,
   type MatriculaListagem,
   type TurmaDetalhada,
 } from "@/lib/selecao";
@@ -54,6 +55,8 @@ export function DetalheTurma() {
   const [aulas, setAulas] = useState<Aula[]>([]);
   const [alunosDiario, setAlunosDiario] = useState<AlunoComProgresso[]>([]);
   const [desfazendoId, setDesfazendoId] = useState<string | null>(null);
+  const [removendoId, setRemovendoId] = useState<string | null>(null);
+  const [motivoRemocao, setMotivoRemocao] = useState("");
 
   async function carregar() {
     if (!id) return;
@@ -123,6 +126,20 @@ export function DetalheTurma() {
       await carregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível desfazer o encerramento.");
+    }
+  }
+
+  async function aoRemover(matriculaId: string) {
+    setErro(null);
+    setMensagem(null);
+    try {
+      await removerAlunoDaTurma(matriculaId, motivoRemocao);
+      setMensagem("Aluno removido da turma. Ele vê o motivo nas próprias matrículas.");
+      setRemovendoId(null);
+      setMotivoRemocao("");
+      await carregar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Não foi possível remover o aluno.");
     }
   }
 
@@ -234,9 +251,53 @@ export function DetalheTurma() {
                 <p className="text-body-sm text-text-secondary">Nenhum aluno matriculado ainda.</p>
               )}
               {matriculados.map((matricula) => (
-                <Card key={matricula.id} className="flex items-center justify-between">
-                  <span className="text-body-sm text-text-primary">{matricula.alunoNome}</span>
-                  <Badge variant="success">Matriculada</Badge>
+                <Card key={matricula.id} className="flex flex-col gap-3">
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="text-body-sm text-text-primary">{matricula.alunoNome}</span>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="success">Matriculada</Badge>
+                      {removendoId !== matricula.id && (
+                        <Button
+                          variant="secondary"
+                          onClick={() => {
+                            setRemovendoId(matricula.id);
+                            setMotivoRemocao("");
+                          }}
+                        >
+                          Remover da turma
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+
+                  {removendoId === matricula.id && (
+                    <div className="flex flex-col gap-2">
+                      <label className="flex flex-col gap-1.5">
+                        <span className="text-label font-medium text-text-secondary">
+                          Motivo da remoção
+                        </span>
+                        <textarea
+                          required
+                          rows={2}
+                          className="rounded-klass-control border border-border bg-surface px-3.5 py-2 text-body-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
+                          value={motivoRemocao}
+                          onChange={(e) => setMotivoRemocao(e.target.value)}
+                        />
+                      </label>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="secondary"
+                          disabled={motivoRemocao.trim().length < 10}
+                          onClick={() => void aoRemover(matricula.id)}
+                        >
+                          Confirmar remoção
+                        </Button>
+                        <Button variant="secondary" onClick={() => setRemovendoId(null)}>
+                          Cancelar
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </Card>
               ))}
             </div>
@@ -257,9 +318,9 @@ export function DetalheTurma() {
                             <span className="text-body-sm text-text-primary">
                               {matricula.alunoNome}
                             </span>
-                            {matricula.motivoRejeicao && (
+                            {(matricula.motivoRejeicao ?? matricula.motivoConclusao) && (
                               <span className="text-label text-text-muted">
-                                {matricula.motivoRejeicao}
+                                {matricula.motivoRejeicao ?? matricula.motivoConclusao}
                               </span>
                             )}
                           </div>

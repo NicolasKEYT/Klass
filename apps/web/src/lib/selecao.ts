@@ -163,6 +163,7 @@ export interface MatriculaListagem {
   alunoNome: string;
   status: StatusMatricula;
   motivoRejeicao: string | null;
+  motivoConclusao: string | null;
   criadoEm: string;
 }
 
@@ -183,8 +184,19 @@ export async function listarMatriculasDaTurma(turmaId: string): Promise<Matricul
     alunoNome: nomeAluno.get(m.aluno_id) ?? "—",
     status: m.status,
     motivoRejeicao: m.motivo_rejeicao,
+    motivoConclusao: m.motivo_conclusao,
     criadoEm: m.criado_em,
   }));
+}
+
+// Coordenação desliga um aluno já matriculado (status -> cancelada, com
+// motivo). Ver migration remover_aluno_da_turma.
+export async function removerAlunoDaTurma(matriculaId: string, motivo: string): Promise<void> {
+  const { error } = await selecao().rpc("remover_aluno_da_turma", {
+    p_matricula_id: matriculaId,
+    p_motivo: motivo,
+  });
+  if (error) throw new Error(mensagemDeErroBanco(error));
 }
 
 export async function listarProfessores(): Promise<Array<{ id: string; nomeCompleto: string }>> {
@@ -302,6 +314,8 @@ export interface MatriculaDoAluno {
   professorNome: string;
   periodoInicio: string;
   periodoFim: string;
+  /** Motivo de encerramento/remoção (preenchido em cancelada/concluida/reprovada). */
+  motivoConclusao: string | null;
 }
 
 export async function listarMatriculasDoAluno(alunoId: string): Promise<MatriculaDoAluno[]> {
@@ -342,6 +356,7 @@ export async function listarMatriculasDoAluno(alunoId: string): Promise<Matricul
       professorNome: turma ? nomeProfessor.get(turma.professor_id) ?? "—" : "—",
       periodoInicio: turma?.periodo_inicio ?? "",
       periodoFim: turma?.periodo_fim ?? "",
+      motivoConclusao: m.motivo_conclusao,
     };
   });
 }
