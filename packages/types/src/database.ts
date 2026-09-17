@@ -20,6 +20,7 @@ export type Database = {
           carga_horaria_horas: number
           criado_em: string
           descricao: string
+          icone: string | null
           id: string
           nivel: Database["catalogo"]["Enums"]["nivel_modulo"]
           nome: string
@@ -31,6 +32,7 @@ export type Database = {
           carga_horaria_horas: number
           criado_em?: string
           descricao: string
+          icone?: string | null
           id?: string
           nivel: Database["catalogo"]["Enums"]["nivel_modulo"]
           nome: string
@@ -42,6 +44,7 @@ export type Database = {
           carga_horaria_horas?: number
           criado_em?: string
           descricao?: string
+          icone?: string | null
           id?: string
           nivel?: Database["catalogo"]["Enums"]["nivel_modulo"]
           nome?: string
@@ -95,6 +98,7 @@ export type Database = {
           criado_em: string
           descricao: string
           descricao_curta: string | null
+          icone: string | null
           id: string
           nome: string
           publicada: boolean
@@ -106,6 +110,7 @@ export type Database = {
           criado_em?: string
           descricao: string
           descricao_curta?: string | null
+          icone?: string | null
           id?: string
           nome: string
           publicada?: boolean
@@ -117,6 +122,7 @@ export type Database = {
           criado_em?: string
           descricao?: string
           descricao_curta?: string | null
+          icone?: string | null
           id?: string
           nome?: string
           publicada?: boolean
@@ -136,6 +142,7 @@ export type Database = {
           carga_horaria_horas: number
           criado_em: string
           descricao: string
+          icone: string | null
           id: string
           nivel: Database["catalogo"]["Enums"]["nivel_modulo"]
           nome: string
@@ -156,6 +163,7 @@ export type Database = {
           carga_horaria_horas: number
           criado_em: string
           descricao: string
+          icone: string | null
           id: string
           nivel: Database["catalogo"]["Enums"]["nivel_modulo"]
           nome: string
@@ -169,6 +177,7 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      reordenar_modulos: { Args: { p_ids: string[] }; Returns: undefined }
       trocar_ordem_modulos: {
         Args: { p_modulo_a: string; p_modulo_b: string }
         Returns: undefined
@@ -618,6 +627,10 @@ export type Database = {
       }
       inscrever_aluno: { Args: { p_turma_id: string }; Returns: string }
       professor_da_turma: { Args: { p_profile_id: string }; Returns: boolean }
+      remover_aluno_da_turma: {
+        Args: { p_matricula_id: string; p_motivo: string }
+        Returns: undefined
+      }
       validar_pre_requisitos_modulo: {
         Args: { p_aluno_id: string; p_modulo_id: string }
         Returns: undefined
