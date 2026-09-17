@@ -8,7 +8,12 @@ interface EnviarEmailInput {
 }
 
 const RESEND_API_URL = "https://api.resend.com/emails";
-const REMETENTE_PADRAO = "Klass <no-reply@klass.edu>";
+// onboarding@resend.dev é o remetente compartilhado de teste do Resend:
+// funciona sem verificar um domínio próprio, mas só entrega para o e-mail
+// dono da conta Resend. Para produção de verdade, verificar um domínio em
+// resend.com/domains e trocar por no-reply@<dominio>. Decisão registrada:
+// enquanto é TCC, fica no remetente de teste.
+const REMETENTE_PADRAO = "Klass <onboarding@resend.dev>";
 
 /**
  * Envio genérico via Resend. Os e-mails específicos do domínio (ex.:
