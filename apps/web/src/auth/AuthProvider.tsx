@@ -42,25 +42,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     let ativo = true;
+    // Id do usuário cujo profile já está carregado. onAuthStateChange
+    // dispara a CADA visibilitychange da aba (o supabase-js re-valida a
+    // sessão ao focar) com eventos SIGNED_IN/TOKEN_REFRESHED do MESMO
+    // usuário. Sem este guard, toda troca de aba re-buscava o profile e
+    // ligava `carregando`, o que trocava a tela inteira pelo spinner do
+    // <Autenticado> por 1-2s — a causa raiz do "recarrega ao trocar de
+    // aba". Só re-carrega quando o usuário realmente muda.
+    let idCarregado: string | null = null;
 
     async function sincronizar(session: Session | null) {
-      // carregando cobre toda troca de sessão, não só a primeira: entrar()
-      // só espera o signInWithPassword, não a busca do profile (que roda
-      // à parte, disparada por este listener) — sem isso, o /  renderia
-      // "Olá, ...!" com o profile ainda nulo por uma fração de segundo
-      // logo após o login.
-      setCarregando(true);
       const novoUsuario = session?.user ?? null;
-      setUsuario(novoUsuario);
 
       if (!novoUsuario) {
+        idCarregado = null;
+        setUsuario(null);
         setProfile(null);
         if (ativo) setCarregando(false);
         return;
       }
 
+      // Mesmo usuário já carregado: atualiza só o objeto (token renovado)
+      // sem re-buscar profile nem piscar o "Carregando".
+      if (novoUsuario.id === idCarregado) {
+        setUsuario(novoUsuario);
+        return;
+      }
+
+      // Usuário novo/diferente (primeiro load, login, troca de conta):
+      // aí sim carrega o profile. `carregando` cobre toda a busca para o
+      // / não renderizar "Olá, ...!" com profile ainda nulo após o login.
+      idCarregado = novoUsuario.id;
+      setCarregando(true);
+      setUsuario(novoUsuario);
+
       const perfil = await buscarProfileComRetry(novoUsuario.id);
-      if (ativo) {
+      // Guarda contra corrida: se o usuário mudou durante o fetch, ignora.
+      if (ativo && idCarregado === novoUsuario.id) {
         setProfile(perfil);
         setCarregando(false);
       }
