@@ -370,7 +370,7 @@ export function EditarTrilha() {
               <textarea
                 required
                 rows={4}
-                className="rounded-klass-control border border-border bg-surface px-3.5 py-2 text-body-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
+                className="rounded-klass-control border border-border bg-surface px-3.5 py-2 text-body-sm text-text-primary transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                 value={descricao}
                 onChange={(e) => setDescricao(e.target.value)}
               />
@@ -431,7 +431,7 @@ export function EditarTrilha() {
                 <label className="flex flex-1 flex-col gap-1.5">
                   <span className="text-label font-medium text-text-secondary">Nível</span>
                   <select
-                    className="h-9 rounded-klass-control border border-border bg-surface px-3.5 text-body-sm text-text-primary"
+                    className="h-9 rounded-klass-control border border-border bg-surface px-3.5 text-body-sm text-text-primary transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                     value={novoModuloNivel}
                     onChange={(e) => setNovoModuloNivel(e.target.value as NivelModulo)}
                   >
@@ -481,7 +481,7 @@ export function EditarTrilha() {
                   />
                   <div className="flex gap-4">
                     <select
-                      className="h-9 flex-1 rounded-klass-control border border-border bg-surface px-3.5 text-body-sm text-text-primary"
+                      className="h-9 flex-1 rounded-klass-control border border-border bg-surface px-3.5 text-body-sm text-text-primary transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                       value={edicaoNivel}
                       onChange={(e) => setEdicaoNivel(e.target.value as NivelModulo)}
                     >

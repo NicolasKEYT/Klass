@@ -94,7 +94,7 @@ export function IconePicker({
         className={`flex h-10 w-10 items-center justify-center rounded-klass-control border ${
           valor === null
             ? "border-primary bg-primary-subtle text-primary"
-            : "border-border bg-surface text-text-secondary hover:bg-neutral-subtle"
+            : "border-transparent bg-surface-subtle text-text-secondary transition hover:bg-neutral-subtle"
         }`}
       >
         <BookOpen className="h-5 w-5" aria-hidden />
@@ -109,7 +109,7 @@ export function IconePicker({
           className={`flex h-10 w-10 items-center justify-center rounded-klass-control border ${
             valor === nome
               ? "border-primary bg-primary-subtle text-primary"
-              : "border-border bg-surface text-text-secondary hover:bg-neutral-subtle"
+              : "border-transparent bg-surface-subtle text-text-secondary transition hover:bg-neutral-subtle"
           }`}
         >
           <Componente className="h-5 w-5" aria-hidden />

@@ -27,7 +27,7 @@ function CardResumo({
   return (
     <Link
       to={para}
-      className="flex flex-col gap-1 rounded-klass-card border border-border bg-surface p-5 transition-colors hover:border-primary/40 hover:bg-surface-subtle"
+      className="flex flex-col gap-1 rounded-klass-card border border-border bg-surface p-5 shadow-klass-card transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-klass-hover"
     >
       <span className="font-serif text-klass-stat text-text-primary">{numero}</span>
       <span className="text-body-sm text-text-secondary">{rotulo}</span>

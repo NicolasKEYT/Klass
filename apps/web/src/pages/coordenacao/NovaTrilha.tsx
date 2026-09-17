@@ -123,7 +123,7 @@ export function NovaTrilha() {
               <textarea
                 required
                 rows={4}
-                className="rounded-klass-control border border-border bg-surface px-3.5 py-2 text-body-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
+                className="rounded-klass-control border border-border bg-surface px-3.5 py-2 text-body-sm text-text-primary transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                 value={descricao}
                 onChange={(e) => setDescricao(e.target.value)}
               />
