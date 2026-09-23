@@ -92,7 +92,10 @@ export function Trilhas() {
 
         <div className="flex flex-col gap-3">
           {trilhas?.map((trilha) => (
-            <Card key={trilha.id} className="flex items-center justify-between gap-4">
+            <Card
+              key={trilha.id}
+              className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
+            >
               <div className="flex flex-col gap-1">
                 <div className="flex items-center gap-2">
                   <IconeCatalogo nome={trilha.icone} className="h-5 w-5 text-text-secondary" />
