@@ -32,8 +32,11 @@ import {
 // biblioteca inteira). A chave kebab-case é o que fica salvo em
 // catalogo.trilhas.icone / catalogo.modulos.icone; o componente é
 // resolvido aqui, no frontend, sem import dinâmico.
+// "book-open" NÃO entra na lista: ele já é o ícone padrão (ICONE_PADRAO
+// abaixo), então a primeira casinha do seletor — a de "sem ícone" — já o
+// mostra. Tê-lo também aqui punha dois livros abertos idênticos lado a
+// lado no grid; era a "duplicação de ícone" relatada na edição.
 export const ICONES_CATALOGO: Record<string, LucideIcon> = {
-  "book-open": BookOpen,
   book: Book,
   library: Library,
   "graduation-cap": GraduationCap,
