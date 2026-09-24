@@ -31,12 +31,11 @@ export function NovaTrilha() {
     if (!slugEditadoManualmente) setSlug(gerarSlug(valor));
   }
 
-  // "Ficar na tela" não faz sentido aqui como faz em EditarTrilha: o
-  // formulário já foi enviado, os campos não se limpam sozinhos, e
-  // enviar de novo tentaria criar outra trilha com o mesmo slug. O
-  // equivalente de "continuar ajustando" numa trilha nova é ir direto
-  // para a edição (onde módulos e pré-requisitos existem) — não ficar
-  // parado num formulário de criação já usado.
+  // O caminho padrão de criação termina na tela de edição da trilha, que
+  // é onde módulos e pré-requisitos são adicionados — sem isso, criar uma
+  // trilha exigia salvar, voltar para a lista e reabrir em "Editar" só
+  // para então cadastrar o primeiro módulo. "Salvar e voltar à lista"
+  // fica como a alternativa, para quem só queria registrar a trilha.
   async function salvar(irParaListaAoInves: boolean) {
     setErro(null);
     setMensagem(null);
@@ -57,7 +56,7 @@ export function NovaTrilha() {
 
   async function aoSubmeter(evento: FormEvent) {
     evento.preventDefault();
-    await salvar(true);
+    await salvar(false);
   }
 
   return (
@@ -138,15 +137,15 @@ export function NovaTrilha() {
 
             <div className="flex gap-3">
               <Button type="submit" disabled={enviando}>
-                {enviando ? "Criando..." : "Salvar e voltar"}
+                {enviando ? "Criando..." : "Salvar e adicionar módulos"}
               </Button>
               <Button
                 type="button"
                 variant="secondary"
                 disabled={enviando}
-                onClick={() => void salvar(false)}
+                onClick={() => void salvar(true)}
               >
-                Salvar e continuar editando
+                Salvar e voltar à lista
               </Button>
             </div>
           </form>
