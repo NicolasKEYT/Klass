@@ -19,6 +19,9 @@ export function Trilhas() {
   // Confirmação inline, não window.confirm — dialogs nativos ficam
   // desabilitados em vários contextos embutidos/automatizados de browser.
   const [confirmandoApagarId, setConfirmandoApagarId] = useState<string | null>(null);
+  // Trava enquanto publicar/apagar está no ar, para o clique de reflexo
+  // não disparar a mesma ação duas vezes.
+  const [processando, setProcessando] = useState(false);
 
   async function carregar() {
     try {
@@ -33,20 +36,26 @@ export function Trilhas() {
   }, []);
 
   async function alternarPublicacao(trilha: TrilhaComContagem) {
+    if (processando) return;
     setErro(null);
     setMensagem(null);
+    setProcessando(true);
     try {
       await definirPublicacaoTrilha(trilha.id, !trilha.publicada);
       setMensagem(trilha.publicada ? "Trilha voltou para rascunho." : "Trilha publicada.");
       await carregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível atualizar a trilha.");
+    } finally {
+      setProcessando(false);
     }
   }
 
   async function apagar(trilha: TrilhaComContagem) {
+    if (processando) return;
     setErro(null);
     setMensagem(null);
+    setProcessando(true);
     try {
       await apagarTrilha(trilha.id);
       setMensagem("Trilha apagada.");
@@ -54,6 +63,8 @@ export function Trilhas() {
       await carregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível apagar a trilha.");
+    } finally {
+      setProcessando(false);
     }
   }
 
@@ -115,7 +126,11 @@ export function Trilhas() {
                 {confirmandoApagarId === trilha.id ? (
                   <>
                     <span className="text-label text-text-secondary">Apagar de vez?</span>
-                    <Button variant="secondary" onClick={() => void apagar(trilha)}>
+                    <Button
+                      variant="secondary"
+                      disabled={processando}
+                      onClick={() => void apagar(trilha)}
+                    >
                       Sim, apagar
                     </Button>
                     <Button variant="secondary" onClick={() => setConfirmandoApagarId(null)}>
@@ -130,7 +145,11 @@ export function Trilhas() {
                     >
                       Editar
                     </Link>
-                    <Button variant="secondary" onClick={() => void alternarPublicacao(trilha)}>
+                    <Button
+                      variant="secondary"
+                      disabled={processando}
+                      onClick={() => void alternarPublicacao(trilha)}
+                    >
                       {trilha.publicada ? "Voltar para rascunho" : "Publicar"}
                     </Button>
                     <Button

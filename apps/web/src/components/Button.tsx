@@ -25,7 +25,13 @@ export function Button({
 }: ButtonProps) {
   return (
     <button
-      className={`inline-flex h-[38px] items-center justify-center gap-2 rounded-klass-control px-4 text-klass-md font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${variantClasses[variant]} ${className}`}
+      // A transição é restrita a cor/brilho/sombra de propósito: o
+      // `transition` genérico também animava a `opacity`, então cada vez
+      // que um botão entrava/saía do estado disabled (num salvar rápido,
+      // por exemplo) ele fazia um fade de 50% e voltava — lido como o
+      // botão "sumindo e reaparecendo". Sem animar opacidade, o disabled
+      // é instantâneo e o clique de reflexo duplicado desaparece.
+      className={`inline-flex h-[38px] items-center justify-center gap-2 rounded-klass-control px-4 text-klass-md font-medium transition-[color,background-color,border-color,box-shadow,filter] disabled:cursor-not-allowed disabled:opacity-50 ${variantClasses[variant]} ${className}`}
       {...props}
     />
   );
