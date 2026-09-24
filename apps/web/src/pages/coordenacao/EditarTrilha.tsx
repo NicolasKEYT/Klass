@@ -91,6 +91,13 @@ export function EditarTrilha() {
   // Confirmação inline, não window.confirm — dialogs nativos ficam
   // desabilitados em vários contextos embutidos/automatizados de browser.
   const [confirmandoApagarModuloId, setConfirmandoApagarModuloId] = useState<string | null>(null);
+  // Trava enquanto uma reordenação está no ar: sem isso, Subir/Descer
+  // seguiam clicáveis durante o round-trip e um segundo clique de reflexo
+  // disparava outra troca de ordem (a ação duplicada relatada).
+  const [reordenando, setReordenando] = useState(false);
+  // Mesma proteção para salvar edição de módulo / apagar módulo: sem ela,
+  // um segundo clique durante o round-trip refazia a ação.
+  const [processandoModulo, setProcessandoModulo] = useState(false);
 
   async function carregar() {
     if (!slugRota) return;
@@ -207,9 +214,10 @@ export function EditarTrilha() {
 
   async function salvarEdicaoModulo(evento: FormEvent) {
     evento.preventDefault();
-    if (!moduloEmEdicaoId) return;
+    if (!moduloEmEdicaoId || processandoModulo) return;
     setErro(null);
     setMensagem(null);
+    setProcessandoModulo(true);
     try {
       await atualizarModulo(moduloEmEdicaoId, {
         nome: edicaoNome,
@@ -223,12 +231,16 @@ export function EditarTrilha() {
       await carregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível salvar o módulo.");
+    } finally {
+      setProcessandoModulo(false);
     }
   }
 
   async function aoApagarModulo(modulo: Modulo) {
+    if (processandoModulo) return;
     setErro(null);
     setMensagem(null);
+    setProcessandoModulo(true);
     try {
       await apagarModulo(modulo.id);
       setMensagem("Módulo apagado.");
@@ -236,19 +248,25 @@ export function EditarTrilha() {
       await carregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível apagar o módulo.");
+    } finally {
+      setProcessandoModulo(false);
     }
   }
 
   async function mover(modulo: Modulo, direcao: "subir" | "descer") {
+    if (reordenando) return;
     const indice = modulos.findIndex((m) => m.id === modulo.id);
     const alvo = direcao === "subir" ? modulos[indice - 1] : modulos[indice + 1];
     if (!alvo) return;
     setErro(null);
+    setReordenando(true);
     try {
       await trocarOrdemModulos(modulo.id, alvo.id);
       await carregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível reordenar.");
+    } finally {
+      setReordenando(false);
     }
   }
 
@@ -275,11 +293,24 @@ export function EditarTrilha() {
 
   async function aoAlternarPreRequisito(modulo: Modulo, preRequisitoId: string, ativo: boolean) {
     setErro(null);
+    // Atualização otimista: o checkbox reflete a escolha na hora. Antes,
+    // o estado só mudava depois de gravar e recarregar tudo, então a
+    // marca de "selecionado" demorava um round-trip inteiro para sumir ao
+    // desmarcar. Só recarregamos do banco se a gravação falhar (revertendo
+    // para o estado real).
+    setPreRequisitos((atual) => {
+      const copia = new Map(atual);
+      const doModulo = new Set(copia.get(modulo.id) ?? []);
+      if (ativo) doModulo.add(preRequisitoId);
+      else doModulo.delete(preRequisitoId);
+      copia.set(modulo.id, doModulo);
+      return copia;
+    });
     try {
       await definirPreRequisito(modulo.id, preRequisitoId, ativo);
-      await carregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível atualizar o pré-requisito.");
+      await carregar();
     }
   }
 
@@ -504,7 +535,9 @@ export function EditarTrilha() {
                     <IconePicker valor={edicaoIcone} onChange={setEdicaoIcone} />
                   </div>
                   <div className="flex gap-2">
-                    <Button type="submit">Salvar</Button>
+                    <Button type="submit" disabled={processandoModulo}>
+                      {processandoModulo ? "Salvando..." : "Salvar"}
+                    </Button>
                     <Button variant="secondary" type="button" onClick={() => setModuloEmEdicaoId(null)}>
                       Cancelar
                     </Button>
@@ -524,14 +557,14 @@ export function EditarTrilha() {
                     <div className="flex items-center gap-2">
                       <Button
                         variant="secondary"
-                        disabled={indice === 0}
+                        disabled={indice === 0 || reordenando}
                         onClick={() => void mover(modulo, "subir")}
                       >
                         Subir
                       </Button>
                       <Button
                         variant="secondary"
-                        disabled={indice === modulos.length - 1}
+                        disabled={indice === modulos.length - 1 || reordenando}
                         onClick={() => void mover(modulo, "descer")}
                       >
                         Descer
@@ -542,7 +575,11 @@ export function EditarTrilha() {
                       {confirmandoApagarModuloId === modulo.id ? (
                         <>
                           <span className="text-label text-text-secondary">Apagar de vez?</span>
-                          <Button variant="secondary" onClick={() => void aoApagarModulo(modulo)}>
+                          <Button
+                            variant="secondary"
+                            disabled={processandoModulo}
+                            onClick={() => void aoApagarModulo(modulo)}
+                          >
                             Sim
                           </Button>
                           <Button
