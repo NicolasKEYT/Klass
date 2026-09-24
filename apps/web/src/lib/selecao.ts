@@ -121,8 +121,10 @@ export async function listarTurmasParaCoordenacao(): Promise<TurmaListagem[]> {
 export interface TurmaDetalhada {
   id: string;
   codigo: string;
+  moduloId: string;
   moduloNome: string;
   trilhaNome: string;
+  professorId: string;
   professorNome: string;
   periodoInicio: string;
   periodoFim: string;
@@ -148,8 +150,10 @@ export async function buscarTurmaDetalhada(turmaId: string): Promise<TurmaDetalh
   return {
     id: turma.id,
     codigo: turma.codigo,
+    moduloId: turma.modulo_id,
     moduloNome: contexto?.nome ?? "—",
     trilhaNome: contexto?.trilhaNome ?? "—",
+    professorId: turma.professor_id,
     professorNome: nomeProfessor.get(turma.professor_id) ?? "—",
     periodoInicio: turma.periodo_inicio,
     periodoFim: turma.periodo_fim,
@@ -209,6 +213,25 @@ export async function listarProfessores(): Promise<Array<{ id: string; nomeCompl
   return (data ?? []).map((p) => ({ id: p.id, nomeCompleto: p.nome_completo }));
 }
 
+// Faixa de datas aceita no período da turma. Espelha o check
+// turmas_periodo_ano_razoavel no banco; aqui limita o input de data
+// nativo (via min/max) para não deixar digitar um ano de 5 dígitos.
+export const PERIODO_TURMA_DATA_MIN = "2000-01-01";
+export const PERIODO_TURMA_DATA_MAX = "2100-12-31";
+
+// Validação de conveniência antes de enviar (a garantia é do banco).
+// Retorna a mensagem de erro em português, ou null se estiver ok.
+export function validarPeriodoTurma(inicio: string, fim: string): string | null {
+  if (!inicio || !fim) return "Preencha as datas de início e fim do período.";
+  const anoInicio = Number(inicio.slice(0, 4));
+  const anoFim = Number(fim.slice(0, 4));
+  if (anoInicio < 2000 || anoInicio > 2100 || anoFim < 2000 || anoFim > 2100) {
+    return "O ano do período precisa ter 4 dígitos, entre 2000 e 2100.";
+  }
+  if (fim <= inicio) return "O período final precisa vir depois do início.";
+  return null;
+}
+
 export async function criarTurma(input: {
   moduloId: string;
   codigo: string;
@@ -229,6 +252,38 @@ export async function criarTurma(input: {
       vagas_total: input.vagasTotal,
       frequencia_minima_percentual: input.frequenciaMinimaPercentual,
     })
+    .select("*")
+    .single();
+  if (error) throw new Error(mensagemDeErroBanco(error));
+  return data;
+}
+
+// Edição de turma já criada (item 7). Código, professor, período, vagas e
+// frequência mínima são todos editáveis; o banco é quem impede reduzir
+// vagas abaixo dos já matriculados (trigger
+// turmas_impedir_vagas_abaixo_dos_matriculados).
+export async function atualizarTurma(
+  turmaId: string,
+  input: {
+    codigo: string;
+    professorId: string;
+    periodoInicio: string;
+    periodoFim: string;
+    vagasTotal: number;
+    frequenciaMinimaPercentual: number;
+  },
+): Promise<Turma> {
+  const { data, error } = await selecao()
+    .from("turmas")
+    .update({
+      codigo: input.codigo,
+      professor_id: input.professorId,
+      periodo_inicio: input.periodoInicio,
+      periodo_fim: input.periodoFim,
+      vagas_total: input.vagasTotal,
+      frequencia_minima_percentual: input.frequenciaMinimaPercentual,
+    })
+    .eq("id", turmaId)
     .select("*")
     .single();
   if (error) throw new Error(mensagemDeErroBanco(error));

@@ -57,7 +57,8 @@ const REGRAS: Array<{ contem: string; mensagem: string }> = [
   { contem: "turmas_codigo_key", mensagem: "Já existe uma turma com esse código." },
   {
     contem: "turmas_codigo_formato",
-    mensagem: "O código precisa seguir o padrão SIGLA-ANO-SEQUÊNCIA, ex.: CDA-2026-1.",
+    mensagem:
+      "O código deve ter 2 ou 3 partes de letras/números separadas por hífen, sem espaços. Ex.: CDA-2026-1.",
   },
   { contem: "turmas_periodo_valido", mensagem: "O período final precisa vir depois do início." },
   { contem: "turmas_vagas_positivas", mensagem: "O número de vagas precisa ser maior que zero." },

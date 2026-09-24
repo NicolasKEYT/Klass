@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { Aviso } from "@/components/Aviso";
 import { Badge } from "@/components/Badge";
 import { BotaoVoltar } from "@/components/BotaoVoltar";
@@ -57,6 +57,11 @@ export function DetalheTurma() {
   const [desfazendoId, setDesfazendoId] = useState<string | null>(null);
   const [removendoId, setRemovendoId] = useState<string | null>(null);
   const [motivoRemocao, setMotivoRemocao] = useState("");
+  // Trava enquanto uma ação (aprovar/rejeitar/remover/desfazer) está no
+  // ar. Sem ela, o botão seguia clicável durante o round-trip + recarga e
+  // um segundo clique de reflexo disparava a ação de novo — aprovar duas
+  // vezes, por exemplo.
+  const [processando, setProcessando] = useState(false);
 
   async function carregar() {
     if (!id) return;
@@ -89,22 +94,26 @@ export function DetalheTurma() {
   }, [id]);
 
   async function aoAprovar(matriculaId: string) {
-    if (!usuario) return;
+    if (!usuario || processando) return;
     setErro(null);
     setMensagem(null);
+    setProcessando(true);
     try {
       await aprovarMatricula(matriculaId, usuario.id);
       setMensagem("Matrícula aprovada — o aluno recebe um e-mail de confirmação.");
       await carregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível aprovar a matrícula.");
+    } finally {
+      setProcessando(false);
     }
   }
 
   async function aoConfirmarRejeicao(matriculaId: string) {
-    if (!usuario) return;
+    if (!usuario || processando) return;
     setErro(null);
     setMensagem(null);
+    setProcessando(true);
     try {
       await rejeitarMatricula(matriculaId, usuario.id, motivo);
       setMensagem("Matrícula rejeitada.");
@@ -113,12 +122,16 @@ export function DetalheTurma() {
       await carregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível rejeitar a matrícula.");
+    } finally {
+      setProcessando(false);
     }
   }
 
   async function aoDesfazer(matriculaId: string) {
+    if (processando) return;
     setErro(null);
     setMensagem(null);
+    setProcessando(true);
     try {
       await desfazerEncerramento(matriculaId);
       setMensagem("Encerramento desfeito — a matrícula voltou a 'matriculada'.");
@@ -126,12 +139,16 @@ export function DetalheTurma() {
       await carregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível desfazer o encerramento.");
+    } finally {
+      setProcessando(false);
     }
   }
 
   async function aoRemover(matriculaId: string) {
+    if (processando) return;
     setErro(null);
     setMensagem(null);
+    setProcessando(true);
     try {
       await removerAlunoDaTurma(matriculaId, motivoRemocao);
       setMensagem("Aluno removido da turma. Ele vê o motivo nas próprias matrículas.");
@@ -140,6 +157,8 @@ export function DetalheTurma() {
       await carregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível remover o aluno.");
+    } finally {
+      setProcessando(false);
     }
   }
 
@@ -173,15 +192,22 @@ export function DetalheTurma() {
 
         {turma && (
           <>
-            <Card className="mb-6">
-              <Titulo>{turma.codigo}</Titulo>
-              <p className="mt-1 text-body-sm text-text-secondary">
-                {turma.moduloNome} · {turma.trilhaNome}
-              </p>
-              <p className="mt-2 text-label text-text-muted">
-                {turma.professorNome} · {turma.periodoInicio} a {turma.periodoFim} ·{" "}
-                {turma.vagasTotal} vagas
-              </p>
+            <Card className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+              <div>
+                <Titulo>{turma.codigo}</Titulo>
+                <p className="mt-1 text-body-sm text-text-secondary">
+                  {turma.moduloNome} · {turma.trilhaNome}
+                </p>
+                <p className="mt-2 text-label text-text-muted">
+                  {turma.professorNome} · {turma.periodoInicio} a {turma.periodoFim} ·{" "}
+                  {turma.vagasTotal} vagas · frequência mínima {turma.frequenciaMinimaPercentual}%
+                </p>
+              </div>
+              <Link to={`/coordenacao/turmas/${turma.id}/editar`}>
+                <Button variant="secondary" className="whitespace-nowrap">
+                  Editar turma
+                </Button>
+              </Link>
             </Card>
 
             <Titulo nivel="secao" className="mb-3">
@@ -197,9 +223,15 @@ export function DetalheTurma() {
                     <span className="text-klass-md text-text-primary">{matricula.alunoNome}</span>
                     {rejeitandoId !== matricula.id && (
                       <div className="flex gap-2">
-                        <Button onClick={() => void aoAprovar(matricula.id)}>Aprovar</Button>
+                        <Button
+                          disabled={processando}
+                          onClick={() => void aoAprovar(matricula.id)}
+                        >
+                          Aprovar
+                        </Button>
                         <Button
                           variant="secondary"
+                          disabled={processando}
                           onClick={() => {
                             setRejeitandoId(matricula.id);
                             setMotivo("");
@@ -228,7 +260,7 @@ export function DetalheTurma() {
                       <div className="flex gap-2">
                         <Button
                           variant="secondary"
-                          disabled={motivo.trim().length < 10}
+                          disabled={motivo.trim().length < 10 || processando}
                           onClick={() => void aoConfirmarRejeicao(matricula.id)}
                         >
                           Confirmar rejeição
@@ -287,7 +319,7 @@ export function DetalheTurma() {
                       <div className="flex gap-2">
                         <Button
                           variant="secondary"
-                          disabled={motivoRemocao.trim().length < 10}
+                          disabled={motivoRemocao.trim().length < 10 || processando}
                           onClick={() => void aoRemover(matricula.id)}
                         >
                           Confirmar remoção
@@ -342,7 +374,11 @@ export function DetalheTurma() {
                               Volta pra "matriculada" — o professor pode lançar de novo. Desfazer
                               mesmo assim?
                             </span>
-                            <Button variant="secondary" onClick={() => void aoDesfazer(matricula.id)}>
+                            <Button
+                              variant="secondary"
+                              disabled={processando}
+                              onClick={() => void aoDesfazer(matricula.id)}
+                            >
                               Sim
                             </Button>
                             <Button variant="secondary" onClick={() => setDesfazendoId(null)}>

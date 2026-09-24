@@ -8,7 +8,13 @@ import { Input } from "@/components/Input";
 import { PaginaAutenticada } from "@/components/PaginaAutenticada";
 import { Titulo } from "@/components/Titulo";
 import { listarModulosDaTrilha, listarTrilhas } from "@/lib/catalogo";
-import { criarTurma, listarProfessores } from "@/lib/selecao";
+import {
+  criarTurma,
+  listarProfessores,
+  validarPeriodoTurma,
+  PERIODO_TURMA_DATA_MIN,
+  PERIODO_TURMA_DATA_MAX,
+} from "@/lib/selecao";
 import type { Modulo, Trilha } from "@klass/types";
 
 const ATRASO_ANTES_DE_NAVEGAR_MS = 700;
@@ -69,6 +75,11 @@ export function NovaTurma() {
   async function salvar(irParaListaAoInves: boolean) {
     setErro(null);
     setMensagem(null);
+    const erroPeriodo = validarPeriodoTurma(periodoInicio, periodoFim);
+    if (erroPeriodo) {
+      setErro(erroPeriodo);
+      return;
+    }
     setEnviando(true);
     try {
       const turma = await criarTurma({
@@ -150,11 +161,13 @@ export function NovaTurma() {
               <span className="text-label font-medium text-text-secondary">Código</span>
               <Input
                 required
-                placeholder="PROG-2026-1"
+                placeholder="Ex.: CDA-2026-1"
                 value={codigo}
                 onChange={(e) => setCodigo(e.target.value.toUpperCase())}
               />
-              <span className="text-label text-text-muted">Padrão: SIGLA-ANO-SEQUÊNCIA</span>
+              <span className="text-label text-text-muted">
+                Letras e números separados por hífen, em 2 ou 3 partes. Ex.: CDA-2026-1.
+              </span>
             </label>
 
             <label className="flex flex-col gap-1.5">
@@ -180,6 +193,12 @@ export function NovaTurma() {
               )}
             </label>
 
+            {/* Data: mantemos o input nativo do navegador (type=date), não
+                uma máscara própria de dia/mês/ano. É o mais simples de
+                manter e não tem a classe de bug de foco/auto-avanço entre
+                segmentos que uma máscara manual teria. Os únicos ajustes
+                são min/max (limita o ano a 4 dígitos numa faixa sã) e a
+                validação de período antes de salvar. */}
             <div className="flex gap-4">
               <label className="flex flex-1 flex-col gap-1.5">
                 <span className="text-label font-medium text-text-secondary">
@@ -188,6 +207,8 @@ export function NovaTurma() {
                 <Input
                   type="date"
                   required
+                  min={PERIODO_TURMA_DATA_MIN}
+                  max={PERIODO_TURMA_DATA_MAX}
                   value={periodoInicio}
                   onChange={(e) => setPeriodoInicio(e.target.value)}
                 />
@@ -197,6 +218,8 @@ export function NovaTurma() {
                 <Input
                   type="date"
                   required
+                  min={PERIODO_TURMA_DATA_MIN}
+                  max={PERIODO_TURMA_DATA_MAX}
                   value={periodoFim}
                   onChange={(e) => setPeriodoFim(e.target.value)}
                 />

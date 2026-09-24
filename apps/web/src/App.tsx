@@ -13,6 +13,7 @@ import { Matriculas as MatriculasDoAluno } from "@/pages/aluno/Matriculas";
 import { Certificados as CertificadosDaCoordenacao } from "@/pages/coordenacao/Certificados";
 import { DetalheTurma as DetalheTurmaCoordenacao } from "@/pages/coordenacao/DetalheTurma";
 import { EditarTrilha } from "@/pages/coordenacao/EditarTrilha";
+import { EditarTurma } from "@/pages/coordenacao/EditarTurma";
 import { NovaTrilha } from "@/pages/coordenacao/NovaTrilha";
 import { NovaTurma } from "@/pages/coordenacao/NovaTurma";
 import { Trilhas } from "@/pages/coordenacao/Trilhas";
@@ -101,6 +102,14 @@ export default function App() {
           element={
             <Autenticado papel="coordenacao">
               <DetalheTurmaCoordenacao />
+            </Autenticado>
+          }
+        />
+        <Route
+          path="/coordenacao/turmas/:id/editar"
+          element={
+            <Autenticado papel="coordenacao">
+              <EditarTurma />
             </Autenticado>
           }
         />
