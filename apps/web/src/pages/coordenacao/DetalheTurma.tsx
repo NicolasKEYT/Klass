@@ -14,6 +14,7 @@ import {
   listarAlunosDoDiario,
   listarAulasDaTurma,
   listarAvaliacoesDaTurma,
+  reativarTurma,
   type AlunoDoDiario,
   type Aula,
   type Avaliacao,
@@ -62,6 +63,9 @@ export function DetalheTurma() {
   // um segundo clique de reflexo disparava a ação de novo — aprovar duas
   // vezes, por exemplo.
   const [processando, setProcessando] = useState(false);
+  const [confirmandoReativarTurma, setConfirmandoReativarTurma] = useState(false);
+  const [reativandoTurma, setReativandoTurma] = useState(false);
+  const [reativadas, setReativadas] = useState<number | null>(null);
 
   async function carregar() {
     if (!id) return;
@@ -162,10 +166,32 @@ export function DetalheTurma() {
     }
   }
 
+  async function aoReativarTurma() {
+    if (!id) return;
+    setErro(null);
+    setMensagem(null);
+    setReativandoTurma(true);
+    try {
+      const resumo = await reativarTurma(id);
+      setReativadas(resumo.reativadas);
+      setConfirmandoReativarTurma(false);
+      await carregar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Não foi possível reativar a turma.");
+    } finally {
+      setReativandoTurma(false);
+    }
+  }
+
   const pendentes = matriculas.filter((m) => m.status === "inscrita");
   const matriculados = matriculas.filter((m) => m.status === "matriculada");
   const historico = matriculas.filter((m) =>
     ["rejeitada", "cancelada", "concluida", "reprovada"].includes(m.status),
+  );
+  // Reativar turma só faz sentido quando há matrícula encerrada (concluída
+  // ou reprovada) — rejeitada/cancelada não voltam por aqui.
+  const temEncerradas = matriculas.some(
+    (m) => m.status === "concluida" || m.status === "reprovada",
   );
 
   return (
@@ -333,6 +359,54 @@ export function DetalheTurma() {
                 </Card>
               ))}
             </div>
+
+            {/* Reativação em lote (coordenação): devolve todas as matrículas
+                encerradas da turma para "matriculada", simétrico ao
+                "Desfazer encerramento" por aluno logo abaixo. */}
+            {temEncerradas && (
+              <div className="mb-4 flex flex-col gap-3">
+                <div className="flex items-center justify-between gap-4">
+                  <Titulo nivel="secao">Encerramento da turma</Titulo>
+                  {!confirmandoReativarTurma && (
+                    <Button
+                      variant="secondary"
+                      onClick={() => {
+                        setConfirmandoReativarTurma(true);
+                        setReativadas(null);
+                      }}
+                    >
+                      Reativar turma inteira
+                    </Button>
+                  )}
+                </div>
+                {confirmandoReativarTurma && (
+                  <Card className="flex flex-col gap-3">
+                    <p className="text-body-sm text-text-secondary">
+                      Isto devolve todos os alunos aprovados e reprovados desta turma para
+                      "matriculada", permitindo ao professor lançar de novo. Reativar a turma
+                      inteira?
+                    </p>
+                    <div className="flex gap-2">
+                      <Button disabled={reativandoTurma} onClick={() => void aoReativarTurma()}>
+                        {reativandoTurma ? "Reativando..." : "Reativar turma inteira"}
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        disabled={reativandoTurma}
+                        onClick={() => setConfirmandoReativarTurma(false)}
+                      >
+                        Cancelar
+                      </Button>
+                    </div>
+                  </Card>
+                )}
+                {reativadas !== null && (
+                  <Aviso variant="success">
+                    {reativadas} matrícula(s) reativada(s) — voltaram para "matriculada".
+                  </Aviso>
+                )}
+              </div>
+            )}
 
             {historico.length > 0 && (
               <>

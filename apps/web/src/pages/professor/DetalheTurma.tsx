@@ -14,6 +14,7 @@ import {
   criarAula,
   criarAvaliacao,
   encerrarMatricula,
+  encerrarTurma,
   listarAlunosDoDiario,
   listarAulasDaTurma,
   listarAvaliacoesDaTurma,
@@ -22,6 +23,7 @@ import {
   type Aula,
   type Avaliacao,
   type ProgressoMatricula,
+  type ResumoEncerramentoTurma,
 } from "@/lib/diario";
 import { buscarTurmaDetalhada, type TurmaDetalhada } from "@/lib/selecao";
 
@@ -61,6 +63,9 @@ export function DetalheTurma() {
   const [salvandoAula, setSalvandoAula] = useState(false);
 
   const [encerrandoId, setEncerrandoId] = useState<string | null>(null);
+  const [confirmandoEncerrarTurma, setConfirmandoEncerrarTurma] = useState(false);
+  const [encerrandoTurma, setEncerrandoTurma] = useState(false);
+  const [resumoEncerramento, setResumoEncerramento] = useState<ResumoEncerramentoTurma | null>(null);
 
   async function carregar() {
     if (!id) return;
@@ -149,12 +154,29 @@ export function DetalheTurma() {
     setEncerrandoId(matriculaId);
     try {
       await encerrarMatricula(matriculaId);
-      setMensagem("Módulo encerrado.");
+      setMensagem("Resultado do aluno lançado.");
       await carregar();
     } catch (e) {
-      setErro(e instanceof Error ? e.message : "Não foi possível encerrar o módulo.");
+      setErro(e instanceof Error ? e.message : "Não foi possível encerrar o aluno.");
     } finally {
       setEncerrandoId(null);
+    }
+  }
+
+  async function aoEncerrarTurma() {
+    if (!id) return;
+    setErro(null);
+    setMensagem(null);
+    setEncerrandoTurma(true);
+    try {
+      const resumo = await encerrarTurma(id);
+      setResumoEncerramento(resumo);
+      setConfirmandoEncerrarTurma(false);
+      await carregar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Não foi possível encerrar a turma.");
+    } finally {
+      setEncerrandoTurma(false);
     }
   }
 
@@ -373,12 +395,64 @@ export function DetalheTurma() {
             )}
 
             {aba === "alunos" && (
-              <div className="flex flex-col gap-2">
-                {alunos.length === 0 && (
-                  <p className="text-body-sm text-text-secondary">
-                    Nenhum aluno matriculado ainda.
-                  </p>
+              <>
+                <div className="mb-4 flex items-center justify-between gap-4">
+                  <Titulo nivel="secao">Alunos ({alunos.length})</Titulo>
+                  {alunos.some((a) => a.status === "matriculada") &&
+                    !confirmandoEncerrarTurma && (
+                      <Button
+                        variant="secondary"
+                        onClick={() => {
+                          setConfirmandoEncerrarTurma(true);
+                          setResumoEncerramento(null);
+                        }}
+                      >
+                        Encerrar turma
+                      </Button>
+                    )}
+                </div>
+
+                {/* Ação de nível de turma, separada dos botões por aluno abaixo. */}
+                {confirmandoEncerrarTurma && (
+                  <Card className="mb-4 flex flex-col gap-3">
+                    <p className="text-body-sm text-text-secondary">
+                      Isto encerra de uma vez todos os alunos matriculados — cada um é aprovado ou
+                      reprovado pelos próprios critérios de nota e frequência. Quem ainda estiver sem
+                      todas as notas ou chamadas é pulado e continua matriculado. Encerrar a turma
+                      agora?
+                    </p>
+                    <div className="flex gap-2">
+                      <Button disabled={encerrandoTurma} onClick={() => void aoEncerrarTurma()}>
+                        {encerrandoTurma ? "Encerrando..." : "Encerrar turma"}
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        disabled={encerrandoTurma}
+                        onClick={() => setConfirmandoEncerrarTurma(false)}
+                      >
+                        Cancelar
+                      </Button>
+                    </div>
+                  </Card>
                 )}
+
+                {resumoEncerramento && (
+                  <Aviso variant="success" className="mb-4">
+                    Encerramento concluído: {resumoEncerramento.aprovadas} aprovado(s),{" "}
+                    {resumoEncerramento.reprovadas} reprovado(s)
+                    {resumoEncerramento.puladas > 0
+                      ? `, ${resumoEncerramento.puladas} pulado(s) (faltam notas ou chamadas)`
+                      : ""}
+                    .
+                  </Aviso>
+                )}
+
+                <div className="flex flex-col gap-2">
+                  {alunos.length === 0 && (
+                    <p className="text-body-sm text-text-secondary">
+                      Nenhum aluno matriculado ainda.
+                    </p>
+                  )}
                 {alunos.map((aluno) => {
                   const motivoDesabilitado = !aluno.progresso.prontoParaEncerrar
                     ? "Ainda há avaliação sem nota ou aula sem chamada para este aluno."
@@ -420,13 +494,14 @@ export function DetalheTurma() {
                           title={motivoDesabilitado}
                           onClick={() => void aoEncerrar(aluno.matriculaId)}
                         >
-                          {encerrandoId === aluno.matriculaId ? "Encerrando..." : "Encerrar módulo"}
+                          {encerrandoId === aluno.matriculaId ? "Encerrando..." : "Encerrar aluno"}
                         </Button>
                       )}
                     </Card>
                   );
                 })}
-              </div>
+                </div>
+              </>
             )}
           </>
         )}

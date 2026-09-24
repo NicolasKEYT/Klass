@@ -213,6 +213,32 @@ export async function desfazerEncerramento(matriculaId: string): Promise<void> {
   if (error) throw new Error(mensagemDeErroBanco(error));
 }
 
+// Resumo devolvido por diario.encerrar_turma (jsonb). O rpc é tipado como
+// Json genérico, então casamos aqui para o formato conhecido.
+export interface ResumoEncerramentoTurma {
+  aprovadas: number;
+  reprovadas: number;
+  puladas: number;
+  total: number;
+  motivo_puladas: string;
+}
+
+export async function encerrarTurma(turmaId: string): Promise<ResumoEncerramentoTurma> {
+  const { data, error } = await diario().rpc("encerrar_turma", { p_turma_id: turmaId });
+  if (error) throw new Error(mensagemDeErroBanco(error));
+  return data as unknown as ResumoEncerramentoTurma;
+}
+
+export interface ResumoReativacaoTurma {
+  reativadas: number;
+}
+
+export async function reativarTurma(turmaId: string): Promise<ResumoReativacaoTurma> {
+  const { data, error } = await diario().rpc("reativar_turma", { p_turma_id: turmaId });
+  if (error) throw new Error(mensagemDeErroBanco(error));
+  return data as unknown as ResumoReativacaoTurma;
+}
+
 export interface AvaliacaoComNota {
   id: string;
   titulo: string;
