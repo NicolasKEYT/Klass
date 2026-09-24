@@ -100,9 +100,11 @@ export type Database = {
           descricao_curta: string | null
           icone: string | null
           id: string
+          media_minima: number
           nome: string
           publicada: boolean
           slug: string
+          tipo_certificacao: Database["catalogo"]["Enums"]["tipo_certificacao"]
         }
         Insert: {
           atualizado_em?: string
@@ -112,9 +114,11 @@ export type Database = {
           descricao_curta?: string | null
           icone?: string | null
           id?: string
+          media_minima?: number
           nome: string
           publicada?: boolean
           slug: string
+          tipo_certificacao?: Database["catalogo"]["Enums"]["tipo_certificacao"]
         }
         Update: {
           atualizado_em?: string
@@ -124,9 +128,11 @@ export type Database = {
           descricao_curta?: string | null
           icone?: string | null
           id?: string
+          media_minima?: number
           nome?: string
           publicada?: boolean
           slug?: string
+          tipo_certificacao?: Database["catalogo"]["Enums"]["tipo_certificacao"]
         }
         Relationships: []
       }
@@ -185,6 +191,7 @@ export type Database = {
     }
     Enums: {
       nivel_modulo: "iniciante" | "intermediario" | "avancado"
+      tipo_certificacao: "modulo" | "trilha"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -200,7 +207,14 @@ export type Database = {
           hash_publico: string
           id: string
           metadata: Json
-          trilha_carga_horaria_total: number
+          modulo_carga_horaria: number | null
+          modulo_id: string | null
+          modulo_nome: string | null
+          nota_final: number | null
+          periodo_fim: string | null
+          periodo_inicio: string | null
+          professor_nome: string | null
+          trilha_carga_horaria_total: number | null
           trilha_id: string
           trilha_nome: string
         }
@@ -211,7 +225,14 @@ export type Database = {
           hash_publico: string
           id?: string
           metadata?: Json
-          trilha_carga_horaria_total: number
+          modulo_carga_horaria?: number | null
+          modulo_id?: string | null
+          modulo_nome?: string | null
+          nota_final?: number | null
+          periodo_fim?: string | null
+          periodo_inicio?: string | null
+          professor_nome?: string | null
+          trilha_carga_horaria_total?: number | null
           trilha_id: string
           trilha_nome: string
         }
@@ -222,7 +243,14 @@ export type Database = {
           hash_publico?: string
           id?: string
           metadata?: Json
-          trilha_carga_horaria_total?: number
+          modulo_carga_horaria?: number | null
+          modulo_id?: string | null
+          modulo_nome?: string | null
+          nota_final?: number | null
+          periodo_fim?: string | null
+          periodo_inicio?: string | null
+          professor_nome?: string | null
+          trilha_carga_horaria_total?: number | null
           trilha_id?: string
           trilha_nome?: string
         }
@@ -233,6 +261,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      emitir_certificado_modulo: {
+        Args: { p_matricula_id: string }
+        Returns: string
+      }
       gerar_hash_publico: { Args: never; Returns: string }
       verificar_e_emitir: {
         Args: { p_aluno_id: string; p_trilha_id: string }
@@ -394,6 +426,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      aplicar_encerramento: {
+        Args: { p_matricula_id: string }
+        Returns: string
+      }
       desfazer_encerramento: {
         Args: { p_matricula_id: string }
         Returns: undefined
@@ -402,6 +438,7 @@ export type Database = {
         Args: { p_matricula_id: string }
         Returns: undefined
       }
+      encerrar_turma: { Args: { p_turma_id: string }; Returns: Json }
       frequencia_percentual: {
         Args: { p_matricula_id: string }
         Returns: number
@@ -412,6 +449,7 @@ export type Database = {
         Args: { p_matricula_id: string }
         Returns: boolean
       }
+      reativar_turma: { Args: { p_turma_id: string }; Returns: Json }
     }
     Enums: {
       [_ in never]: never
@@ -772,6 +810,7 @@ export const Constants = {
   catalogo: {
     Enums: {
       nivel_modulo: ["iniciante", "intermediario", "avancado"],
+      tipo_certificacao: ["modulo", "trilha"],
     },
   },
   certificacao: {
