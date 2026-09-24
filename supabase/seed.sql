@@ -102,7 +102,11 @@ declare
   v_modulo_3_id uuid := 'c1000000-0000-4000-8000-000000000013'; -- Cálculo Aplicado
   v_modulo_4_id uuid := 'c1000000-0000-4000-8000-000000000014'; -- Aprendizado de Máquina
 begin
-  insert into catalogo.trilhas (id, slug, nome, descricao, descricao_curta, publicada)
+  -- tipo_certificacao 'modulo': demonstra o caminho "um certificado por
+  -- módulo concluído" com os dados que já existem. A trilha Nível 2 fica no
+  -- default 'trilha' (um só certificado ao concluir tudo), cobrindo os dois
+  -- modos nos seeds.
+  insert into catalogo.trilhas (id, slug, nome, descricao, descricao_curta, publicada, tipo_certificacao)
   values (
     v_trilha_id,
     'ciencia-de-dados-aplicada',
@@ -111,7 +115,8 @@ begin
     'dados: parte da base estatística, passa por programação aplicada a dados e cálculo, ' ||
     'e termina em aprendizado de máquina.',
     'Da estatística ao aprendizado de máquina, com programação e cálculo no meio do caminho.',
-    true
+    true,
+    'modulo'
   )
   on conflict (id) do nothing;
 
