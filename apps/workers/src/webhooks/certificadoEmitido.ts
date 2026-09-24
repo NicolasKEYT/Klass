@@ -19,18 +19,22 @@ interface PayloadWebhookCertificado {
     hash_publico: string;
     aluno_nome: string;
     trilha_nome: string;
+    // Preenchidos só no certificado de módulo (null no de trilha).
+    modulo_id: string | null;
+    modulo_nome: string | null;
   };
 }
 
 function montarEmailCertificadoEmitido(dados: {
   nomeAluno: string;
-  nomeTrilha: string;
+  // O "que" foi concluído: a trilha inteira ou um módulo específico.
+  oQueConcluiu: string;
   hashPublico: string;
   linkCertificados: string;
 }): string {
   return (
     `<p>Parabéns, ${dados.nomeAluno}!</p>` +
-    `<p>Você concluiu a trilha <strong>${dados.nomeTrilha}</strong> e seu ` +
+    `<p>Você concluiu ${dados.oQueConcluiu} e seu ` +
     `certificado já está disponível.</p>` +
     `<p>Código de verificação: <strong>${dados.hashPublico}</strong></p>` +
     `<p><a href="${dados.linkCertificados}">Acesse seus certificados</a> para ` +
@@ -81,13 +85,23 @@ export async function receberCertificadoEmitido(c: Context<{ Bindings: Env }>) {
   const base = c.env.ALLOWED_ORIGIN ?? "";
   const linkCertificados = `${base}/aluno/certificados`;
 
+  // Certificado de módulo vs. de trilha muda o texto e o assunto.
+  const ehModulo = payload.record.modulo_id !== null;
+  const oQueConcluiu = ehModulo
+    ? `o módulo <strong>${payload.record.modulo_nome}</strong> da trilha ` +
+      `<strong>${payload.record.trilha_nome}</strong>`
+    : `a trilha <strong>${payload.record.trilha_nome}</strong>`;
+  const assunto = ehModulo
+    ? `Parabéns! Seu certificado do módulo ${payload.record.modulo_nome} está pronto`
+    : `Parabéns! Seu certificado de ${payload.record.trilha_nome} está pronto`;
+
   try {
     await enviarEmail(c.env, {
       para: usuarioAuth.user.email,
-      assunto: `Parabéns! Seu certificado de ${payload.record.trilha_nome} está pronto`,
+      assunto,
       html: montarEmailCertificadoEmitido({
         nomeAluno: payload.record.aluno_nome,
-        nomeTrilha: payload.record.trilha_nome,
+        oQueConcluiu,
         hashPublico: payload.record.hash_publico,
         linkCertificados,
       }),

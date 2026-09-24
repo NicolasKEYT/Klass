@@ -116,6 +116,11 @@ export function Certificados() {
                     </td>
                     <td className="px-4 py-3 text-body-sm text-text-secondary">
                       {certificado.trilha_nome}
+                      {certificado.modulo_id !== null && (
+                        <span className="block text-label text-text-muted">
+                          Módulo: {certificado.modulo_nome}
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-body-sm text-text-secondary">
                       {formatarData(certificado.emitido_em)}

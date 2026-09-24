@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { PDFDownloadLink } from "@react-pdf/renderer";
 import { useAuth } from "@/auth";
 import { Aviso } from "@/components/Aviso";
+import { Badge } from "@/components/Badge";
 import { Card } from "@/components/Card";
 import { PaginaAutenticada } from "@/components/PaginaAutenticada";
 import { Titulo } from "@/components/Titulo";
@@ -62,12 +63,28 @@ export function Certificados() {
               className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
             >
               <div className="flex flex-col gap-1">
-                <Titulo nivel="item" as="h2">
-                  {certificado.trilha_nome}
-                </Titulo>
+                <div className="flex items-center gap-2">
+                  <Badge variant="neutral">
+                    {certificado.modulo_id !== null ? "Módulo" : "Trilha"}
+                  </Badge>
+                  <Titulo nivel="item" as="h2">
+                    {certificado.modulo_id !== null
+                      ? certificado.modulo_nome
+                      : certificado.trilha_nome}
+                  </Titulo>
+                </div>
+                {certificado.modulo_id !== null ? (
+                  <p className="text-label text-text-muted">
+                    Certificado de módulo · trilha {certificado.trilha_nome} ·{" "}
+                    {certificado.modulo_carga_horaria} horas
+                  </p>
+                ) : (
+                  <p className="text-label text-text-muted">
+                    Certificado de trilha · {certificado.trilha_carga_horaria_total} horas
+                  </p>
+                )}
                 <p className="text-label text-text-muted">
-                  Emitido em {formatarData(certificado.emitido_em)} ·{" "}
-                  {certificado.trilha_carga_horaria_total} horas
+                  Emitido em {formatarData(certificado.emitido_em)}
                 </p>
                 <p className="font-mono text-label text-text-muted">{certificado.hash_publico}</p>
               </div>

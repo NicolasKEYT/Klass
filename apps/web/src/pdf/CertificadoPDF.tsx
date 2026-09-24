@@ -180,11 +180,20 @@ function formatarData(iso: string): string {
 }
 
 export function CertificadoPDF({ certificado }: { certificado: Certificado }) {
+  // modulo_id preenchido = certificado de um módulo (escopo menor, sem a
+  // ideia de "curso completo"); null = certificado da trilha inteira.
+  const ehModulo = certificado.modulo_id !== null;
+  const eyebrow = ehModulo ? "CERTIFICADO DE MÓDULO" : "CERTIFICADO DE CONCLUSÃO";
+
   return (
     <Document
       title={`Certificado ${certificado.hash_publico}`}
       author={INSTITUICAO}
-      subject={`Certificado de conclusão — ${certificado.trilha_nome}`}
+      subject={
+        ehModulo
+          ? `Certificado de módulo — ${certificado.modulo_nome}`
+          : `Certificado de conclusão — ${certificado.trilha_nome}`
+      }
     >
       <Page size="A4" orientation="landscape" style={styles.page}>
         <View style={styles.card}>
@@ -194,17 +203,26 @@ export function CertificadoPDF({ certificado }: { certificado: Certificado }) {
             </View>
 
             <Text style={styles.instituicao}>{INSTITUICAO}</Text>
-            <Text style={styles.eyebrow}>CERTIFICADO DE CONCLUSÃO</Text>
+            <Text style={styles.eyebrow}>{eyebrow}</Text>
             <View style={styles.divisor} />
 
             <Text style={styles.certificamos}>Certificamos que</Text>
             <Text style={styles.nome}>{certificado.aluno_nome}</Text>
 
-            <Text style={styles.corpo}>
-              concluiu com aproveitamento o curso {certificado.trilha_nome}, com carga horária
-              total de {certificado.trilha_carga_horaria_total} horas, cumprindo os requisitos de
-              nota e frequência.
-            </Text>
+            {ehModulo ? (
+              <Text style={styles.corpo}>
+                concluiu com aproveitamento o módulo {certificado.modulo_nome} da trilha{" "}
+                {certificado.trilha_nome}, com carga horária de {certificado.modulo_carga_horaria}{" "}
+                horas, ministrado por {certificado.professor_nome}, cumprindo os requisitos de nota e
+                frequência.
+              </Text>
+            ) : (
+              <Text style={styles.corpo}>
+                concluiu com aproveitamento o curso {certificado.trilha_nome}, com carga horária
+                total de {certificado.trilha_carga_horaria_total} horas, cumprindo os requisitos de
+                nota e frequência.
+              </Text>
+            )}
 
             {/* Selo: dois círculos concêntricos com o capelo ao centro. */}
             <View style={styles.selo}>
