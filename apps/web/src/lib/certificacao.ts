@@ -34,6 +34,18 @@ export async function listarTodosCertificados(): Promise<Certificado[]> {
   return data;
 }
 
+// Existe algum certificado já emitido para a trilha? Usado na edição de
+// trilha para avisar que mudar o tipo de certificação não afeta os
+// documentos já emitidos. A RLS deixa a coordenação ver todos.
+export async function trilhaTemCertificados(trilhaId: string): Promise<boolean> {
+  const { count, error } = await certificacao()
+    .from("certificados")
+    .select("id", { count: "exact", head: true })
+    .eq("trilha_id", trilhaId);
+  if (error) throw new Error(mensagemDeErroBanco(error));
+  return (count ?? 0) > 0;
+}
+
 // Verificação pública: chama a função SECURITY DEFINER exposta ao role
 // anon. Não lê a tabela (a RLS bloquearia o visitante sem login) — a
 // função devolve só os dados mínimos, filtrados por hash exato. Retorna

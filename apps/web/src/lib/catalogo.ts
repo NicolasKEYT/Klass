@@ -1,6 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { mensagemDeErroBanco } from "@/lib/mensagensDeErroBanco";
-import type { Modulo, NivelModulo, Trilha } from "@klass/types";
+import type { Modulo, NivelModulo, TipoCertificacao, Trilha } from "@klass/types";
 
 // Ponto único de acesso a catalogo.* — cada chamada já traduz erro do
 // Postgres para mensagem em português (ver mensagensDeErroBanco).
@@ -56,6 +56,8 @@ export async function criarTrilha(input: {
   descricao: string;
   descricaoCurta: string;
   icone: string | null;
+  tipoCertificacao: TipoCertificacao;
+  mediaMinima: number;
 }): Promise<Trilha> {
   const { data, error } = await catalogo()
     .from("trilhas")
@@ -65,6 +67,8 @@ export async function criarTrilha(input: {
       descricao: input.descricao,
       descricao_curta: input.descricaoCurta || null,
       icone: input.icone,
+      tipo_certificacao: input.tipoCertificacao,
+      media_minima: input.mediaMinima,
     })
     .select("*")
     .single();
@@ -74,7 +78,18 @@ export async function criarTrilha(input: {
 
 export async function atualizarTrilha(
   id: string,
-  patch: Partial<Pick<Trilha, "nome" | "slug" | "descricao" | "descricao_curta" | "icone">>,
+  patch: Partial<
+    Pick<
+      Trilha,
+      | "nome"
+      | "slug"
+      | "descricao"
+      | "descricao_curta"
+      | "icone"
+      | "tipo_certificacao"
+      | "media_minima"
+    >
+  >,
 ): Promise<Trilha> {
   const { data, error } = await catalogo().from("trilhas").update(patch).eq("id", id).select("*").single();
   if (error) throw new Error(mensagemDeErroBanco(error));

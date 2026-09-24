@@ -3,12 +3,14 @@ import { useNavigate } from "react-router-dom";
 import { Aviso } from "@/components/Aviso";
 import { BotaoVoltar } from "@/components/BotaoVoltar";
 import { Button } from "@/components/Button";
+import { CamposCertificacao } from "@/components/CamposCertificacao";
 import { Card } from "@/components/Card";
 import { IconePicker } from "@/components/IconeCatalogo";
 import { Input } from "@/components/Input";
 import { PaginaAutenticada } from "@/components/PaginaAutenticada";
 import { Titulo } from "@/components/Titulo";
 import { criarTrilha, gerarSlug } from "@/lib/catalogo";
+import type { TipoCertificacao } from "@klass/types";
 
 // Tempo pra o aviso de sucesso ficar visível antes de navegar — sem
 // isso o redirecionamento é instantâneo e o feedback nunca aparece.
@@ -22,6 +24,8 @@ export function NovaTrilha() {
   const [descricao, setDescricao] = useState("");
   const [descricaoCurta, setDescricaoCurta] = useState("");
   const [icone, setIcone] = useState<string | null>(null);
+  const [tipoCertificacao, setTipoCertificacao] = useState<TipoCertificacao>("trilha");
+  const [mediaMinima, setMediaMinima] = useState("6");
   const [erro, setErro] = useState<string | null>(null);
   const [mensagem, setMensagem] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
@@ -39,9 +43,22 @@ export function NovaTrilha() {
   async function salvar(irParaListaAoInves: boolean) {
     setErro(null);
     setMensagem(null);
+    const media = Number(mediaMinima);
+    if (Number.isNaN(media) || media < 0 || media > 10) {
+      setErro("A média mínima precisa ser um número entre 0 e 10.");
+      return;
+    }
     setEnviando(true);
     try {
-      const trilha = await criarTrilha({ nome, slug, descricao, descricaoCurta, icone });
+      const trilha = await criarTrilha({
+        nome,
+        slug,
+        descricao,
+        descricaoCurta,
+        icone,
+        tipoCertificacao,
+        mediaMinima: media,
+      });
       setMensagem("Trilha criada.");
       await new Promise((resolve) => setTimeout(resolve, ATRASO_ANTES_DE_NAVEGAR_MS));
       navigate(
@@ -131,6 +148,13 @@ export function NovaTrilha() {
                 ser mais detalhada.
               </span>
             </label>
+
+            <CamposCertificacao
+              tipoCertificacao={tipoCertificacao}
+              onTipoChange={setTipoCertificacao}
+              mediaMinima={mediaMinima}
+              onMediaChange={setMediaMinima}
+            />
 
             {erro && <Aviso variant="danger">{erro}</Aviso>}
             {mensagem && <Aviso variant="success">{mensagem}</Aviso>}

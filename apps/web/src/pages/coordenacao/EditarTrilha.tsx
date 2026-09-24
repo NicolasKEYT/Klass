@@ -21,10 +21,12 @@ import {
 } from "@dnd-kit/sortable";
 import { Card } from "@/components/Card";
 import { Arrastavel } from "@/components/Arrastavel";
+import { CamposCertificacao } from "@/components/CamposCertificacao";
 import { IconeCatalogo, IconePicker } from "@/components/IconeCatalogo";
 import { Input } from "@/components/Input";
 import { PaginaAutenticada } from "@/components/PaginaAutenticada";
 import { Titulo } from "@/components/Titulo";
+import { trilhaTemCertificados } from "@/lib/certificacao";
 import {
   apagarModulo,
   atualizarModulo,
@@ -39,7 +41,7 @@ import {
   reordenarModulos,
   trocarOrdemModulos,
 } from "@/lib/catalogo";
-import type { Modulo, NivelModulo, Trilha } from "@klass/types";
+import type { Modulo, NivelModulo, TipoCertificacao, Trilha } from "@klass/types";
 
 const NIVEIS: NivelModulo[] = ["iniciante", "intermediario", "avancado"];
 const NIVEL_LABEL: Record<NivelModulo, string> = {
@@ -64,6 +66,9 @@ export function EditarTrilha() {
   const [descricao, setDescricao] = useState("");
   const [descricaoCurta, setDescricaoCurta] = useState("");
   const [icone, setIcone] = useState<string | null>(null);
+  const [tipoCertificacao, setTipoCertificacao] = useState<TipoCertificacao>("trilha");
+  const [mediaMinima, setMediaMinima] = useState("6");
+  const [temCertificados, setTemCertificados] = useState(false);
   const [salvandoTrilha, setSalvandoTrilha] = useState(false);
 
   const [mostrarNovoModulo, setMostrarNovoModulo] = useState(false);
@@ -115,13 +120,17 @@ export function EditarTrilha() {
       setDescricao(encontrada.descricao);
       setDescricaoCurta(encontrada.descricao_curta ?? "");
       setIcone(encontrada.icone);
+      setTipoCertificacao(encontrada.tipo_certificacao);
+      setMediaMinima(String(encontrada.media_minima));
 
-      const [listaModulos, mapaPreRequisitos] = await Promise.all([
+      const [listaModulos, mapaPreRequisitos, jaTemCertificados] = await Promise.all([
         listarModulosDaTrilha(encontrada.id),
         listarPreRequisitosIdsDaTrilha(encontrada.id),
+        trilhaTemCertificados(encontrada.id),
       ]);
       setModulos(listaModulos);
       setPreRequisitos(mapaPreRequisitos);
+      setTemCertificados(jaTemCertificados);
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível carregar a trilha.");
     } finally {
@@ -138,6 +147,11 @@ export function EditarTrilha() {
     if (!trilha) return;
     setErro(null);
     setMensagem(null);
+    const media = Number(mediaMinima);
+    if (Number.isNaN(media) || media < 0 || media > 10) {
+      setErro("A média mínima precisa ser um número entre 0 e 10.");
+      return;
+    }
     setSalvandoTrilha(true);
     try {
       const atualizada = await atualizarTrilha(trilha.id, {
@@ -146,6 +160,8 @@ export function EditarTrilha() {
         descricao,
         descricao_curta: descricaoCurta || null,
         icone,
+        tipo_certificacao: tipoCertificacao,
+        media_minima: media,
       });
       setTrilha(atualizada);
       setMensagem("Dados da trilha salvos.");
@@ -410,6 +426,22 @@ export function EditarTrilha() {
                 ser mais detalhada.
               </span>
             </label>
+
+            <CamposCertificacao
+              tipoCertificacao={tipoCertificacao}
+              onTipoChange={setTipoCertificacao}
+              mediaMinima={mediaMinima}
+              onMediaChange={setMediaMinima}
+              aviso={
+                temCertificados && tipoCertificacao !== trilha.tipo_certificacao ? (
+                  <span className="text-label font-medium text-danger">
+                    Esta trilha já tem certificados emitidos. Mudar o tipo não altera os documentos
+                    já emitidos — vale só para as conclusões daqui para frente.
+                  </span>
+                ) : undefined
+              }
+            />
+
             <div className="flex gap-3">
               <Button type="submit" disabled={salvandoTrilha}>
                 {salvandoTrilha ? "Salvando..." : "Salvar e voltar"}
