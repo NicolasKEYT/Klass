@@ -26,7 +26,7 @@ export function CamposCertificacao({
       <div className="flex flex-col gap-1.5">
         <span className="text-label font-medium text-text-secondary">Tipo de certificação</span>
         <select
-          className="h-9 rounded-klass-control border border-border bg-surface px-3.5 text-body-sm text-text-primary transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+          className="h-12 sm:h-10 rounded-klass-control border border-border bg-surface px-3.5 text-body-sm text-text-primary transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
           value={tipoCertificacao}
           onChange={(e) => onTipoChange(e.target.value as TipoCertificacao)}
         >

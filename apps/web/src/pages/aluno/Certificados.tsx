@@ -92,7 +92,7 @@ export function Certificados() {
               <PDFDownloadLink
                 document={<CertificadoPDF certificado={certificado} />}
                 fileName={`certificado-${certificado.hash_publico}.pdf`}
-                className="inline-flex h-[38px] items-center justify-center rounded-klass-control bg-primary px-4 text-klass-md font-medium text-white hover:bg-primary/90"
+                className="inline-flex h-12 sm:h-10 items-center justify-center rounded-klass-control bg-primary px-4 text-klass-md font-medium text-white hover:bg-primary/90"
               >
                 {({ loading }) => (loading ? "Gerando..." : "Baixar PDF")}
               </PDFDownloadLink>

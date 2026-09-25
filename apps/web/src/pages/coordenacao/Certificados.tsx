@@ -63,7 +63,7 @@ export function Certificados() {
             <select
               value={filtroTrilha}
               onChange={(e) => setFiltroTrilha(e.target.value)}
-              className="h-[38px] rounded-klass-control border border-border bg-surface px-3 text-klass-md text-text-primary"
+              className="h-12 sm:h-10 rounded-klass-control border border-border bg-surface px-3 text-klass-md text-text-primary"
             >
               <option value="">Todas</option>
               {trilhas.map((t) => (
