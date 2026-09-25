@@ -50,6 +50,14 @@ export async function buscarTrilhaPorSlug(slug: string): Promise<Trilha | null> 
   return data;
 }
 
+// Usado onde já se tem o id (não o slug) à mão — ex.: boletim do aluno,
+// que agrupa matrículas por trilha_id.
+export async function buscarTrilhaPorId(id: string): Promise<Trilha | null> {
+  const { data, error } = await catalogo().from("trilhas").select("*").eq("id", id).maybeSingle();
+  if (error) throw new Error(mensagemDeErroBanco(error));
+  return data;
+}
+
 export async function criarTrilha(input: {
   nome: string;
   slug: string;

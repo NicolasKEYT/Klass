@@ -33,12 +33,17 @@ async function buscarNomesCompletos(ids: string[]): Promise<Map<string, string>>
 
 interface ContextoModulo {
   nome: string;
+  trilhaId: string;
   trilhaNome: string;
+  trilhaMediaMinima: number;
 }
 
 // turma referencia um módulo, não uma trilha inteira — para exibir "qual
 // disciplina, de qual trilha" numa tela, precisa desse salto extra
-// (turma -> catalogo.modulos -> catalogo.trilhas).
+// (turma -> catalogo.modulos -> catalogo.trilhas). trilhaMediaMinima vem
+// junto porque diario.encerrar_matricula usa esse valor no lugar do
+// antigo literal 6.0 (ver migration certificacao_por_modulo) — telas que
+// explicam "para ser aprovado" precisam do valor real da trilha.
 async function buscarContextoModulos(moduloIds: string[]): Promise<Map<string, ContextoModulo>> {
   if (moduloIds.length === 0) return new Map();
   const { data: modulos, error } = await catalogo()
@@ -50,16 +55,24 @@ async function buscarContextoModulos(moduloIds: string[]): Promise<Map<string, C
   const trilhaIds = [...new Set((modulos ?? []).map((m) => m.trilha_id))];
   const { data: trilhas, error: erroTrilhas } = await catalogo()
     .from("trilhas")
-    .select("id, nome")
+    .select("id, nome, media_minima")
     .in("id", trilhaIds);
   if (erroTrilhas) throw new Error(mensagemDeErroBanco(erroTrilhas));
 
-  const nomeTrilha = new Map((trilhas ?? []).map((t) => [t.id, t.nome]));
+  const trilhaPorId = new Map((trilhas ?? []).map((t) => [t.id, t]));
   return new Map(
-    (modulos ?? []).map((m) => [
-      m.id,
-      { nome: m.nome, trilhaNome: nomeTrilha.get(m.trilha_id) ?? "—" },
-    ]),
+    (modulos ?? []).map((m) => {
+      const trilha = trilhaPorId.get(m.trilha_id);
+      return [
+        m.id,
+        {
+          nome: m.nome,
+          trilhaId: m.trilha_id,
+          trilhaNome: trilha?.nome ?? "—",
+          trilhaMediaMinima: trilha ? Number(trilha.media_minima) : 6,
+        },
+      ];
+    }),
   );
 }
 
@@ -123,7 +136,10 @@ export interface TurmaDetalhada {
   codigo: string;
   moduloId: string;
   moduloNome: string;
+  trilhaId: string;
   trilhaNome: string;
+  /** Grade de notas mostra isto como informação read-only no toolbar (D6). */
+  trilhaMediaMinima: number;
   professorId: string;
   professorNome: string;
   periodoInicio: string;
@@ -152,7 +168,9 @@ export async function buscarTurmaDetalhada(turmaId: string): Promise<TurmaDetalh
     codigo: turma.codigo,
     moduloId: turma.modulo_id,
     moduloNome: contexto?.nome ?? "—",
+    trilhaId: contexto?.trilhaId ?? "",
     trilhaNome: contexto?.trilhaNome ?? "—",
+    trilhaMediaMinima: contexto?.trilhaMediaMinima ?? 6,
     professorId: turma.professor_id,
     professorNome: nomeProfessor.get(turma.professor_id) ?? "—",
     periodoInicio: turma.periodo_inicio,
@@ -363,12 +381,17 @@ export async function cancelarInscricao(matriculaId: string): Promise<void> {
 export interface MatriculaDoAluno {
   id: string;
   status: StatusMatricula;
+  turmaId: string;
   turmaCodigo: string;
+  moduloId: string;
   moduloNome: string;
+  trilhaId: string;
   trilhaNome: string;
+  trilhaMediaMinima: number;
   professorNome: string;
   periodoInicio: string;
   periodoFim: string;
+  frequenciaMinimaPercentual: number;
   /** Motivo de encerramento/remoção (preenchido em cancelada/concluida/reprovada). */
   motivoConclusao: string | null;
 }
@@ -405,12 +428,17 @@ export async function listarMatriculasDoAluno(alunoId: string): Promise<Matricul
     return {
       id: m.id,
       status: m.status,
+      turmaId: m.turma_id,
       turmaCodigo: turma?.codigo ?? "—",
+      moduloId: turma?.modulo_id ?? "",
       moduloNome: contexto?.nome ?? "—",
+      trilhaId: contexto?.trilhaId ?? "",
       trilhaNome: contexto?.trilhaNome ?? "—",
+      trilhaMediaMinima: contexto?.trilhaMediaMinima ?? 6,
       professorNome: turma ? nomeProfessor.get(turma.professor_id) ?? "—" : "—",
       periodoInicio: turma?.periodo_inicio ?? "",
       periodoFim: turma?.periodo_fim ?? "",
+      frequenciaMinimaPercentual: turma?.frequencia_minima_percentual ?? 75,
       motivoConclusao: m.motivo_conclusao,
     };
   });
