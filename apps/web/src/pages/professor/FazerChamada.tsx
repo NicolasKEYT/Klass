@@ -175,7 +175,12 @@ export function FazerChamada() {
           </div>
 
           {alunos.length > 0 && (
-            <div className="fixed inset-x-0 bottom-0 z-20 border-t border-border bg-surface p-4 md:sticky">
+            // bottom-16 no celular: sem isso, o botão fixo ficava atrás da
+            // barra inferior de navegação (também fixed, com z-index maior)
+            // — ambas na mesma faixa de 64px, então o botão sumia visualmente
+            // por trás da barra. No desktop não há barra inferior, então
+            // md:bottom-0 (e md:sticky, sem barra nenhuma sobrepondo).
+            <div className="fixed inset-x-0 bottom-16 z-20 border-t border-border bg-surface p-4 md:sticky md:bottom-0">
               <div className="mx-auto flex max-w-2xl items-center gap-3">
                 {alteracoesNaoSalvas && (
                   <span className="text-label text-warning">Alterações ainda não salvas</span>
