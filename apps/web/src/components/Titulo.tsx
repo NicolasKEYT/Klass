@@ -1,19 +1,17 @@
 import type { ReactNode } from "react";
 
-// Escala tipográfica central do app (antes cada tela aplicava classes à
-// mão, o que deixava título de card do mesmo tamanho — ou menor — que o
-// corpo). Um único componente garante a hierarquia: página > seção >
-// item de lista, sempre acima do corpo (text-body-sm, 13px) e dos
-// metadados (text-label, 12px). Os tamanhos vêm dos tokens do design
-// (klass-xl = título de página, klass-lg = título de card/seção).
+// Escala tipográfica central do app — D2 (klass-uikit.pdf, Fundamentos):
+// título de página 32px, título de seção 24px, título de card 20px,
+// sempre acima do corpo (text-body-sm, 16px) e dos metadados (text-label,
+// 14px, mínimo absoluto do sistema).
 type Nivel = "pagina" | "secao" | "item";
 
 type Tag = "h1" | "h2" | "h3" | "h4";
 
 const estilos: Record<Nivel, string> = {
-  pagina: "font-serif text-klass-xl text-text-primary",
-  secao: "font-serif text-klass-lg text-text-primary",
-  item: "text-klass-lg font-semibold text-text-primary",
+  pagina: "font-serif text-klass-xl text-text-primary", // 32px
+  secao: "font-serif text-klass-2xl text-text-primary", // 24px
+  item: "text-klass-lg font-semibold text-text-primary", // 20px
 };
 
 const tagPadrao: Record<Nivel, Tag> = {

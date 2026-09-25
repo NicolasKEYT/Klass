@@ -6,7 +6,8 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
 }
 
-// Dimensões (altura 38px, raio 8px) e cores extraídas dos botões
+// D2 (klass-uikit.pdf, Fundamentos) — alvo de toque: 48px no celular
+// (abaixo de sm), 40px no desktop. Raio e cores extraídas dos botões
 // "Nova turma" (02-gestor-turmas.svg) e "Lançar notas" (05-professor-diario.svg).
 // Reforma flat: cor sólida, sem gradiente/relevo; hover ESCURECE
 // levemente (brightness, não opacidade — opacidade clareava o azul) e o
@@ -31,7 +32,7 @@ export function Button({
       // por exemplo) ele fazia um fade de 50% e voltava — lido como o
       // botão "sumindo e reaparecendo". Sem animar opacidade, o disabled
       // é instantâneo e o clique de reflexo duplicado desaparece.
-      className={`inline-flex h-[38px] items-center justify-center gap-2 rounded-klass-control px-4 text-klass-md font-medium transition-[color,background-color,border-color,box-shadow,filter] disabled:cursor-not-allowed disabled:opacity-50 ${variantClasses[variant]} ${className}`}
+      className={`inline-flex h-12 sm:h-10 items-center justify-center gap-2 rounded-klass-control px-4 text-klass-md font-medium transition-[color,background-color,border-color,box-shadow,filter] disabled:cursor-not-allowed disabled:opacity-50 ${variantClasses[variant]} ${className}`}
       {...props}
     />
   );

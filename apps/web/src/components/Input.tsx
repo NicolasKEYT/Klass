@@ -7,13 +7,14 @@ import type { InputHTMLAttributes } from "react";
 // cor do projeto (borda primary sólida + anel primary/20), no lugar do
 // azul padrão do navegador. Como é o Input atômico, propaga a todos os
 // formulários.
+// D2 — alvo de toque 48px no celular, 40px no desktop (mesmo padrão do Button).
 export function Input({
   className = "",
   ...props
 }: InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
-      className={`h-9 rounded-klass-control border border-border bg-surface px-3.5 text-body-sm text-text-primary placeholder:text-text-muted transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 ${className}`}
+      className={`h-12 sm:h-10 rounded-klass-control border border-border bg-surface px-3.5 text-body-sm text-text-primary placeholder:text-text-muted transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 ${className}`}
       {...props}
     />
   );

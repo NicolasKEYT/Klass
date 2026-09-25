@@ -44,6 +44,16 @@ export default {
           DEFAULT: "#DC2626",
           subtle: "#FEE2E2",
         },
+        // D8/D15 (klass-uikit.pdf) — quinta cor semântica do vocabulário de
+        // status ("atenção"), usada em estados que pedem cuidado mas não
+        // são falha (chamada pendente, aluno abaixo da média, pendência da
+        // coordenação). O PDF marca a paleta exata como "preenchida depois"
+        // (D15, tom sóbrio); âmbar aqui é provisório, na mesma saturação de
+        // success/danger para não destoar.
+        warning: {
+          DEFAULT: "#B45309",
+          subtle: "#FEF3C7",
+        },
 
         // Paleta do certificado (tela 06 — template de PDF, não é uma
         // tela navegável). Deliberadamente distinta: papel/pergaminho,
@@ -68,24 +78,28 @@ export default {
       },
 
       fontSize: {
-        // Escala semântica por papel do texto, não por tela.
-        "klass-2xs": ["9.5px", { lineHeight: "1.3", fontWeight: "600" }], // sub-título do logo — 01–05
+        // D2 (klass-uikit.pdf, Fundamentos) — escala tipográfica base 16,
+        // razão ~1,25: 32/24/20/16/14px. Nenhum texto de interface fica
+        // abaixo de 14px (metade dos professores brasileiros tem 46+ anos;
+        // WCAG 2.5.8 e Material pedem corpo maior). Em vez de introduzir
+        // nomes novos em ~60 arquivos, os tokens existentes foram
+        // REPONTADOS para o valor mais próximo da nova escala — o nome do
+        // token no código não mudou, só o valor renderizado.
+        //
+        // klass-2xs e text-caption saíam de circulação (9,5px e 11px,
+        // nenhum uso no código) — removidos.
+        "text-label": ["14px", { lineHeight: "1.35" }], // D2 — era 12px; metadado/legenda/rótulo (mínimo absoluto)
+        "text-body-sm": ["16px", { lineHeight: "1.5" }], // D2 — era 13px; corpo, célula de tabela
 
-        // Cluster de tamanhos quase idênticos (11/11.5/12/12.5/13/13.5px)
-        // consolidado em 3 valores fixos. Peso e letter-spacing não vêm
-        // embutidos no token — cada uso aplica sua própria utility
-        // (ex.: font-semibold + tracking-wide para um eyebrow, font-medium
-        // para um badge), já que o mesmo tamanho serve papéis com pesos
-        // diferentes no design original.
-        "text-caption": ["11px", { lineHeight: "1.4" }], // texto auxiliar, timestamps — antes 11/11.5/12.5px
-        "text-label": ["12px", { lineHeight: "1.3" }], // labels de campo, eyebrows, badges — antes 11/12px
-        "text-body-sm": ["13px", { lineHeight: "1.5" }], // corpo pequeno, células de tabela — antes 13/13.5px
+        "klass-md": ["16px", { lineHeight: "1.4", fontWeight: "500" }], // D2 — era 14px; nav, botão, valores de tabela
+        "klass-lg": ["20px", { lineHeight: "1.3", fontWeight: "600" }], // D2 — era 16px; título de card
+        "klass-2xl": ["24px", { lineHeight: "1.3", fontWeight: "600" }], // D2 — era 23px (0 usos); título de seção
+        "klass-xl": ["32px", { lineHeight: "1.25", fontWeight: "600" }], // D2 — era 20px; título de página
 
-        "klass-md": ["14px", { lineHeight: "1.4", fontWeight: "500" }], // nav, botões, valores de tabela — 01–05
-        "klass-lg": ["16px", { lineHeight: "1.3", fontWeight: "600" }], // título de card, serif — 01, 03
-        "klass-xl": ["20px", { lineHeight: "1.3", fontWeight: "600" }], // título de página, serif — 01–05
-        "klass-2xl": ["23px", { lineHeight: "1.25", fontWeight: "600" }], // headline de card, serif — 03
-        "klass-stat": ["28px", { lineHeight: "1.2", fontWeight: "600" }], // números de KPI — 01, 03
+        // Números de KPI (painel da coordenação, "82%", "6%"...) ficam
+        // fora da escala de texto de interface — são display, não corpo —
+        // e continuam no valor já calibrado.
+        "klass-stat": ["28px", { lineHeight: "1.2", fontWeight: "600" }], // números de KPI — Início da coordenação
 
         "cert-eyebrow": [
           "13px",

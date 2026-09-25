@@ -117,7 +117,7 @@ export function NovaTurma() {
               <span className="text-label font-medium text-text-secondary">Trilha</span>
               <select
                 required
-                className="h-9 rounded-klass-control border border-border bg-surface px-3.5 text-body-sm text-text-primary transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                className="h-12 sm:h-10 rounded-klass-control border border-border bg-surface px-3.5 text-body-sm text-text-primary transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                 value={trilhaId}
                 onChange={(e) => setTrilhaId(e.target.value)}
               >
@@ -140,7 +140,7 @@ export function NovaTurma() {
               </span>
               <select
                 required
-                className="h-9 rounded-klass-control border border-border bg-surface px-3.5 text-body-sm text-text-primary transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                className="h-12 sm:h-10 rounded-klass-control border border-border bg-surface px-3.5 text-body-sm text-text-primary transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                 value={moduloId}
                 onChange={(e) => setModuloId(e.target.value)}
               >
@@ -176,7 +176,7 @@ export function NovaTurma() {
               </span>
               <select
                 required
-                className="h-9 rounded-klass-control border border-border bg-surface px-3.5 text-body-sm text-text-primary transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                className="h-12 sm:h-10 rounded-klass-control border border-border bg-surface px-3.5 text-body-sm text-text-primary transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                 value={professorId}
                 onChange={(e) => setProfessorId(e.target.value)}
               >
