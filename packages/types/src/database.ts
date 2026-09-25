@@ -59,6 +59,13 @@ export type Database = {
             referencedRelation: "trilhas"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "modulos_trilha_id_fkey"
+            columns: ["trilha_id"]
+            isOneToOne: false
+            referencedRelation: "vw_desempenho_por_trilha"
+            referencedColumns: ["trilha_id"]
+          },
         ]
       }
       pre_requisitos_modulo: {
@@ -138,7 +145,25 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      vw_desempenho_por_trilha: {
+        Row: {
+          taxa_aprovacao_percentual: number | null
+          total_aprovados: number | null
+          total_encerrados: number | null
+          trilha_id: string | null
+          trilha_nome: string | null
+        }
+        Relationships: []
+      }
+      vw_taxa_evasao: {
+        Row: {
+          periodo: string | null
+          taxa_evasao_percentual: number | null
+          total_encerrados: number | null
+          total_evadidos: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       modulos_da_trilha: {

@@ -394,6 +394,8 @@ export interface MatriculaDoAluno {
   frequenciaMinimaPercentual: number;
   /** Motivo de encerramento/remoção (preenchido em cancelada/concluida/reprovada). */
   motivoConclusao: string | null;
+  /** Quando a matrícula foi deferida (aceita) — usado no feed de novidades. */
+  deferidoEm: string | null;
 }
 
 export async function listarMatriculasDoAluno(alunoId: string): Promise<MatriculaDoAluno[]> {
@@ -440,6 +442,7 @@ export async function listarMatriculasDoAluno(alunoId: string): Promise<Matricul
       periodoFim: turma?.periodo_fim ?? "",
       frequenciaMinimaPercentual: turma?.frequencia_minima_percentual ?? 75,
       motivoConclusao: m.motivo_conclusao,
+      deferidoEm: m.deferido_em,
     };
   });
 }
