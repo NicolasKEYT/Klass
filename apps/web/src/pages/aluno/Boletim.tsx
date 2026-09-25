@@ -17,6 +17,7 @@ import {
   type ProgressoMatricula,
 } from "@/lib/diario";
 import { listarMatriculasDoAluno, type MatriculaDoAluno } from "@/lib/selecao";
+import { supabase } from "@/lib/supabase";
 import { CertificadoPDF } from "@/pdf/CertificadoPDF";
 import type { Certificado, Modulo, Trilha } from "@klass/types";
 
@@ -45,77 +46,110 @@ export function Boletim() {
   const { usuario } = useAuth();
   const [grupos, setGrupos] = useState<GrupoTrilha[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  // IDs das matrículas do aluno — usados só para montar o filtro do canal
+  // Realtime abaixo (uma trilha por seção, mas o Realtime escuta todas de
+  // uma vez).
+  const [matriculaIds, setMatriculaIds] = useState<string[]>([]);
+
+  async function carregar() {
+    if (!usuario) return;
+    try {
+      const [matriculas, certificados] = await Promise.all([
+        listarMatriculasDoAluno(usuario.id),
+        listarCertificadosDoAluno(usuario.id),
+      ]);
+      setMatriculaIds(matriculas.map((m) => m.id));
+
+      const trilhaIds = [...new Set(matriculas.map((m) => m.trilhaId).filter(Boolean))];
+      const gruposCarregados = await Promise.all(
+        trilhaIds.map(async (trilhaId): Promise<GrupoTrilha | null> => {
+          const trilha = await buscarTrilhaPorId(trilhaId);
+          if (!trilha) return null;
+
+          const [modulos, preRequisitos] = await Promise.all([
+            listarModulosDaTrilha(trilhaId),
+            listarPreRequisitosDaTrilha(trilhaId),
+          ]);
+
+          const matriculaPorModulo = new Map(
+            matriculas.filter((m) => m.trilhaId === trilhaId).map((m) => [m.moduloId, m]),
+          );
+          const concluidos = new Set(
+            matriculas
+              .filter((m) => m.trilhaId === trilhaId && m.status === "concluida")
+              .map((m) => m.moduloNome),
+          );
+
+          const linhas = await Promise.all(
+            modulos.map(async (modulo): Promise<LinhaModulo> => {
+              const matricula = matriculaPorModulo.get(modulo.id);
+              if (!matricula) {
+                const faltantes = (preRequisitos.get(modulo.id) ?? []).filter(
+                  (nome) => !concluidos.has(nome),
+                );
+                return { modulo, matricula: undefined, faltantes, progresso: null, avaliacoes: [] };
+              }
+              const progresso = await buscarProgressoMatricula(matricula.id);
+              const avaliacoes =
+                matricula.status === "matriculada"
+                  ? await listarAvaliacoesComNotaDoAluno(matricula.id, matricula.turmaId)
+                  : [];
+              return { modulo, matricula, faltantes: [], progresso, avaliacoes };
+            }),
+          );
+
+          const certificadosDaTrilha = certificados.filter((c) => c.trilha_id === trilhaId);
+          return {
+            trilha,
+            linhas,
+            certificadoTrilha: certificadosDaTrilha.find((c) => c.modulo_id === null),
+            certificadosModulo: certificadosDaTrilha.filter((c) => c.modulo_id !== null),
+          };
+        }),
+      );
+
+      setGrupos(gruposCarregados.filter((g): g is GrupoTrilha => g !== null));
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Não foi possível carregar o boletim.");
+    }
+  }
 
   useEffect(() => {
-    if (!usuario) return;
-    let ativo = true;
-
-    async function carregar() {
-      try {
-        const [matriculas, certificados] = await Promise.all([
-          listarMatriculasDoAluno(usuario!.id),
-          listarCertificadosDoAluno(usuario!.id),
-        ]);
-
-        const trilhaIds = [...new Set(matriculas.map((m) => m.trilhaId).filter(Boolean))];
-        const gruposCarregados = await Promise.all(
-          trilhaIds.map(async (trilhaId): Promise<GrupoTrilha | null> => {
-            const trilha = await buscarTrilhaPorId(trilhaId);
-            if (!trilha) return null;
-
-            const [modulos, preRequisitos] = await Promise.all([
-              listarModulosDaTrilha(trilhaId),
-              listarPreRequisitosDaTrilha(trilhaId),
-            ]);
-
-            const matriculaPorModulo = new Map(
-              matriculas.filter((m) => m.trilhaId === trilhaId).map((m) => [m.moduloId, m]),
-            );
-            const concluidos = new Set(
-              matriculas
-                .filter((m) => m.trilhaId === trilhaId && m.status === "concluida")
-                .map((m) => m.moduloNome),
-            );
-
-            const linhas = await Promise.all(
-              modulos.map(async (modulo): Promise<LinhaModulo> => {
-                const matricula = matriculaPorModulo.get(modulo.id);
-                if (!matricula) {
-                  const faltantes = (preRequisitos.get(modulo.id) ?? []).filter(
-                    (nome) => !concluidos.has(nome),
-                  );
-                  return { modulo, matricula: undefined, faltantes, progresso: null, avaliacoes: [] };
-                }
-                const progresso = await buscarProgressoMatricula(matricula.id);
-                const avaliacoes =
-                  matricula.status === "matriculada"
-                    ? await listarAvaliacoesComNotaDoAluno(matricula.id, matricula.turmaId)
-                    : [];
-                return { modulo, matricula, faltantes: [], progresso, avaliacoes };
-              }),
-            );
-
-            const certificadosDaTrilha = certificados.filter((c) => c.trilha_id === trilhaId);
-            return {
-              trilha,
-              linhas,
-              certificadoTrilha: certificadosDaTrilha.find((c) => c.modulo_id === null),
-              certificadosModulo: certificadosDaTrilha.filter((c) => c.modulo_id !== null),
-            };
-          }),
-        );
-
-        if (ativo) setGrupos(gruposCarregados.filter((g): g is GrupoTrilha => g !== null));
-      } catch (e) {
-        if (ativo) setErro(e instanceof Error ? e.message : "Não foi possível carregar o boletim.");
-      }
-    }
-
     void carregar();
-    return () => {
-      ativo = false;
-    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [usuario]);
+
+  // Realtime — quando o professor lança nota, faz chamada ou encerra o
+  // módulo, o boletim atualiza sozinho, sem o aluno precisar recarregar
+  // (Fluxo 3 do artigo do TCC 1). Reconstruído aqui porque o boletim
+  // deixou de ser "uma matrícula por página" (um único filtro
+  // matricula_id=eq.X) e passou a cobrir todas as matrículas do aluno de
+  // uma vez — o filtro do canal usa `in.(...)` com todos os ids atuais.
+  useEffect(() => {
+    if (!usuario || !supabase || matriculaIds.length === 0) return;
+    const filtro = `matricula_id=in.(${matriculaIds.join(",")})`;
+    const canal = supabase
+      .channel(`boletim:${usuario.id}`)
+      .on("postgres_changes", { event: "*", schema: "diario", table: "notas", filter: filtro }, () =>
+        void carregar(),
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "diario", table: "presencas", filter: filtro },
+        () => void carregar(),
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "selecao", table: "matriculas", filter: `aluno_id=eq.${usuario.id}` },
+        () => void carregar(),
+      )
+      .subscribe();
+
+    return () => {
+      void supabase?.removeChannel(canal);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [usuario, matriculaIds.join(",")]);
 
   return (
     <PaginaAutenticada largura="estreita">
