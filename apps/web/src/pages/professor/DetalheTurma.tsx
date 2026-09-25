@@ -2,12 +2,13 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useAuth } from "@/auth";
 import { Aviso } from "@/components/Aviso";
-import { Badge } from "@/components/Badge";
 import { BotaoVoltar } from "@/components/BotaoVoltar";
 import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
+import { GradeNotas } from "@/components/diario/GradeNotas";
 import { Input } from "@/components/Input";
 import { PaginaAutenticada } from "@/components/PaginaAutenticada";
+import { StatusBadge } from "@/components/StatusBadge";
 import { Titulo } from "@/components/Titulo";
 import {
   buscarProgressoMatricula,
@@ -32,12 +33,6 @@ type Aba = "avaliacoes" | "aulas" | "alunos";
 interface AlunoComProgresso extends AlunoDoDiario {
   progresso: ProgressoMatricula;
 }
-
-const STATUS_LABEL: Record<string, string> = {
-  matriculada: "Cursando",
-  concluida: "Aprovado(a)",
-  reprovada: "Reprovado(a)",
-};
 
 export function DetalheTurma() {
   const { id } = useParams<{ id: string }>();
@@ -289,32 +284,19 @@ export function DetalheTurma() {
                   </Card>
                 )}
 
-                <div className="flex flex-col gap-2">
-                  {avaliacoes.length === 0 && (
-                    <p className="text-body-sm text-text-secondary">
-                      Nenhuma avaliação cadastrada ainda.
-                    </p>
-                  )}
-                  {avaliacoes.map((avaliacao) => (
-                    <Card key={avaliacao.id} className="flex items-center justify-between">
-                      <div>
-                        <p className="text-body-sm font-medium text-text-primary">
-                          {avaliacao.titulo}
-                        </p>
-                        <p className="text-label text-text-muted">
-                          Peso {avaliacao.peso} · representa{" "}
-                          {percentualDoPeso(avaliacao.peso, somaPesos)}% da média final
-                        </p>
-                      </div>
-                      <Link
-                        to={`/professor/turmas/${id}/avaliacoes/${avaliacao.id}`}
-                        className="text-body-sm font-medium text-primary hover:underline"
-                      >
-                        Lançar notas
-                      </Link>
-                    </Card>
-                  ))}
-                </div>
+                {avaliacoes.length === 0 && (
+                  <p className="text-body-sm text-text-secondary">
+                    Nenhuma avaliação cadastrada ainda.
+                  </p>
+                )}
+                {avaliacoes.length > 0 && turma && (
+                  <GradeNotas
+                    turmaId={id!}
+                    turma={turma}
+                    lancadoPor={usuario.id}
+                    avaliacoes={avaliacoes}
+                  />
+                )}
               </>
             )}
 
@@ -464,17 +446,7 @@ export function DetalheTurma() {
                           <span className="text-body-sm font-medium text-text-primary">
                             {aluno.alunoNome}
                           </span>
-                          <Badge
-                            variant={
-                              aluno.status === "reprovada"
-                                ? "danger"
-                                : aluno.status === "concluida"
-                                  ? "success"
-                                  : "neutral"
-                            }
-                          >
-                            {STATUS_LABEL[aluno.status]}
-                          </Badge>
+                          <StatusBadge tipo="matricula" status={aluno.status} />
                         </div>
                         <span className="text-label text-text-muted">
                           Média:{" "}

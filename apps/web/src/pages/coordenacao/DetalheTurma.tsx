@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Aviso } from "@/components/Aviso";
-import { Badge } from "@/components/Badge";
 import { BotaoVoltar } from "@/components/BotaoVoltar";
 import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
 import { PaginaAutenticada } from "@/components/PaginaAutenticada";
+import { StatusBadge } from "@/components/StatusBadge";
 import { Titulo } from "@/components/Titulo";
 import { useAuth } from "@/auth";
 import {
@@ -29,15 +29,6 @@ import {
   type MatriculaListagem,
   type TurmaDetalhada,
 } from "@/lib/selecao";
-
-const STATUS_LABEL: Record<string, string> = {
-  inscrita: "Inscrita",
-  matriculada: "Matriculada",
-  rejeitada: "Rejeitada",
-  cancelada: "Cancelada",
-  concluida: "Aprovado(a)",
-  reprovada: "Reprovado(a)",
-};
 
 interface AlunoComProgresso extends AlunoDoDiario {
   progresso: ProgressoMatricula;
@@ -313,7 +304,7 @@ export function DetalheTurma() {
                   <div className="flex items-center justify-between gap-4">
                     <span className="text-body-sm text-text-primary">{matricula.alunoNome}</span>
                     <div className="flex items-center gap-2">
-                      <Badge variant="success">Matriculada</Badge>
+                      <StatusBadge tipo="matricula" status="matriculada" />
                       {removendoId !== matricula.id && (
                         <Button
                           variant="secondary"
@@ -431,7 +422,7 @@ export function DetalheTurma() {
                             )}
                           </div>
                           <div className="flex items-center gap-2">
-                            <Badge variant="neutral">{STATUS_LABEL[matricula.status]}</Badge>
+                            <StatusBadge tipo="matricula" status={matricula.status} />
                             {podeDesfazer && desfazendoId !== matricula.id && (
                               <Button
                                 variant="secondary"
@@ -511,18 +502,19 @@ export function DetalheTurma() {
                 </p>
               )}
               {alunosDiario.map((aluno) => (
-                <Card key={aluno.matriculaId} className="flex items-center justify-between">
+                <Card key={aluno.matriculaId} className="flex items-center justify-between gap-3">
                   <span className="text-body-sm text-text-primary">{aluno.alunoNome}</span>
-                  <span className="text-label text-text-muted">
-                    Média: {aluno.progresso.media !== null ? aluno.progresso.media.toFixed(1) : "—"}
-                    {" · "}
-                    Frequência:{" "}
-                    {aluno.progresso.frequencia !== null
-                      ? `${aluno.progresso.frequencia.toFixed(0)}%`
-                      : "—"}
-                    {" · "}
-                    {STATUS_LABEL[aluno.status]}
-                  </span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-label text-text-muted">
+                      Média: {aluno.progresso.media !== null ? aluno.progresso.media.toFixed(1) : "—"}
+                      {" · "}
+                      Frequência:{" "}
+                      {aluno.progresso.frequencia !== null
+                        ? `${aluno.progresso.frequencia.toFixed(0)}%`
+                        : "—"}
+                    </span>
+                    <StatusBadge tipo="matricula" status={aluno.status} />
+                  </div>
                 </Card>
               ))}
             </div>
