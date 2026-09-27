@@ -55,6 +55,7 @@ export function DetalheModulo() {
     let ativo = true;
 
     async function carregar() {
+      setErro(null);
       try {
         const trilhaEncontrada = await buscarTrilhaPorSlug(slug!);
         if (!ativo) return;
@@ -97,7 +98,15 @@ export function DetalheModulo() {
     return () => {
       ativo = false;
     };
-  }, [slug, moduloId, usuario]);
+    // usuario?.id, não usuario: o AuthProvider troca a referência do
+    // objeto usuario a cada revalidação de sessão (foco de aba, refresh de
+    // token — ver AuthProvider.tsx), mesmo sendo o mesmo usuário. Depender
+    // do objeto inteiro reiniciava esta busca a cada troca de aba,
+    // cancelando a chamada em andamento; se a corrida terminasse mal, a
+    // tela ficava com erro=null e módulo=null — "Módulo não encontrado"
+    // falso, sem nenhum erro real por trás.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slug, moduloId, usuario?.id]);
 
   const preRequisitosPendentes = preRequisitos.filter((p) => p.status !== "concluido");
   const podeInscrever = preRequisitosPendentes.length === 0;
@@ -115,6 +124,21 @@ export function DetalheModulo() {
     } finally {
       setInscrevendo(false);
     }
+  }
+
+  // Erro de carregamento (rede, RLS, timeout) precisa vir antes das
+  // checagens abaixo — sem isso, uma falha na consulta ficava mascarada
+  // como "Módulo não encontrado" (trilha/modulo nunca chegavam a ser
+  // definidos) ou como um "Carregando..." que nunca resolve.
+  if (erro && !modulo) {
+    return (
+      <PaginaAutenticada largura="estreita">
+        <Link to="/catalogo" className="mb-4 flex items-center gap-1.5 text-body-sm font-medium text-text-secondary hover:text-text-primary">
+          ← Catálogo
+        </Link>
+        <Aviso variant="danger">{erro}</Aviso>
+      </PaginaAutenticada>
+    );
   }
 
   if (trilha === undefined) {
