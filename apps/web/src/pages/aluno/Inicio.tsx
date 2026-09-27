@@ -126,7 +126,7 @@ export function Inicio() {
               {n.texto.startsWith("Nota") ? (
                 <FileText className="mt-0.5 h-4 w-4 shrink-0 text-text-muted" aria-hidden />
               ) : (
-                <CheckCheck className="mt-0.5 h-4 w-4 shrink-0 text-success" aria-hidden />
+                <CheckCheck className="mt-0.5 h-4 w-4 shrink-0 text-text-primary" aria-hidden />
               )}
               <div>
                 <p className="text-body-sm text-text-primary">{n.texto}</p>

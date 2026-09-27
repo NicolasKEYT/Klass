@@ -3,9 +3,9 @@ import { useParams } from "react-router-dom";
 import { Check, X } from "lucide-react";
 import { useAuth } from "@/auth";
 import { Aviso } from "@/components/Aviso";
+import { Avatar } from "@/components/Avatar";
 import { BotaoVoltar } from "@/components/BotaoVoltar";
 import { Button } from "@/components/Button";
-import { Card } from "@/components/Card";
 import { PaginaAutenticada } from "@/components/PaginaAutenticada";
 import { Titulo } from "@/components/Titulo";
 import { useSincronizacao } from "@/components/IndicadorSincronizacao";
@@ -103,20 +103,21 @@ export function FazerChamada() {
             <p className="mb-4 text-body-sm text-text-secondary">{aula.descricao}</p>
           )}
 
-          {/* Contagem no topo (D5). */}
+          {/* Contagem no topo (D5) — fundo neutro sutil, não card branco
+              com borda (comparado por pixel com a tela "Chamada · Aula 7"). */}
           <div className="mb-4 grid grid-cols-2 gap-3">
-            <Card className="!py-4 text-center">
+            <div className="rounded-klass-card bg-neutral-subtle py-4 text-center">
               <p className="font-mono text-klass-xl font-semibold tabular-nums text-text-primary">
                 {totalPresentes}
               </p>
               <p className="text-label text-text-muted">presentes</p>
-            </Card>
-            <Card className="!py-4 text-center">
+            </div>
+            <div className="rounded-klass-card bg-neutral-subtle py-4 text-center">
               <p className="font-mono text-klass-xl font-semibold tabular-nums text-text-primary">
                 {totalFaltas}
               </p>
               <p className="text-label text-text-muted">faltas</p>
-            </Card>
+            </div>
           </div>
 
           <p className="mb-3 text-label text-text-muted">
@@ -133,16 +134,23 @@ export function FazerChamada() {
               const presente = presencas[aluno.matriculaId] ?? true;
               return (
                 // D2 — linha de lista no celular: 64px de altura mínima.
+                // Avatar + nome à esquerda, controle à direita, largura
+                // total do card (comparado por pixel com a tela "Chamada").
                 <div
                   key={aluno.matriculaId}
                   className="flex min-h-16 items-center justify-between gap-3 px-4 py-3"
                 >
-                  <span className="text-body-sm font-medium text-text-primary">
-                    {aluno.alunoNome}
-                  </span>
-                  {/* D5 — um único controle por aluno (não dois botões
-                      concorrentes), afastado do nome, alvo de 48px. */}
-                  <div className="flex overflow-hidden rounded-klass-control border border-border">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <Avatar nome={aluno.alunoNome} />
+                    <span className="truncate text-body-sm font-medium text-text-primary">
+                      {aluno.alunoNome}
+                    </span>
+                  </div>
+                  {/* D5 — controle segmentado único (não dois botões soltos):
+                      as duas opções coladas, sem espaço entre elas. Preto
+                      sólido só na opção ativa, seja qual for — a cor não
+                      distingue presença de falta, só o texto/ícone. */}
+                  <div className="flex shrink-0 overflow-hidden rounded-klass-control border border-border">
                     <button
                       type="button"
                       aria-pressed={presente}
@@ -150,7 +158,7 @@ export function FazerChamada() {
                         setPresencas((atual) => ({ ...atual, [aluno.matriculaId]: true }))
                       }
                       className={`flex h-12 items-center gap-1.5 px-4 text-klass-md font-medium transition ${
-                        presente ? "bg-success-subtle text-success" : "bg-surface text-text-muted"
+                        presente ? "bg-text-primary text-white" : "bg-surface text-text-muted"
                       }`}
                     >
                       <Check className="h-4 w-4" aria-hidden />P
@@ -162,7 +170,7 @@ export function FazerChamada() {
                         setPresencas((atual) => ({ ...atual, [aluno.matriculaId]: false }))
                       }
                       className={`flex h-12 items-center gap-1.5 border-l border-border px-4 text-klass-md font-medium transition ${
-                        !presente ? "bg-danger-subtle text-danger" : "bg-surface text-text-muted"
+                        !presente ? "bg-text-primary text-white" : "bg-surface text-text-muted"
                       }`}
                     >
                       <X className="h-4 w-4" aria-hidden />
@@ -183,7 +191,7 @@ export function FazerChamada() {
             <div className="fixed inset-x-0 bottom-16 z-20 border-t border-border bg-surface p-4 md:sticky md:bottom-0">
               <div className="mx-auto flex max-w-2xl items-center gap-3">
                 {alteracoesNaoSalvas && (
-                  <span className="text-label text-warning">Alterações ainda não salvas</span>
+                  <span className="text-label text-text-secondary">Alterações ainda não salvas</span>
                 )}
                 <Button className="ml-auto flex-1 md:flex-none" disabled={salvando} onClick={() => void aoSalvar()}>
                   {salvando ? "Salvando..." : "Salvar chamada"}

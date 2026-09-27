@@ -174,8 +174,8 @@ export function DetalheModulo() {
           <div className="flex flex-col gap-2.5">
             {preRequisitos.map((p) => (
               <div key={p.moduloId} className="flex items-center gap-2.5">
-                {p.status === "concluido" && <Check className="h-4 w-4 shrink-0 text-success" aria-hidden />}
-                {p.status === "cursando" && <Clock className="h-4 w-4 shrink-0 text-warning" aria-hidden />}
+                {p.status === "concluido" && <Check className="h-4 w-4 shrink-0 text-text-primary" aria-hidden />}
+                {p.status === "cursando" && <Clock className="h-4 w-4 shrink-0 text-text-secondary" aria-hidden />}
                 {p.status === "pendente" && <Lock className="h-4 w-4 shrink-0 text-text-muted" aria-hidden />}
                 <div>
                   <p className="text-body-sm font-medium text-text-primary">{p.nome}</p>
@@ -204,15 +204,20 @@ export function DetalheModulo() {
               {turmas.map((turma) => (
                 <label
                   key={turma.id}
+                  // Prompt 17 — a linha selecionada ganha borda preta mais
+                  // grossa (não um preenchimento colorido): o único azul da
+                  // tela inteira é o próprio ponto do rádio, via
+                  // accent-acento abaixo (medido por pixel em "Escolha a
+                  // turma": #0A84FF, citado no diagnóstico do PDF).
                   className={`flex cursor-pointer items-center justify-between gap-3 rounded-klass-control border px-3.5 py-3 ${
-                    turmaSelecionada === turma.id ? "border-primary bg-primary-subtle" : "border-border"
+                    turmaSelecionada === turma.id ? "border-2 border-text-primary" : "border-border"
                   }`}
                 >
                   <div className="flex items-center gap-3">
                     <input
                       type="radio"
                       name="turma"
-                      className="h-5 w-5"
+                      className="h-5 w-5 accent-acento"
                       checked={turmaSelecionada === turma.id}
                       onChange={() => setTurmaSelecionada(turma.id)}
                       disabled={turma.vagasRestantes <= 0}
@@ -234,6 +239,7 @@ export function DetalheModulo() {
 
           <Button
             className="mt-4 w-full"
+            variant={!podeInscrever ? "tracejado" : "primary"}
             disabled={!podeInscrever || !turmaSelecionada || inscrevendo || turmas.length === 0}
             title={
               !podeInscrever

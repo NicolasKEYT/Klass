@@ -5,6 +5,7 @@ import { Award, Lock, Unlock } from "lucide-react";
 import { useAuth } from "@/auth";
 import { Aviso } from "@/components/Aviso";
 import { Badge } from "@/components/Badge";
+import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
 import { PaginaAutenticada } from "@/components/PaginaAutenticada";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -202,7 +203,7 @@ export function Boletim() {
                           </Badge>
                         </Link>
                       ) : (
-                        <Badge variant="neutral">
+                        <Badge variant="tracejado">
                           <Lock className="h-3.5 w-3.5" aria-hidden />
                           Bloqueado
                         </Badge>
@@ -298,15 +299,17 @@ export function Boletim() {
                     <PDFDownloadLink
                       document={<CertificadoPDF certificado={grupo.certificadoTrilha} />}
                       fileName={`certificado-${grupo.certificadoTrilha.hash_publico}.pdf`}
-                      className="inline-flex h-12 sm:h-10 items-center justify-center rounded-klass-control bg-primary px-4 text-klass-md font-medium text-white hover:bg-primary/90"
+                      className="inline-flex h-12 sm:h-10 items-center justify-center rounded-klass-control bg-primary px-4 text-klass-md font-medium text-white hover:brightness-95"
                     >
                       {({ loading }) => (loading ? "Gerando..." : "Baixar PDF")}
                     </PDFDownloadLink>
                   ) : (
-                    <Badge variant="neutral">
-                      <Lock className="h-3.5 w-3.5" aria-hidden />
-                      Bloqueado
-                    </Badge>
+                    // Mesmo botão "Baixar PDF" da tela de referência, só que
+                    // no estilo tracejado/desabilitado enquanto bloqueado —
+                    // não vira um badge diferente (Prompt 17).
+                    <Button variant="tracejado" disabled>
+                      Baixar PDF
+                    </Button>
                   )}
                 </Card>
               )}

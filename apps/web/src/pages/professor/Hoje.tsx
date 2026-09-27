@@ -60,7 +60,10 @@ export function Hoje() {
         </Aviso>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      {/* Duas colunas — esquerda mais larga (aulas do dia), direita mais
+          estreita (pendências, depois alunos que pedem atenção), medido
+          por proporção na tela de referência. */}
+      <div className="grid gap-4 lg:grid-cols-[3fr_2fr]">
         <Card>
           <div className="mb-3 flex items-center justify-between">
             <p className="text-klass-md font-medium text-text-primary">
@@ -165,7 +168,7 @@ export function Hoje() {
                       {a.turmaCodigo} · {a.motivo}
                     </p>
                   </div>
-                  <span className="font-mono text-klass-md font-medium tabular-nums text-danger">
+                  <span className="font-mono text-klass-md font-semibold tabular-nums text-text-primary">
                     {a.valor}
                   </span>
                 </Link>

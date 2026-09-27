@@ -139,7 +139,7 @@ export function Inicio() {
             <div className="flex flex-col gap-2">
               {turmasFiltradas.map((t) => (
                 <Link key={t.id} to={`/coordenacao/turmas/${t.id}`}>
-                  <Card className="text-body-sm text-text-primary hover:shadow-klass-hover">
+                  <Card className="text-body-sm text-text-primary transition hover:border-text-primary/40">
                     {t.codigo} · {t.moduloNome} · {t.trilhaNome}
                   </Card>
                 </Link>
@@ -154,7 +154,7 @@ export function Inicio() {
             <div className="flex flex-col gap-2">
               {trilhasFiltradas.map((t) => (
                 <Link key={t.id} to={`/coordenacao/trilhas/${t.slug}/editar`}>
-                  <Card className="text-body-sm text-text-primary hover:shadow-klass-hover">{t.nome}</Card>
+                  <Card className="text-body-sm text-text-primary transition hover:border-text-primary/40">{t.nome}</Card>
                 </Link>
               ))}
             </div>
@@ -279,9 +279,23 @@ export function Inicio() {
                     <td className="px-4 py-3 text-body-sm text-text-secondary">{t.moduloNome}</td>
                     <td className="px-4 py-3 text-body-sm text-text-secondary">{t.professorNome}</td>
                     <td className="px-4 py-3">
-                      <span className="font-mono text-body-sm tabular-nums text-text-secondary">
-                        {t.matriculados}/{t.vagasTotal}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="h-2 w-24 rounded-full bg-neutral-subtle"
+                          role="img"
+                          aria-label={`Ocupação: ${t.matriculados} de ${t.vagasTotal} vagas`}
+                        >
+                          <div
+                            className="h-2 rounded-full bg-text-primary"
+                            style={{
+                              width: `${t.vagasTotal > 0 ? Math.min(100, (t.matriculados / t.vagasTotal) * 100) : 0}%`,
+                            }}
+                          />
+                        </div>
+                        <span className="font-mono text-body-sm tabular-nums text-text-secondary">
+                          {t.matriculados}/{t.vagasTotal}
+                        </span>
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       <span className="font-mono text-body-sm tabular-nums text-text-secondary">

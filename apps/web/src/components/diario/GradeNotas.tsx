@@ -211,7 +211,10 @@ export function GradeNotas({
                     ) : situacaoAvaliacao ? (
                       <StatusBadge tipo="avaliacao" status={situacaoAvaliacao} />
                     ) : (
-                      <Badge variant="neutral">Em curso</Badge>
+                      // "Em curso" é texto simples, sem badge — só os
+                      // estados que pedem atenção viram pílula (medido por
+                      // pixel na grade de referência, Prompt 17).
+                      <span className="text-body-sm text-text-secondary">Em curso</span>
                     )}
                   </td>
                 </tr>

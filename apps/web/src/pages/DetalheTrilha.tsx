@@ -83,7 +83,7 @@ export function DetalheTrilha() {
           <div className="mt-6 flex flex-col gap-3">
             {modulos.map((modulo) => (
               <Link key={modulo.id} to={`/catalogo/${trilha.slug}/modulos/${modulo.id}`}>
-                <Card className="flex flex-col gap-2 transition hover:-translate-y-0.5 hover:shadow-klass-hover">
+                <Card className="flex flex-col gap-2 transition hover:border-text-primary/40">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <IconeCatalogo nome={modulo.icone} className="h-5 w-5 text-text-secondary" />
