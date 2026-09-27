@@ -31,9 +31,11 @@ export function BarraDeMeta({ valor, meta, max = 100, rotulo, className = "" }: 
         style={{ width: `${percentualValor}%` }}
       />
       {/* Marca vertical da meta/mínimo — cruza a barra, sempre visível
-          mesmo quando o valor atual já passou dela. */}
+          mesmo quando o valor atual já passou dela. Cor medida por pixel
+          direto na tela "Início" do aluno (Prompt 17) — não é âmbar de
+          alerta, é um segundo acento reservado só para este traço. */}
       <div
-        className="absolute -top-1 h-4 w-0.5 rounded-full bg-warning"
+        className="absolute -top-1 h-4 w-0.5 rounded-full bg-meta"
         style={{ left: `${percentualMeta}%` }}
         aria-hidden
       />

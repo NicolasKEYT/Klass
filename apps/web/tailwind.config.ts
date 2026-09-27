@@ -13,51 +13,73 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Paleta da interface do app (telas 01–05: dashboards de
-        // coordenação, aluno e professor). Neutros frios + azul de marca.
-        background: "#F6F6F5", // fundo do canvas atrás de sidebar/header
-        surface: "#FFFFFF", // sidebar, cards, inputs
-        "surface-subtle": "#FBFBFA", // faixa do header
+        // Prompt 17 (klass-uikit.pdf, correção de fidelidade visual) —
+        // paleta extraída por amostragem de pixel direto nas 7 telas de
+        // alta-fidelidade (300dpi), não estimada a olho. O documento diz
+        // que os WIREFRAMES de baixa-fidelidade são propositalmente cinza
+        // ("a paleta sai depois", D15) — isso não se aplica às telas de
+        // alta-fidelidade, que já usam esta paleta real e específica:
+        // fundo quente muito claro, cards brancos com borda visível (sem
+        // sombra), texto quase-preto, e UM único acento azul reservado
+        // para o rádio de seleção de turma — em nenhum outro lugar.
+        background: "#F3F3F1", // fundo de página — cinza claro e quente (medido)
+        surface: "#FFFFFF", // cards, sidebar, inputs
+        "surface-subtle": "#E3E4DE", // item ativo do menu, trilha de barra, avatar placeholder (medido)
         border: {
-          DEFAULT: "#E7E7E3", // bordas de card, divisórias de tabela
+          DEFAULT: "#D8D9D3", // borda visível de card/badge — sem sombra de elevação (medido)
         },
         text: {
-          primary: "#191A1C",
-          secondary: "#565860",
-          muted: "#8B8D96",
+          // "Preto/quase-preto" quente — não o cinza frio (#191A1C) de
+          // antes da reforma. Repontado, não renomeado: todo uso de
+          // text-primary/bg-primary já espalhado pelo código vira preto
+          // automaticamente (ver `primary` abaixo).
+          primary: "#1A1A17",
+          secondary: "#6B6D66",
+          muted: "#8B8D86",
         },
+        // "primary" deixou de ser a marca azul: no UI Kit de alta-
+        // fidelidade, todo botão/badge/estado "principal" (Concluído,
+        // Matriculado, Ver boletim, item ativo da barra lateral) é preto
+        // sólido — texto branco quando preenchido. Repontar aqui em vez
+        // de trocar toda classe `bg-primary`/`text-primary`/`border-
+        // primary`/`ring-primary` do código (o mesmo método já usado nos
+        // tokens de tipografia no Prompt 16).
         primary: {
-          DEFAULT: "#2563EB", // marca, links ativos, botão primário, barra de progresso
-          subtle: "#EDF2FF", // fundo de item ativo no menu, avatar, badge "Aberta"
+          DEFAULT: "#1A1A17",
+          subtle: "#E3E4DE", // fundo de item ativo/selecionado (era azul clarinho)
         },
-        success: {
-          DEFAULT: "#15803D", // texto de status positivo, indicador "tempo real"
-          subtle: "#ECFDF3", // fundo de badge de status positivo
+        // Único azul do sistema inteiro — usado só no <input type="radio">
+        // de "Escolha a turma" (accent-color), nunca em botão, link, badge
+        // ou foco de campo. Valor citado no próprio diagnóstico do PDF.
+        acento: {
+          DEFAULT: "#0A84FF",
+        },
+        // Traço de meta/mínimo nas barras contra meta (BarraDeMeta) — o
+        // único lugar do sistema com um segundo acento colorido (não é
+        // azul, então não conflita com a regra acima). Medido no traço de
+        // "mínimo 75%" da tela Início do aluno.
+        meta: {
+          DEFAULT: "#C2410C",
         },
         neutral: {
-          subtle: "#F1F1EF", // trilha de progress bar, badge neutro ("Fechada")
+          subtle: "#E3E4DE", // trilha de progress bar, badge neutro
         },
-        // Inferida — não vem de nenhum SVG (nenhuma tela mostrou um estado
-        // de erro/recusa). Reservada para estados negativos do domínio
-        // (ex.: inscrição recusada, matrícula rejeitada).
+        // Mantidos só para feedback transitório (banners de sucesso/erro
+        // do componente Aviso) — não aparecem em nenhuma das 7 telas de
+        // alta-fidelidade revisadas neste prompt, então ficam fora do
+        // escopo da correção visual (ver relatório do Prompt 17).
+        success: {
+          DEFAULT: "#15803D",
+          subtle: "#ECFDF3",
+        },
         danger: {
           DEFAULT: "#DC2626",
           subtle: "#FEE2E2",
         },
-        // D8/D15 (klass-uikit.pdf) — quinta cor semântica do vocabulário de
-        // status ("atenção"), usada em estados que pedem cuidado mas não
-        // são falha (chamada pendente, aluno abaixo da média, pendência da
-        // coordenação). O PDF marca a paleta exata como "preenchida depois"
-        // (D15, tom sóbrio); âmbar aqui é provisório, na mesma saturação de
-        // success/danger para não destoar.
-        warning: {
-          DEFAULT: "#B45309",
-          subtle: "#FEF3C7",
-        },
 
         // Paleta do certificado (tela 06 — template de PDF, não é uma
         // tela navegável). Deliberadamente distinta: papel/pergaminho,
-        // sem o azul de marca do app.
+        // sem o preto/azul do app.
         cert: {
           bg: "#FFFDF9",
           border: "#E7E2D6",

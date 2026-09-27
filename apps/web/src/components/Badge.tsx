@@ -1,25 +1,26 @@
 import type { HTMLAttributes } from "react";
 
-type BadgeVariant = "success" | "neutral" | "live" | "danger" | "warning";
+type BadgeVariant = "success" | "neutral" | "live" | "danger" | "tracejado";
 
 interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
   variant?: BadgeVariant;
 }
 
-// "success"/"neutral": badge de status em tabela (ex.: "Aberta"/"Fechada"
-// em 01-gestor-visao-geral.svg, "Aprovado" em 04-aluno-boletim.svg e
-// 05-professor-diario.svg).
-// "live": indicador de tempo real ("tempo real"/"sincronizando"),
-// pill com ponto colorido — mesmo padrão nas 5 telas de app.
-// "danger": não vem de nenhum SVG (mesma cor inferida do MS2, ver
-// tailwind.config.ts) — usada em estados negativos como matrícula rejeitada.
-// "warning": D8 — estados de atenção que não são falha (ver StatusBadge).
+// Prompt 17 (klass-uikit.pdf, correção de fidelidade) — o vocabulário de
+// badges do UI Kit de alta-fidelidade é monocromático: preenchimento
+// preto sólido para o estado mais "digno de nota" de cada contexto
+// (Concluído, Chamada pendente, Sem conexão), contorno cinza para os
+// demais (Matriculado, Reprovado, Cursando...), e borda tracejada para
+// estados incertos/em espera (Em análise, Salvando..., Bloqueado). Cor
+// nunca carrega o significado sozinha — ícone + texto sempre acompanham
+// (ver StatusBadge). Os nomes de variante ficam os mesmos de antes da
+// correção (menos código pra tocar), só o mapeamento de classe mudou.
 const variantClasses: Record<BadgeVariant, string> = {
-  success: "rounded-klass-badge bg-success-subtle text-success",
-  neutral: "rounded-klass-badge bg-neutral-subtle text-text-secondary",
-  live: "rounded-klass-pill border border-border bg-surface text-text-secondary",
-  danger: "rounded-klass-badge bg-danger-subtle text-danger",
-  warning: "rounded-klass-badge bg-warning-subtle text-warning",
+  success: "rounded-klass-pill bg-primary text-white", // preenchido preto — estado positivo/definitivo
+  neutral: "rounded-klass-pill bg-neutral-subtle text-text-secondary", // tag informativa (nível, carga horária...)
+  live: "rounded-klass-pill border border-border bg-surface text-text-secondary", // contorno + ponto (sincronização)
+  danger: "rounded-klass-pill border border-border bg-surface text-text-primary", // contorno — negativo/recusado
+  tracejado: "rounded-klass-pill border border-dashed border-border bg-surface text-text-secondary", // incerto/em espera
 };
 
 export function Badge({
@@ -34,7 +35,7 @@ export function Badge({
       {...props}
     >
       {variant === "live" && (
-        <span className="h-2 w-2 rounded-full bg-success" aria-hidden />
+        <span className="h-2 w-2 rounded-full bg-primary" aria-hidden />
       )}
       {children}
     </span>

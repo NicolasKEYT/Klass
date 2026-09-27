@@ -85,41 +85,46 @@ function formatarHora(data: Date): string {
   return data.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 }
 
+// Prompt 17 — mapeamento de forma corrigido por pixel-comparação direta
+// com a página de Fundamentos: "Tempo real" e "Salvo" são contorno,
+// "Salvando..." é tracejado (estado incerto/em andamento), "Sem conexão"
+// é preenchido a preto (o único estado que exige atenção imediata). Cor
+// nunca é verde/vermelha — só preto, contorno ou tracejado.
 export function IndicadorSincronizacao({ className = "" }: { className?: string }) {
   const { estado, salvoEm } = useSincronizacao();
 
   const conteudo: Record<
     EstadoSincronizacao,
-    { texto: string; icone: ReactNode; classeCor: string }
+    { texto: string; icone: ReactNode; classeForma: string }
   > = {
     "tempo-real": {
       texto: "Tempo real",
-      icone: <span className="h-2 w-2 rounded-full bg-success" aria-hidden />,
-      classeCor: "text-text-secondary",
+      icone: <span className="h-2 w-2 rounded-full bg-text-primary" aria-hidden />,
+      classeForma: "border border-border bg-surface text-text-secondary",
     },
     salvando: {
       texto: "Salvando...",
       icone: <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />,
-      classeCor: "text-text-secondary",
+      classeForma: "border border-dashed border-border bg-surface text-text-secondary",
     },
     salvo: {
       texto: salvoEm ? `Salvo às ${formatarHora(salvoEm)}` : "Salvo",
       icone: <Check className="h-3.5 w-3.5" aria-hidden />,
-      classeCor: "text-success",
+      classeForma: "border border-border bg-surface text-text-primary",
     },
     "sem-conexao": {
       texto: "Sem conexão",
       icone: <CloudOff className="h-3.5 w-3.5" aria-hidden />,
-      classeCor: "text-danger",
+      classeForma: "bg-text-primary text-white",
     },
   };
 
-  const { texto, icone, classeCor } = conteudo[estado];
+  const { texto, icone, classeForma } = conteudo[estado];
 
   return (
     <span
       role="status"
-      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-klass-pill border border-border bg-surface px-3 py-1 text-label font-medium ${classeCor} ${className}`}
+      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-klass-pill px-3 py-1 text-label font-medium ${classeForma} ${className}`}
     >
       {icone}
       {texto}

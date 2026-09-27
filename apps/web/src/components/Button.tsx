@@ -1,22 +1,26 @@
 import type { ButtonHTMLAttributes } from "react";
 
-type ButtonVariant = "primary" | "secondary";
+type ButtonVariant = "primary" | "secondary" | "tracejado";
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
 }
 
 // D2 (klass-uikit.pdf, Fundamentos) — alvo de toque: 48px no celular
-// (abaixo de sm), 40px no desktop. Raio e cores extraídas dos botões
-// "Nova turma" (02-gestor-turmas.svg) e "Lançar notas" (05-professor-diario.svg).
-// Reforma flat: cor sólida, sem gradiente/relevo; hover ESCURECE
-// levemente (brightness, não opacidade — opacidade clareava o azul) e o
-// active afunda mais um degrau. Primário ganha uma sombra sutil de
-// elevação; secundário fica só com a borda hairline.
+// (abaixo de sm), 40px no desktop.
+// Prompt 17 (correção de fidelidade) — o UI Kit de alta-fidelidade não usa
+// sombra de elevação em botão nenhum (comparado por pixel com "Ver
+// boletim", "Fazer chamada", "Salvar chamada" — todos preenchimento preto
+// chapado, sem sombra). Primário = preto sólido, texto branco; hover
+// escurece (brightness) em vez de opacidade, pra não "sumir e voltar".
+// Secundário = contorno. "Tracejado" é o terceiro estado visto em
+// "Inscrever-se" bloqueado por pré-requisito — mesma forma de botão, só
+// com borda tracejada e tom apagado, sem fingir que a ação está disponível.
 const variantClasses: Record<ButtonVariant, string> = {
-  primary: "bg-primary text-white shadow-klass-card hover:brightness-95 active:brightness-90",
+  primary: "bg-primary text-white hover:brightness-95 active:brightness-90",
   secondary:
     "bg-surface text-text-primary border border-border hover:bg-neutral-subtle active:bg-neutral-subtle",
+  tracejado: "border border-dashed border-border bg-neutral-subtle text-text-muted",
 };
 
 export function Button({
