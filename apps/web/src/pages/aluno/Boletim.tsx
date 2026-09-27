@@ -117,8 +117,12 @@ export function Boletim() {
 
   useEffect(() => {
     void carregar();
+    // usuario?.id, não usuario: o AuthProvider troca a referência do
+    // objeto a cada revalidação de sessão (foco de aba, refresh de
+    // token), mesmo sendo o mesmo usuário — sem isso, o boletim inteiro
+    // recarregava a cada troca de aba.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [usuario]);
+  }, [usuario?.id]);
 
   // Realtime — quando o professor lança nota, faz chamada ou encerra o
   // módulo, o boletim atualiza sozinho, sem o aluno precisar recarregar
@@ -149,8 +153,12 @@ export function Boletim() {
     return () => {
       void supabase?.removeChannel(canal);
     };
+    // usuario?.id, não usuario: sem isso, o canal Realtime inteiro era
+    // derrubado e reaberto a cada troca de foco de aba (mesma causa raiz
+    // do "Módulo não encontrado" corrigido em DetalheModulo), deixando
+    // uma janela sem escutar eventos a cada vez.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [usuario, matriculaIds.join(",")]);
+  }, [usuario?.id, matriculaIds.join(",")]);
 
   return (
     <PaginaAutenticada largura="estreita">

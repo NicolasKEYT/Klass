@@ -14,10 +14,23 @@ export function Turmas() {
 
   useEffect(() => {
     if (!usuario) return;
+    let ativo = true;
     listarTurmasDoProfessor(usuario.id)
-      .then(setTurmas)
-      .catch((e) => setErro(e instanceof Error ? e.message : "Não foi possível carregar suas turmas."));
-  }, [usuario]);
+      .then((t) => {
+        if (ativo) setTurmas(t);
+      })
+      .catch((e) => {
+        if (ativo) setErro(e instanceof Error ? e.message : "Não foi possível carregar suas turmas.");
+      });
+    return () => {
+      ativo = false;
+    };
+    // usuario?.id, não usuario: o AuthProvider troca a referência do
+    // objeto a cada revalidação de sessão (foco de aba, refresh de
+    // token), mesmo sendo o mesmo usuário — sem isso, esta busca
+    // reiniciava a cada troca de aba.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [usuario?.id]);
 
   return (
     <PaginaAutenticada>

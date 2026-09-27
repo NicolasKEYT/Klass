@@ -36,18 +36,30 @@ export function Hoje() {
 
   useEffect(() => {
     if (!usuario) return;
+    let ativo = true;
     Promise.all([
       listarAulasDeHojeDoProfessor(usuario.id),
       listarPendenciasDoProfessor(usuario.id),
       listarAlunosQuePedemAtencaoDoProfessor(usuario.id),
     ])
       .then(([a, p, al]) => {
+        if (!ativo) return;
         setAulas(a);
         setPendencias(p);
         setAlunosAtencao(al);
       })
-      .catch((e) => setErro(e instanceof Error ? e.message : "Não foi possível carregar o painel."));
-  }, [usuario]);
+      .catch((e) => {
+        if (ativo) setErro(e instanceof Error ? e.message : "Não foi possível carregar o painel.");
+      });
+    return () => {
+      ativo = false;
+    };
+    // usuario?.id, não usuario: o AuthProvider troca a referência do
+    // objeto a cada revalidação de sessão (foco de aba, refresh de
+    // token), mesmo sendo o mesmo usuário — sem isso, o painel recarregava
+    // a cada troca de aba.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [usuario?.id]);
 
   return (
     <>

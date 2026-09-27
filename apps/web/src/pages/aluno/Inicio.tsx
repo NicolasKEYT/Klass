@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Award, Bell, CheckCheck, FileText } from "lucide-react";
 import { useAuth } from "@/auth";
+import { Aviso } from "@/components/Aviso";
 import { BarraDeMeta } from "@/components/BarraDeMeta";
 import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
@@ -31,28 +32,51 @@ export function Inicio() {
   const { usuario, profile } = useAuth();
   const [passo, setPasso] = useState<ProximoPassoAluno | null | undefined>(undefined);
   const [novidades, setNovidades] = useState<NovidadeAluno[]>([]);
+  const [erro, setErro] = useState<string | null>(null);
 
   useEffect(() => {
     if (!usuario) return;
+    let ativo = true;
+    setErro(null);
     Promise.all([buscarProximoPassoDoAluno(usuario.id), listarNovidadesDoAluno(usuario.id)])
       .then(([p, n]) => {
+        if (!ativo) return;
         setPasso(p);
         setNovidades(n);
       })
-      .catch(() => {
-        setPasso(null);
+      .catch((e) => {
+        // Erro de carregamento não pode virar "passo = null" — esse valor
+        // já tem um significado real (aluno sem matrícula em andamento) e
+        // mostra a mensagem de "explore o catálogo". Confundir os dois
+        // escondia falha de rede/RLS por trás de uma mensagem enganosa
+        // (mesma causa raiz do "Módulo não encontrado" de DetalheModulo).
+        if (ativo) setErro(e instanceof Error ? e.message : "Não foi possível carregar seu painel.");
       });
-  }, [usuario]);
+    return () => {
+      ativo = false;
+    };
+    // usuario?.id, não usuario: o AuthProvider troca a referência do
+    // objeto a cada revalidação de sessão (foco de aba, refresh de
+    // token), mesmo sendo o mesmo usuário — sem isso, esta busca
+    // reiniciava a cada troca de aba.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [usuario?.id]);
 
   return (
     <>
       <p className="text-body-sm text-text-secondary">Olá, {profile?.nome_completo?.split(" ")[0] ?? "..."}</p>
 
-      {passo === undefined && (
+      {erro && (
+        <Aviso variant="danger" className="mt-4">
+          {erro}
+        </Aviso>
+      )}
+
+      {!erro && passo === undefined && (
         <div className="mt-4 h-40 animate-pulse rounded-klass-card border border-border bg-surface-subtle" />
       )}
 
-      {passo === null && (
+      {!erro && passo === null && (
         <Card className="mt-4">
           <p className="text-body-sm text-text-secondary">
             Você ainda não está cursando nenhum módulo. Que tal explorar o{" "}
@@ -139,7 +163,7 @@ export function Inicio() {
         </div>
       </Card>
 
-      {!passo && passo !== undefined && (
+      {!erro && !passo && passo !== undefined && (
         <div className="mt-4 flex items-center gap-2 text-label text-text-muted">
           <Award className="h-4 w-4" aria-hidden />
           Certificados aparecem aqui assim que você concluir um módulo ou trilha.
