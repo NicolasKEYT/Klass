@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Pencil } from "lucide-react";
 import { useAuth } from "@/auth";
 import { Aviso } from "@/components/Aviso";
 import { BotaoVoltar } from "@/components/BotaoVoltar";
@@ -11,8 +12,12 @@ import { PaginaAutenticada } from "@/components/PaginaAutenticada";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Titulo } from "@/components/Titulo";
 import {
+  apagarAvaliacao,
+  atualizarAula,
   buscarProgressoMatricula,
+  calcularDatasRecorrentes,
   criarAula,
+  criarAulasEmLote,
   criarAvaliacao,
   encerrarMatricula,
   encerrarTurma,
@@ -29,6 +34,17 @@ import {
 import { buscarTurmaDetalhada, type TurmaDetalhada } from "@/lib/selecao";
 
 type Aba = "avaliacoes" | "aulas" | "alunos";
+type ModoCriacaoAula = "unica" | "recorrencia";
+
+const DIAS_SEMANA: Array<{ valor: number; label: string }> = [
+  { valor: 1, label: "Seg" },
+  { valor: 2, label: "Ter" },
+  { valor: 3, label: "Qua" },
+  { valor: 4, label: "Qui" },
+  { valor: 5, label: "Sex" },
+  { valor: 6, label: "Sáb" },
+  { valor: 0, label: "Dom" },
+];
 
 interface AlunoComProgresso extends AlunoDoDiario {
   progresso: ProgressoMatricula;
@@ -37,7 +53,23 @@ interface AlunoComProgresso extends AlunoDoDiario {
 export function DetalheTurma() {
   const { id } = useParams<{ id: string }>();
   const { usuario } = useAuth();
-  const [aba, setAba] = useState<Aba>("avaliacoes");
+  // A aba ativa mora na URL (?aba=...), não em estado local: assim, ao
+  // sair para "Fazer chamada" (rota separada) e voltar pelo histórico do
+  // navegador (BotaoVoltar → navigate(-1)), a página volta exatamente na
+  // aba de onde saiu, em vez de resetar para "avaliacoes" a cada remount.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const abaParam = searchParams.get("aba");
+  const aba: Aba = abaParam === "aulas" || abaParam === "alunos" ? abaParam : "avaliacoes";
+  function mudarAba(valor: Aba) {
+    setSearchParams(
+      (atual) => {
+        const proximo = new URLSearchParams(atual);
+        proximo.set("aba", valor);
+        return proximo;
+      },
+      { replace: true },
+    );
+  }
   const [turma, setTurma] = useState<TurmaDetalhada | null | undefined>(undefined);
   const [avaliacoes, setAvaliacoes] = useState<Avaliacao[]>([]);
   const [aulas, setAulas] = useState<Aula[]>([]);
@@ -52,10 +84,25 @@ export function DetalheTurma() {
   const [salvandoAvaliacao, setSalvandoAvaliacao] = useState(false);
 
   const [mostrarNovaAula, setMostrarNovaAula] = useState(false);
+  const [modoCriacaoAula, setModoCriacaoAula] = useState<ModoCriacaoAula>("unica");
   const [novaData, setNovaData] = useState("");
   const [novoHorario, setNovoHorario] = useState("");
   const [novaAulaDescricao, setNovaAulaDescricao] = useState("");
   const [salvandoAula, setSalvandoAula] = useState(false);
+
+  // Recorrência: gera várias aulas de uma vez (dia(s) da semana + período);
+  // exceções pontuais continuam tratadas depois, editando a aula gerada.
+  const [diasSelecionados, setDiasSelecionados] = useState<number[]>([]);
+  const [recorrenciaInicio, setRecorrenciaInicio] = useState("");
+  const [recorrenciaFim, setRecorrenciaFim] = useState("");
+  const [recorrenciaHorario, setRecorrenciaHorario] = useState("");
+  const [recorrenciaDescricao, setRecorrenciaDescricao] = useState("");
+
+  const [editandoAulaId, setEditandoAulaId] = useState<string | null>(null);
+  const [editData, setEditData] = useState("");
+  const [editHorario, setEditHorario] = useState("");
+  const [editDescricao, setEditDescricao] = useState("");
+  const [salvandoEdicaoAula, setSalvandoEdicaoAula] = useState(false);
 
   const [encerrandoId, setEncerrandoId] = useState<string | null>(null);
   const [confirmandoEncerrarTurma, setConfirmandoEncerrarTurma] = useState(false);
@@ -143,6 +190,77 @@ export function DetalheTurma() {
     }
   }
 
+  const datasRecorrencia = calcularDatasRecorrentes(diasSelecionados, recorrenciaInicio, recorrenciaFim);
+
+  function alternarDiaSemana(valor: number) {
+    setDiasSelecionados((atual) =>
+      atual.includes(valor) ? atual.filter((d) => d !== valor) : [...atual, valor],
+    );
+  }
+
+  async function aoGerarAulas(evento: FormEvent) {
+    evento.preventDefault();
+    if (!id || datasRecorrencia.length === 0) return;
+    setErro(null);
+    setMensagem(null);
+    setSalvandoAula(true);
+    try {
+      await criarAulasEmLote({
+        turmaId: id,
+        datas: datasRecorrencia,
+        horario: recorrenciaHorario,
+        descricao: recorrenciaDescricao,
+      });
+      setDiasSelecionados([]);
+      setRecorrenciaInicio("");
+      setRecorrenciaFim("");
+      setRecorrenciaHorario("");
+      setRecorrenciaDescricao("");
+      setMostrarNovaAula(false);
+      setMensagem(`${datasRecorrencia.length} aula(s) criada(s).`);
+      await carregar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Não foi possível gerar as aulas.");
+    } finally {
+      setSalvandoAula(false);
+    }
+  }
+
+  function aoAbrirEdicaoAula(aula: Aula) {
+    setErro(null);
+    setMensagem(null);
+    setMostrarNovaAula(false);
+    setEditandoAulaId(aula.id);
+    setEditData(aula.data);
+    setEditHorario(aula.horario ?? "");
+    setEditDescricao(aula.descricao ?? "");
+  }
+
+  async function aoSalvarEdicaoAula(evento: FormEvent) {
+    evento.preventDefault();
+    if (!editandoAulaId) return;
+    setErro(null);
+    setMensagem(null);
+    setSalvandoEdicaoAula(true);
+    try {
+      await atualizarAula(editandoAulaId, { data: editData, horario: editHorario, descricao: editDescricao });
+      setEditandoAulaId(null);
+      setMensagem("Aula atualizada.");
+      await carregar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Não foi possível atualizar a aula.");
+    } finally {
+      setSalvandoEdicaoAula(false);
+    }
+  }
+
+  async function aoApagarAvaliacao(avaliacaoId: string) {
+    setMensagem(null);
+    await apagarAvaliacao(avaliacaoId);
+    setMensagem("Avaliação apagada.");
+    await carregar();
+  }
+
   async function aoEncerrar(matriculaId: string) {
     setErro(null);
     setMensagem(null);
@@ -221,7 +339,7 @@ export function DetalheTurma() {
               {(["avaliacoes", "aulas", "alunos"] as Aba[]).map((valor) => (
                 <button
                   key={valor}
-                  onClick={() => setAba(valor)}
+                  onClick={() => mudarAba(valor)}
                   className={`px-3 py-2 text-body-sm font-medium ${
                     aba === valor
                       ? "border-b-2 border-primary text-primary"
@@ -295,6 +413,7 @@ export function DetalheTurma() {
                     turma={turma}
                     lancadoPor={usuario.id}
                     avaliacoes={avaliacoes}
+                    onApagarAvaliacao={aoApagarAvaliacao}
                   />
                 )}
               </>
@@ -304,48 +423,155 @@ export function DetalheTurma() {
               <>
                 <div className="mb-4 flex items-center justify-between">
                   <Titulo nivel="secao">Aulas ({aulas.length})</Titulo>
-                  <Button onClick={() => setMostrarNovaAula((v) => !v)}>
+                  <Button
+                    onClick={() => {
+                      setMostrarNovaAula((v) => !v);
+                      setEditandoAulaId(null);
+                    }}
+                  >
                     {mostrarNovaAula ? "Cancelar" : "Nova aula"}
                   </Button>
                 </div>
 
                 {mostrarNovaAula && (
                   <Card className="mb-4">
-                    <form className="flex flex-col gap-3" onSubmit={aoCriarAula}>
-                      <div className="flex gap-4">
-                        <label className="flex flex-1 flex-col gap-1.5">
-                          <span className="text-label font-medium text-text-secondary">Data</span>
-                          <Input
-                            type="date"
-                            required
-                            value={novaData}
-                            onChange={(e) => setNovaData(e.target.value)}
-                          />
-                        </label>
-                        <label className="flex flex-1 flex-col gap-1.5">
+                    {/* Uma aula por vez continua existindo (exceções); ao
+                        lado, o modo recorrência gera várias de uma vez
+                        pro padrão fixo (ex.: toda terça/quinta) — cada uma
+                        editável depois individualmente. */}
+                    <div className="mb-3 flex gap-2 border-b border-border">
+                      {(["unica", "recorrencia"] as ModoCriacaoAula[]).map((modo) => (
+                        <button
+                          key={modo}
+                          type="button"
+                          onClick={() => setModoCriacaoAula(modo)}
+                          className={`px-3 py-2 text-body-sm font-medium ${
+                            modoCriacaoAula === modo
+                              ? "border-b-2 border-primary text-primary"
+                              : "text-text-secondary hover:text-text-primary"
+                          }`}
+                        >
+                          {modo === "unica" ? "Uma aula" : "Recorrência"}
+                        </button>
+                      ))}
+                    </div>
+
+                    {modoCriacaoAula === "unica" ? (
+                      <form className="flex flex-col gap-3" onSubmit={aoCriarAula}>
+                        <div className="flex gap-4">
+                          <label className="flex flex-1 flex-col gap-1.5">
+                            <span className="text-label font-medium text-text-secondary">Data</span>
+                            <Input
+                              type="date"
+                              required
+                              value={novaData}
+                              onChange={(e) => setNovaData(e.target.value)}
+                            />
+                          </label>
+                          <label className="flex flex-1 flex-col gap-1.5">
+                            <span className="text-label font-medium text-text-secondary">
+                              Horário (opcional)
+                            </span>
+                            <Input
+                              type="time"
+                              value={novoHorario}
+                              onChange={(e) => setNovoHorario(e.target.value)}
+                            />
+                          </label>
+                        </div>
+                        <label className="flex flex-col gap-1.5">
                           <span className="text-label font-medium text-text-secondary">
-                            Horário (opcional)
+                            Descrição (opcional)
                           </span>
                           <Input
-                            type="time"
-                            value={novoHorario}
-                            onChange={(e) => setNovoHorario(e.target.value)}
+                            value={novaAulaDescricao}
+                            onChange={(e) => setNovaAulaDescricao(e.target.value)}
                           />
                         </label>
-                      </div>
-                      <label className="flex flex-col gap-1.5">
-                        <span className="text-label font-medium text-text-secondary">
-                          Descrição (opcional)
-                        </span>
-                        <Input
-                          value={novaAulaDescricao}
-                          onChange={(e) => setNovaAulaDescricao(e.target.value)}
-                        />
-                      </label>
-                      <Button type="submit" disabled={salvandoAula} className="self-start">
-                        {salvandoAula ? "Criando..." : "Criar"}
-                      </Button>
-                    </form>
+                        <Button type="submit" disabled={salvandoAula} className="self-start">
+                          {salvandoAula ? "Criando..." : "Criar"}
+                        </Button>
+                      </form>
+                    ) : (
+                      <form className="flex flex-col gap-3" onSubmit={aoGerarAulas}>
+                        <div>
+                          <span className="mb-1.5 block text-label font-medium text-text-secondary">
+                            Dias da semana
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {DIAS_SEMANA.map(({ valor, label }) => (
+                              <button
+                                key={valor}
+                                type="button"
+                                onClick={() => alternarDiaSemana(valor)}
+                                className={`h-9 rounded-klass-control border px-3 text-body-sm font-medium transition ${
+                                  diasSelecionados.includes(valor)
+                                    ? "border-text-primary bg-text-primary text-white"
+                                    : "border-border bg-surface text-text-secondary"
+                                }`}
+                              >
+                                {label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="flex gap-4">
+                          <label className="flex flex-1 flex-col gap-1.5">
+                            <span className="text-label font-medium text-text-secondary">
+                              Data de início
+                            </span>
+                            <Input
+                              type="date"
+                              required
+                              value={recorrenciaInicio}
+                              onChange={(e) => setRecorrenciaInicio(e.target.value)}
+                            />
+                          </label>
+                          <label className="flex flex-1 flex-col gap-1.5">
+                            <span className="text-label font-medium text-text-secondary">
+                              Data de fim
+                            </span>
+                            <Input
+                              type="date"
+                              required
+                              value={recorrenciaFim}
+                              onChange={(e) => setRecorrenciaFim(e.target.value)}
+                            />
+                          </label>
+                          <label className="flex flex-1 flex-col gap-1.5">
+                            <span className="text-label font-medium text-text-secondary">
+                              Horário (opcional)
+                            </span>
+                            <Input
+                              type="time"
+                              value={recorrenciaHorario}
+                              onChange={(e) => setRecorrenciaHorario(e.target.value)}
+                            />
+                          </label>
+                        </div>
+                        <label className="flex flex-col gap-1.5">
+                          <span className="text-label font-medium text-text-secondary">
+                            Descrição (opcional, aplicada a todas)
+                          </span>
+                          <Input
+                            value={recorrenciaDescricao}
+                            onChange={(e) => setRecorrenciaDescricao(e.target.value)}
+                          />
+                        </label>
+                        <p className="text-label text-text-muted">
+                          {datasRecorrencia.length === 0
+                            ? "Escolha ao menos um dia da semana e o período."
+                            : `${datasRecorrencia.length} aula(s) serão criadas.`}
+                        </p>
+                        <Button
+                          type="submit"
+                          disabled={salvandoAula || datasRecorrencia.length === 0}
+                          className="self-start"
+                        >
+                          {salvandoAula ? "Gerando..." : "Gerar aulas"}
+                        </Button>
+                      </form>
+                    )}
                   </Card>
                 )}
 
@@ -353,25 +579,85 @@ export function DetalheTurma() {
                   {aulas.length === 0 && (
                     <p className="text-body-sm text-text-secondary">Nenhuma aula cadastrada ainda.</p>
                   )}
-                  {aulas.map((aula) => (
-                    <Card key={aula.id} className="flex items-center justify-between">
-                      <div>
-                        <p className="text-body-sm font-medium text-text-primary">
-                          {aula.data}
-                          {aula.horario ? ` · ${aula.horario}` : ""}
-                        </p>
-                        {aula.descricao && (
-                          <p className="text-label text-text-muted">{aula.descricao}</p>
-                        )}
-                      </div>
-                      <Link
-                        to={`/professor/turmas/${id}/aulas/${aula.id}/chamada`}
-                        className="text-body-sm font-medium text-primary hover:underline"
-                      >
-                        Fazer chamada
-                      </Link>
-                    </Card>
-                  ))}
+                  {aulas.map((aula) =>
+                    editandoAulaId === aula.id ? (
+                      <Card key={aula.id}>
+                        <form className="flex flex-col gap-3" onSubmit={aoSalvarEdicaoAula}>
+                          <div className="flex gap-4">
+                            <label className="flex flex-1 flex-col gap-1.5">
+                              <span className="text-label font-medium text-text-secondary">Data</span>
+                              <Input
+                                type="date"
+                                required
+                                value={editData}
+                                onChange={(e) => setEditData(e.target.value)}
+                              />
+                            </label>
+                            <label className="flex flex-1 flex-col gap-1.5">
+                              <span className="text-label font-medium text-text-secondary">
+                                Horário (opcional)
+                              </span>
+                              <Input
+                                type="time"
+                                value={editHorario}
+                                onChange={(e) => setEditHorario(e.target.value)}
+                              />
+                            </label>
+                          </div>
+                          <label className="flex flex-col gap-1.5">
+                            <span className="text-label font-medium text-text-secondary">
+                              Descrição (opcional)
+                            </span>
+                            <Input
+                              value={editDescricao}
+                              onChange={(e) => setEditDescricao(e.target.value)}
+                            />
+                          </label>
+                          <div className="flex gap-2">
+                            <Button type="submit" disabled={salvandoEdicaoAula}>
+                              {salvandoEdicaoAula ? "Salvando..." : "Salvar"}
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              disabled={salvandoEdicaoAula}
+                              onClick={() => setEditandoAulaId(null)}
+                            >
+                              Cancelar
+                            </Button>
+                          </div>
+                        </form>
+                      </Card>
+                    ) : (
+                      <Card key={aula.id} className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-body-sm font-medium text-text-primary">
+                            {aula.data}
+                            {aula.horario ? ` · ${aula.horario}` : ""}
+                          </p>
+                          {aula.descricao && (
+                            <p className="text-label text-text-muted">{aula.descricao}</p>
+                          )}
+                        </div>
+                        <div className="flex shrink-0 items-center gap-3">
+                          <button
+                            type="button"
+                            onClick={() => aoAbrirEdicaoAula(aula)}
+                            className="flex items-center gap-1 text-body-sm font-medium text-text-secondary hover:text-text-primary"
+                          >
+                            <Pencil className="h-3.5 w-3.5" aria-hidden />
+                            Editar
+                          </button>
+                          <Link
+                            to={`/professor/turmas/${id}/aulas/${aula.id}/chamada`}
+                            className="text-body-sm font-medium text-primary hover:underline"
+                          >
+                            Fazer chamada
+                          </Link>
+                        </div>
+                      </Card>
+                    ),
+                  )}
                 </div>
               </>
             )}

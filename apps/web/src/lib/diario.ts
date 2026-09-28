@@ -115,6 +115,86 @@ export async function criarAula(input: {
   return data;
 }
 
+// Editar não apaga nem recria a linha (mesmo id) — as presenças já
+// registradas, que referenciam aula_id, continuam intactas.
+export async function atualizarAula(
+  id: string,
+  patch: { data: string; horario: string; descricao: string },
+): Promise<Aula> {
+  const { data, error } = await diario()
+    .from("aulas")
+    .update({
+      data: patch.data,
+      horario: patch.horario || null,
+      descricao: patch.descricao || null,
+    })
+    .eq("id", id)
+    .select("*")
+    .single();
+  if (error) throw new Error(mensagemDeErroBanco(error));
+  return data;
+}
+
+// Dias da semana no formato de Date.getDay(): 0 = domingo ... 6 = sábado.
+// Função pura (sem chamada ao banco) para poder mostrar a prévia da
+// quantidade de aulas antes do professor confirmar a geração em lote.
+export function calcularDatasRecorrentes(
+  diasDaSemana: number[],
+  dataInicio: string,
+  dataFim: string,
+): string[] {
+  if (diasDaSemana.length === 0 || !dataInicio || !dataFim) return [];
+  const conjunto = new Set(diasDaSemana);
+  const cursor = new Date(`${dataInicio}T00:00:00`);
+  const fim = new Date(`${dataFim}T00:00:00`);
+  if (cursor > fim) return [];
+
+  const datas: string[] = [];
+  while (cursor <= fim) {
+    if (conjunto.has(cursor.getDay())) {
+      const ano = cursor.getFullYear();
+      const mes = String(cursor.getMonth() + 1).padStart(2, "0");
+      const dia = String(cursor.getDate()).padStart(2, "0");
+      datas.push(`${ano}-${mes}-${dia}`);
+    }
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return datas;
+}
+
+export async function criarAulasEmLote(input: {
+  turmaId: string;
+  datas: string[];
+  horario: string;
+  descricao: string;
+}): Promise<void> {
+  if (input.datas.length === 0) return;
+  const { error } = await diario()
+    .from("aulas")
+    .insert(
+      input.datas.map((data) => ({
+        turma_id: input.turmaId,
+        data,
+        horario: input.horario || null,
+        descricao: input.descricao || null,
+      })),
+    );
+  if (error) throw new Error(mensagemDeErroBanco(error));
+}
+
+// Cascata deliberada: diario.notas.avaliacao_id já é "on delete cascade"
+// (ver migration do schema), então apagar a avaliação apaga junto as
+// notas lançadas para ela — são dados de matrícula ainda em curso,
+// corrigíveis. Se alguma nota pertencer a uma matrícula já encerrada
+// (concluída/reprovada), o trigger de bloqueio pós-encerramento do
+// diario impede a exclusão daquela linha e a operação inteira falha —
+// não é possível apagar uma avaliação que tenha nota de aluno já
+// encerrado, preservando o histórico fechado dele.
+export async function apagarAvaliacao(id: string): Promise<void> {
+  const { error } = await diario().from("avaliacoes").delete().eq("id", id);
+  if (error) throw new Error(mensagemDeErroBanco(error));
+}
+
 export interface AlunoParaLancamento {
   matriculaId: string;
   alunoNome: string;
@@ -172,7 +252,22 @@ export async function salvarNotasEmLote(
       })),
       { onConflict: "avaliacao_id,matricula_id" },
     );
-  if (error) throw new Error(mensagemDeErroBanco(error));
+  if (error) {
+    // Um valor que precise de mais dígitos do que a coluna comporta (ex.:
+    // "1000") estoura o precision/scale de notas.valor (numeric(4,2))
+    // ANTES do check notas_valor_na_faixa rodar — vira "numeric field
+    // overflow" (22003), não a violação do check. mensagemDeErroBanco não
+    // mapeia esse código de forma genérica porque ele é comum a qualquer
+    // coluna numeric do banco (ex.: media_minima da trilha também é
+    // numeric(4,2), e mereceria outra mensagem); aqui sabemos que a coluna
+    // é notas.valor, então tratamos direto. O check em si (valores como
+    // 10.5 ou -5, que cabem na coluna mas violam o intervalo) já é
+    // mapeado por mensagemDeErroBanco via notas_valor_na_faixa.
+    if (error.code === "22003") {
+      throw new Error("A nota precisa estar entre 0 e 10.");
+    }
+    throw new Error(mensagemDeErroBanco(error));
+  }
 }
 
 export async function buscarPresencasDaAula(aulaId: string): Promise<Map<string, boolean>> {

@@ -1,5 +1,9 @@
 import { useEffect, useState, type KeyboardEvent } from "react";
+import { Trash2 } from "lucide-react";
+import { Aviso } from "@/components/Aviso";
 import { Badge } from "@/components/Badge";
+import { Button } from "@/components/Button";
+import { Card } from "@/components/Card";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useSincronizacao } from "@/components/IndicadorSincronizacao";
 import {
@@ -33,11 +37,14 @@ export function GradeNotas({
   turma,
   lancadoPor,
   avaliacoes,
+  onApagarAvaliacao,
 }: {
   turmaId: string;
   turma: TurmaDetalhada;
   lancadoPor: string;
   avaliacoes: Avaliacao[];
+  /** Apaga a avaliação (cascata de notas já é feita pelo banco — ver lib/diario). */
+  onApagarAvaliacao: (avaliacaoId: string) => Promise<void>;
 }) {
   const { notificarSalvando, notificarSalvo, notificarErro } = useSincronizacao();
   const [alunos, setAlunos] = useState<LinhaAluno[]>([]);
@@ -45,6 +52,28 @@ export function GradeNotas({
   const [notasSalvas, setNotasSalvas] = useState<Record<string, string>>({});
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
+  const [confirmandoApagarId, setConfirmandoApagarId] = useState<string | null>(null);
+  const [apagando, setApagando] = useState(false);
+
+  // Já tem nota lançada pra algum aluno? Decide o texto de aviso na
+  // confirmação — sem precisar de outra consulta, notasSalvas já tem
+  // essa informação (chave é "avaliacaoId:matriculaId").
+  function avaliacaoTemNotas(avaliacaoId: string): boolean {
+    return Object.keys(notasSalvas).some((k) => k.startsWith(`${avaliacaoId}:`));
+  }
+
+  async function aoConfirmarApagar(avaliacaoId: string) {
+    setApagando(true);
+    setErro(null);
+    try {
+      await onApagarAvaliacao(avaliacaoId);
+      setConfirmandoApagarId(null);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Não foi possível apagar a avaliação.");
+    } finally {
+      setApagando(false);
+    }
+  }
 
   useEffect(() => {
     let ativo = true;
@@ -148,7 +177,45 @@ export function GradeNotas({
         <Badge variant="neutral">Cálculo por média ponderada</Badge>
       </div>
 
-      {erro && <p className="mb-3 text-body-sm text-danger">{erro}</p>}
+      {erro && (
+        <Aviso variant="danger" className="mb-3">
+          {erro}
+        </Aviso>
+      )}
+
+      {confirmandoApagarId &&
+        (() => {
+          const alvo = avaliacoes.find((a) => a.id === confirmandoApagarId);
+          if (!alvo) return null;
+          const temNotas = avaliacaoTemNotas(alvo.id);
+          return (
+            <Card className="mb-3 flex flex-col gap-3">
+              <p className="text-body-sm text-text-primary">
+                Apagar a avaliação <strong>{alvo.titulo}</strong>?
+                {temNotas && (
+                  <>
+                    {" "}
+                    <span className="font-medium text-danger">
+                      As notas já lançadas para ela serão perdidas.
+                    </span>
+                  </>
+                )}
+              </p>
+              <div className="flex gap-2">
+                <Button disabled={apagando} onClick={() => void aoConfirmarApagar(alvo.id)}>
+                  {apagando ? "Apagando..." : "Apagar avaliação"}
+                </Button>
+                <Button
+                  variant="secondary"
+                  disabled={apagando}
+                  onClick={() => setConfirmandoApagarId(null)}
+                >
+                  Cancelar
+                </Button>
+              </div>
+            </Card>
+          );
+        })()}
 
       <div className="overflow-x-auto rounded-klass-card border border-border">
         <table className="w-full text-left">
@@ -157,7 +224,18 @@ export function GradeNotas({
               <th className="px-4 py-3 font-medium">Aluno</th>
               {avaliacoes.map((a) => (
                 <th key={a.id} className="px-4 py-3 font-medium">
-                  {a.titulo}
+                  <div className="flex items-center gap-1.5">
+                    {a.titulo}
+                    <button
+                      type="button"
+                      aria-label={`Apagar avaliação ${a.titulo}`}
+                      title="Apagar avaliação"
+                      onClick={() => setConfirmandoApagarId(a.id)}
+                      className="text-text-muted transition hover:text-danger"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                    </button>
+                  </div>
                   <span className="block font-normal">peso {a.peso}</span>
                 </th>
               ))}
