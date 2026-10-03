@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { Pencil } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 import { useAuth } from "@/auth";
 import { Aviso } from "@/components/Aviso";
 import { BotaoVoltar } from "@/components/BotaoVoltar";
@@ -12,8 +12,11 @@ import { PaginaAutenticada } from "@/components/PaginaAutenticada";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Titulo } from "@/components/Titulo";
 import {
+  apagarAula,
   apagarAvaliacao,
   atualizarAula,
+  BloqueioAlunoEncerrado,
+  buscarPresencasDaAula,
   buscarProgressoMatricula,
   calcularDatasRecorrentes,
   criarAula,
@@ -31,7 +34,13 @@ import {
   type ProgressoMatricula,
   type ResumoEncerramentoTurma,
 } from "@/lib/diario";
-import { buscarTurmaDetalhada, type TurmaDetalhada } from "@/lib/selecao";
+import { plural } from "@/lib/plural";
+import {
+  buscarTurmaDetalhada,
+  PERIODO_TURMA_DATA_MAX,
+  PERIODO_TURMA_DATA_MIN,
+  type TurmaDetalhada,
+} from "@/lib/selecao";
 
 type Aba = "avaliacoes" | "aulas" | "alunos";
 type ModoCriacaoAula = "unica" | "recorrencia";
@@ -48,6 +57,18 @@ const DIAS_SEMANA: Array<{ valor: number; label: string }> = [
 
 interface AlunoComProgresso extends AlunoDoDiario {
   progresso: ProgressoMatricula;
+}
+
+// Horário vem do banco como "HH:MM:SS" e do input como "HH:MM" — a
+// comparação de aula repetida usa só horas e minutos.
+function chaveAula(data: string, horario: string | null): string {
+  return `${data}|${(horario ?? "").slice(0, 5)}`;
+}
+
+interface SituacaoApagarAula {
+  temChamada: boolean;
+  /** Alunos encerrados com presença nesta aula — o banco bloqueia apagar. */
+  encerrados: string[];
 }
 
 export function DetalheTurma() {
@@ -74,6 +95,9 @@ export function DetalheTurma() {
   const [avaliacoes, setAvaliacoes] = useState<Avaliacao[]>([]);
   const [aulas, setAulas] = useState<Aula[]>([]);
   const [alunos, setAlunos] = useState<AlunoComProgresso[]>([]);
+  // A lista de alunos chega depois do resto (espera o progresso de cada
+  // um) — sem isso, "Nenhum aluno matriculado" aparecia durante a carga.
+  const [alunosCarregados, setAlunosCarregados] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [mensagem, setMensagem] = useState<string | null>(null);
 
@@ -104,6 +128,11 @@ export function DetalheTurma() {
   const [editDescricao, setEditDescricao] = useState("");
   const [salvandoEdicaoAula, setSalvandoEdicaoAula] = useState(false);
 
+  const [apagandoAulaId, setApagandoAulaId] = useState<string | null>(null);
+  // undefined = ainda consultando as presenças da aula.
+  const [situacaoApagarAula, setSituacaoApagarAula] = useState<SituacaoApagarAula | undefined>(undefined);
+  const [apagandoAula, setApagandoAula] = useState(false);
+
   const [encerrandoId, setEncerrandoId] = useState<string | null>(null);
   const [confirmandoEncerrarTurma, setConfirmandoEncerrarTurma] = useState(false);
   const [encerrandoTurma, setEncerrandoTurma] = useState(false);
@@ -126,6 +155,7 @@ export function DetalheTurma() {
         listaAlunos.map((a) => buscarProgressoMatricula(a.matriculaId)),
       );
       setAlunos(listaAlunos.map((a, i) => ({ ...a, progresso: progressos[i] })));
+      setAlunosCarregados(true);
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível carregar a turma.");
     }
@@ -190,7 +220,35 @@ export function DetalheTurma() {
     }
   }
 
-  const datasRecorrencia = calcularDatasRecorrentes(diasSelecionados, recorrenciaInicio, recorrenciaFim);
+  // Validação de conveniência do período do lote (mesma faixa de ano das
+  // turmas). Com erro, nem calcula as datas — um ano digitado pela metade
+  // geraria milhares de datas na prévia.
+  const erroPeriodoLote = (() => {
+    if (!recorrenciaInicio || !recorrenciaFim) return null;
+    const foraDaFaixa = (d: string) => d < PERIODO_TURMA_DATA_MIN || d > PERIODO_TURMA_DATA_MAX;
+    if (foraDaFaixa(recorrenciaInicio) || foraDaFaixa(recorrenciaFim)) {
+      return `Use datas entre ${PERIODO_TURMA_DATA_MIN.slice(0, 4)} e ${PERIODO_TURMA_DATA_MAX.slice(0, 4)}.`;
+    }
+    if (recorrenciaFim < recorrenciaInicio) return "A data de fim não pode ser anterior à de início.";
+    return null;
+  })();
+  const loteForaDoPeriodoDaTurma =
+    !!turma &&
+    !erroPeriodoLote &&
+    !!recorrenciaInicio &&
+    !!recorrenciaFim &&
+    (recorrenciaInicio < turma.periodoInicio || recorrenciaFim > turma.periodoFim);
+
+  const datasRecorrencia = erroPeriodoLote
+    ? []
+    : calcularDatasRecorrentes(diasSelecionados, recorrenciaInicio, recorrenciaFim);
+  // Gerar o mesmo lote duas vezes duplicava as aulas: a prévia já desconta
+  // as que existem na mesma data e horário, e só as novas são criadas.
+  const aulasExistentes = new Set(aulas.map((a) => chaveAula(a.data, a.horario)));
+  const datasNovas = datasRecorrencia.filter(
+    (d) => !aulasExistentes.has(chaveAula(d, recorrenciaHorario || null)),
+  );
+  const datasJaExistentes = datasRecorrencia.length - datasNovas.length;
 
   function alternarDiaSemana(valor: number) {
     setDiasSelecionados((atual) =>
@@ -200,14 +258,14 @@ export function DetalheTurma() {
 
   async function aoGerarAulas(evento: FormEvent) {
     evento.preventDefault();
-    if (!id || datasRecorrencia.length === 0) return;
+    if (!id || datasNovas.length === 0 || erroPeriodoLote) return;
     setErro(null);
     setMensagem(null);
     setSalvandoAula(true);
     try {
       await criarAulasEmLote({
         turmaId: id,
-        datas: datasRecorrencia,
+        datas: datasNovas,
         horario: recorrenciaHorario,
         descricao: recorrenciaDescricao,
       });
@@ -217,7 +275,7 @@ export function DetalheTurma() {
       setRecorrenciaHorario("");
       setRecorrenciaDescricao("");
       setMostrarNovaAula(false);
-      setMensagem(`${datasRecorrencia.length} aula(s) criada(s).`);
+      setMensagem(`${plural(datasNovas.length, "aula criada", "aulas criadas")}.`);
       await carregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível gerar as aulas.");
@@ -251,6 +309,43 @@ export function DetalheTurma() {
       setErro(e instanceof Error ? e.message : "Não foi possível atualizar a aula.");
     } finally {
       setSalvandoEdicaoAula(false);
+    }
+  }
+
+  async function aoPedirApagarAula(aula: Aula) {
+    setErro(null);
+    setMensagem(null);
+    setEditandoAulaId(null);
+    setApagandoAulaId(aula.id);
+    setSituacaoApagarAula(undefined);
+    try {
+      const presencas = await buscarPresencasDaAula(aula.id);
+      const encerrados = alunos
+        .filter(
+          (a) => (a.status === "concluida" || a.status === "reprovada") && presencas.has(a.matriculaId),
+        )
+        .map((a) => a.alunoNome);
+      setSituacaoApagarAula({ temChamada: presencas.size > 0, encerrados });
+    } catch (e) {
+      setApagandoAulaId(null);
+      setErro(e instanceof Error ? e.message : "Não foi possível verificar a chamada da aula.");
+    }
+  }
+
+  async function aoConfirmarApagarAula(aulaId: string) {
+    setErro(null);
+    setMensagem(null);
+    setApagandoAula(true);
+    try {
+      await apagarAula(aulaId);
+      setApagandoAulaId(null);
+      setMensagem("Aula apagada.");
+      await carregar();
+    } catch (e) {
+      if (e instanceof BloqueioAlunoEncerrado) setApagandoAulaId(null);
+      setErro(e instanceof Error ? e.message : "Não foi possível apagar a aula.");
+    } finally {
+      setApagandoAula(false);
     }
   }
 
@@ -297,7 +392,9 @@ export function DetalheTurma() {
 
   // Peso não tem teto (decisão de manter flexibilidade) — mostrar quanto
   // cada avaliação representa da média final deixa o efeito prático claro
-  // sem impor limite. Recalcula sozinho porque `avaliacoes` é estado.
+  // sem impor limite. Recalcula sozinho porque `avaliacoes` é estado. O
+  // texto precisa dizer que o peso é relativo: com a primeira avaliação o
+  // percentual é sempre 100%, o que parecia erro.
   const somaPesos = avaliacoes.reduce((soma, a) => soma + a.peso, 0);
   function percentualDoPeso(peso: number, somaTotal: number): number {
     return somaTotal > 0 ? Math.round((peso / somaTotal) * 100) : 0;
@@ -391,8 +488,9 @@ export function DetalheTurma() {
                           onChange={(e) => setNovoPeso(Number(e.target.value))}
                         />
                         <span className="text-label text-text-muted">
-                          Com este peso, a avaliação representará{" "}
-                          {percentualDoPeso(novoPeso, somaPesos + novoPeso)}% da média final.
+                          {avaliacoes.length === 0
+                            ? "O peso é relativo às outras avaliações da turma. Como esta é a primeira, por enquanto ela vale 100% da média final; o percentual diminui quando outras forem criadas."
+                            : `O peso é relativo à soma dos pesos da turma: com as avaliações de hoje, esta valerá ${percentualDoPeso(novoPeso, somaPesos + novoPeso)}% da média final. O percentual muda quando outras avaliações forem criadas.`}
                         </span>
                       </label>
                       <Button type="submit" disabled={salvandoAvaliacao} className="self-start">
@@ -523,6 +621,8 @@ export function DetalheTurma() {
                             <Input
                               type="date"
                               required
+                              min={PERIODO_TURMA_DATA_MIN}
+                              max={PERIODO_TURMA_DATA_MAX}
                               value={recorrenciaInicio}
                               onChange={(e) => setRecorrenciaInicio(e.target.value)}
                             />
@@ -534,6 +634,8 @@ export function DetalheTurma() {
                             <Input
                               type="date"
                               required
+                              min={PERIODO_TURMA_DATA_MIN}
+                              max={PERIODO_TURMA_DATA_MAX}
                               value={recorrenciaFim}
                               onChange={(e) => setRecorrenciaFim(e.target.value)}
                             />
@@ -558,14 +660,29 @@ export function DetalheTurma() {
                             onChange={(e) => setRecorrenciaDescricao(e.target.value)}
                           />
                         </label>
+                        {erroPeriodoLote && (
+                          <p className="text-label font-medium text-danger">{erroPeriodoLote}</p>
+                        )}
+                        {loteForaDoPeriodoDaTurma && turma && (
+                          <p className="text-label text-text-secondary">
+                            Atenção: o período escolhido sai do período da turma ({turma.periodoInicio} a{" "}
+                            {turma.periodoFim}).
+                          </p>
+                        )}
                         <p className="text-label text-text-muted">
                           {datasRecorrencia.length === 0
-                            ? "Escolha ao menos um dia da semana e o período."
-                            : `${datasRecorrencia.length} aula(s) serão criadas.`}
+                            ? erroPeriodoLote
+                              ? ""
+                              : "Escolha ao menos um dia da semana e o período."
+                            : datasNovas.length === 0
+                              ? `${datasJaExistentes === 1 ? "A aula já existe" : `As ${datasJaExistentes} aulas já existem`} nessa data e horário; nada será criado.`
+                              : datasJaExistentes === 0
+                                ? `${plural(datasNovas.length, "aula será criada", "aulas serão criadas")}.`
+                                : `${plural(datasNovas.length, "aula será criada", "aulas serão criadas")}; ${plural(datasJaExistentes, "já existe e será ignorada", "já existem e serão ignoradas")}.`}
                         </p>
                         <Button
                           type="submit"
-                          disabled={salvandoAula || datasRecorrencia.length === 0}
+                          disabled={salvandoAula || datasNovas.length === 0 || !!erroPeriodoLote}
                           className="self-start"
                         >
                           {salvandoAula ? "Gerando..." : "Gerar aulas"}
@@ -580,7 +697,61 @@ export function DetalheTurma() {
                     <p className="text-body-sm text-text-secondary">Nenhuma aula cadastrada ainda.</p>
                   )}
                   {aulas.map((aula) =>
-                    editandoAulaId === aula.id ? (
+                    apagandoAulaId === aula.id ? (
+                      <Card key={aula.id} className="flex flex-col gap-3">
+                        {situacaoApagarAula === undefined ? (
+                          <p className="text-body-sm text-text-secondary">Verificando a chamada da aula...</p>
+                        ) : situacaoApagarAula.encerrados.length > 0 ? (
+                          <>
+                            <p className="text-body-sm text-text-primary">
+                              A aula de <strong>{aula.data}</strong> não pode ser apagada: a chamada dela
+                              inclui{" "}
+                              {situacaoApagarAula.encerrados.length === 1
+                                ? "um aluno já encerrado"
+                                : "alunos já encerrados"}{" "}
+                              ({situacaoApagarAula.encerrados.join(", ")}). O histórico de quem já foi
+                              aprovado ou reprovado não muda. Para apagá-la, peça à coordenação para
+                              desfazer o encerramento{" "}
+                              {situacaoApagarAula.encerrados.length === 1 ? "desse aluno" : "desses alunos"}.
+                            </p>
+                            <Button
+                              variant="secondary"
+                              className="self-start"
+                              onClick={() => setApagandoAulaId(null)}
+                            >
+                              Fechar
+                            </Button>
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-body-sm text-text-primary">
+                              Apagar a aula de <strong>{aula.data}</strong>
+                              {aula.horario ? ` · ${aula.horario}` : ""}?
+                              {situacaoApagarAula.temChamada && (
+                                <>
+                                  {" "}
+                                  <span className="font-medium text-danger">
+                                    A chamada já feita nesta aula será apagada junto.
+                                  </span>
+                                </>
+                              )}
+                            </p>
+                            <div className="flex gap-2">
+                              <Button disabled={apagandoAula} onClick={() => void aoConfirmarApagarAula(aula.id)}>
+                                {apagandoAula ? "Apagando..." : "Apagar aula"}
+                              </Button>
+                              <Button
+                                variant="secondary"
+                                disabled={apagandoAula}
+                                onClick={() => setApagandoAulaId(null)}
+                              >
+                                Cancelar
+                              </Button>
+                            </div>
+                          </>
+                        )}
+                      </Card>
+                    ) : editandoAulaId === aula.id ? (
                       <Card key={aula.id}>
                         <form className="flex flex-col gap-3" onSubmit={aoSalvarEdicaoAula}>
                           <div className="flex gap-4">
@@ -648,6 +819,14 @@ export function DetalheTurma() {
                             <Pencil className="h-3.5 w-3.5" aria-hidden />
                             Editar
                           </button>
+                          <button
+                            type="button"
+                            onClick={() => void aoPedirApagarAula(aula)}
+                            className="flex items-center gap-1 text-body-sm font-medium text-text-secondary hover:text-danger"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                            Apagar
+                          </button>
                           <Link
                             to={`/professor/turmas/${id}/aulas/${aula.id}/chamada`}
                             className="text-body-sm font-medium text-primary hover:underline"
@@ -665,7 +844,9 @@ export function DetalheTurma() {
             {aba === "alunos" && (
               <>
                 <div className="mb-4 flex items-center justify-between gap-4">
-                  <Titulo nivel="secao">Alunos ({alunos.length})</Titulo>
+                  <Titulo nivel="secao">
+                    Alunos{alunosCarregados ? ` (${alunos.length})` : ""}
+                  </Titulo>
                   {alunos.some((a) => a.status === "matriculada") &&
                     !confirmandoEncerrarTurma && (
                       <Button
@@ -706,17 +887,21 @@ export function DetalheTurma() {
 
                 {resumoEncerramento && (
                   <Aviso variant="success" className="mb-4">
-                    Encerramento concluído: {resumoEncerramento.aprovadas} aprovado(s),{" "}
-                    {resumoEncerramento.reprovadas} reprovado(s)
+                    Encerramento concluído:{" "}
+                    {plural(resumoEncerramento.aprovadas, "aprovado", "aprovados")},{" "}
+                    {plural(resumoEncerramento.reprovadas, "reprovado", "reprovados")}
                     {resumoEncerramento.puladas > 0
-                      ? `, ${resumoEncerramento.puladas} pulado(s) (faltam notas ou chamadas)`
+                      ? `, ${plural(resumoEncerramento.puladas, "pulado", "pulados")} (faltam notas ou chamadas)`
                       : ""}
                     .
                   </Aviso>
                 )}
 
                 <div className="flex flex-col gap-2">
-                  {alunos.length === 0 && (
+                  {!alunosCarregados && !erro && (
+                    <p className="text-body-sm text-text-secondary">Carregando...</p>
+                  )}
+                  {alunosCarregados && alunos.length === 0 && (
                     <p className="text-body-sm text-text-secondary">
                       Nenhum aluno matriculado ainda.
                     </p>

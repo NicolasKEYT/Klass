@@ -1,4 +1,4 @@
-import { useEffect, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { Trash2 } from "lucide-react";
 import { Aviso } from "@/components/Aviso";
 import { Badge } from "@/components/Badge";
@@ -7,6 +7,7 @@ import { Card } from "@/components/Card";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useSincronizacao } from "@/components/IndicadorSincronizacao";
 import {
+  BloqueioAlunoEncerrado,
   buscarNotasDaAvaliacao,
   buscarProgressoMatricula,
   listarAlunosDoDiario,
@@ -23,6 +24,24 @@ interface LinhaAluno extends AlunoDoDiario {
 
 function chave(avaliacaoId: string, matriculaId: string): string {
   return `${avaliacaoId}:${matriculaId}`;
+}
+
+const MENSAGEM_NOTA_INVALIDA =
+  "A nota precisa ser um número entre 0 e 10, com no máximo uma vírgula ou ponto decimal (ex.: 7,5).";
+
+// Antes, Number() aceitava "1.000" como 1 (ponto lido como decimal) e
+// outras formas soltas. Agora só dígitos com no máximo um separador e
+// até duas casas — o que notas.valor (numeric(4,2)) guarda sem arredondar.
+function lerNota(texto: string): number | null {
+  if (!/^\d+([.,]\d{1,2})?$/.test(texto)) return null;
+  const valor = Number(texto.replace(",", "."));
+  return valor >= 0 && valor <= 10 ? valor : null;
+}
+
+// O peso é relativo: o percentual de cada avaliação é o peso dela sobre a
+// soma de todos, e muda quando outra avaliação é criada.
+function percentualDoPeso(peso: number, somaPesos: number): number {
+  return somaPesos > 0 ? Math.round((peso / somaPesos) * 100) : 0;
 }
 
 // D6 (klass-uikit.pdf) — grade de avaliações e notas: alunos nas linhas,
@@ -54,12 +73,33 @@ export function GradeNotas({
   const [erro, setErro] = useState<string | null>(null);
   const [confirmandoApagarId, setConfirmandoApagarId] = useState<string | null>(null);
   const [apagando, setApagando] = useState(false);
+  // Último valor gravado (ou em gravação) por célula, atualizado de forma
+  // síncrona: Enter grava e move o foco, o que dispara o blur da mesma
+  // célula logo em seguida — com só o estado (assíncrono), a segunda
+  // chamada ainda via o valor antigo e regravava. Cada regravação
+  // reescreve lancada_em, dispara o Realtime e gera "Nota publicada"
+  // falsa nas Novidades do aluno.
+  const valoresGravados = useRef<Record<string, number>>({});
+  const somaPesos = avaliacoes.reduce((soma, a) => soma + a.peso, 0);
 
   // Já tem nota lançada pra algum aluno? Decide o texto de aviso na
   // confirmação — sem precisar de outra consulta, notasSalvas já tem
   // essa informação (chave é "avaliacaoId:matriculaId").
   function avaliacaoTemNotas(avaliacaoId: string): boolean {
     return Object.keys(notasSalvas).some((k) => k.startsWith(`${avaliacaoId}:`));
+  }
+
+  // Alunos já encerrados (concluída/reprovada) com nota nesta avaliação:
+  // o trigger do banco impede apagar essas notas, então a avaliação
+  // inteira não pode ser apagada — a grade já sabe disso antes de tentar.
+  function encerradosComNota(avaliacaoId: string): string[] {
+    return alunos
+      .filter(
+        (a) =>
+          (a.status === "concluida" || a.status === "reprovada") &&
+          notasSalvas[chave(avaliacaoId, a.matriculaId)] !== undefined,
+      )
+      .map((a) => a.alunoNome);
   }
 
   async function aoConfirmarApagar(avaliacaoId: string) {
@@ -69,6 +109,9 @@ export function GradeNotas({
       await onApagarAvaliacao(avaliacaoId);
       setConfirmandoApagarId(null);
     } catch (e) {
+      // Bloqueio do banco: fecha o diálogo (ele dizia que as notas "serão
+      // perdidas", o que não aconteceu) e explica o que fazer.
+      if (e instanceof BloqueioAlunoEncerrado) setConfirmandoApagarId(null);
       setErro(e instanceof Error ? e.message : "Não foi possível apagar a avaliação.");
     } finally {
       setApagando(false);
@@ -97,6 +140,9 @@ export function GradeNotas({
         });
         setNotas(mapaNotas);
         setNotasSalvas(mapaNotas);
+        valoresGravados.current = Object.fromEntries(
+          Object.entries(mapaNotas).map(([k, v]) => [k, Number(v)]),
+        );
         setAlunos(listaAlunos.map((a, i) => ({ ...a, media: progressos[i].media, frequencia: progressos[i].frequencia })));
       } catch (e) {
         if (ativo) setErro(e instanceof Error ? e.message : "Não foi possível carregar a grade.");
@@ -112,13 +158,18 @@ export function GradeNotas({
 
   async function salvarCelula(avaliacaoId: string, matriculaId: string, valorTexto: string) {
     const k = chave(avaliacaoId, matriculaId);
-    if (valorTexto.trim() === "") return;
-    const valor = Number(valorTexto.replace(",", "."));
-    if (Number.isNaN(valor) || valor < 0 || valor > 10) {
-      setErro("A nota precisa ser um número entre 0 e 10.");
+    const texto = valorTexto.trim();
+    if (texto === "") return;
+    const valor = lerNota(texto);
+    if (valor === null) {
+      setErro(MENSAGEM_NOTA_INVALIDA);
       setNotas((atual) => ({ ...atual, [k]: notasSalvas[k] ?? "" }));
       return;
     }
+    // Sem mudança em relação ao último valor gravado: nada a fazer.
+    const anterior = valoresGravados.current[k];
+    if (anterior === valor) return;
+    valoresGravados.current[k] = valor;
     setErro(null);
     notificarSalvando();
     try {
@@ -134,6 +185,9 @@ export function GradeNotas({
         );
       }
     } catch (e) {
+      // Não gravou: volta a referência para a próxima tentativa gravar de novo.
+      if (anterior === undefined) delete valoresGravados.current[k];
+      else valoresGravados.current[k] = anterior;
       setErro(e instanceof Error ? e.message : "Não foi possível salvar a nota.");
       notificarErro();
     }
@@ -188,6 +242,23 @@ export function GradeNotas({
           const alvo = avaliacoes.find((a) => a.id === confirmandoApagarId);
           if (!alvo) return null;
           const temNotas = avaliacaoTemNotas(alvo.id);
+          const encerrados = encerradosComNota(alvo.id);
+          if (encerrados.length > 0) {
+            return (
+              <Card className="mb-3 flex flex-col gap-3">
+                <p className="text-body-sm text-text-primary">
+                  A avaliação <strong>{alvo.titulo}</strong> não pode ser apagada: tem nota de{" "}
+                  {encerrados.length === 1 ? "um aluno já encerrado" : "alunos já encerrados"} (
+                  {encerrados.join(", ")}). O histórico de quem já foi aprovado ou reprovado não
+                  muda. Para apagá-la, peça à coordenação para desfazer o encerramento{" "}
+                  {encerrados.length === 1 ? "desse aluno" : "desses alunos"}.
+                </p>
+                <Button variant="secondary" className="self-start" onClick={() => setConfirmandoApagarId(null)}>
+                  Fechar
+                </Button>
+              </Card>
+            );
+          }
           return (
             <Card className="mb-3 flex flex-col gap-3">
               <p className="text-body-sm text-text-primary">
@@ -236,7 +307,9 @@ export function GradeNotas({
                       <Trash2 className="h-3.5 w-3.5" aria-hidden />
                     </button>
                   </div>
-                  <span className="block font-normal">peso {a.peso}</span>
+                  <span className="block font-normal">
+                    peso {a.peso} · {percentualDoPeso(a.peso, somaPesos)}%
+                  </span>
                 </th>
               ))}
               <th className="px-4 py-3 font-medium">Média</th>

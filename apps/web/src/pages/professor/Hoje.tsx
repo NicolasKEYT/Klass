@@ -14,6 +14,7 @@ import {
   type AulaDeHoje,
   type PendenciaProfessor,
 } from "@/lib/diario";
+import { plural } from "@/lib/plural";
 
 function dataPorExtenso(): string {
   const texto = new Date().toLocaleDateString("pt-BR", {
@@ -99,7 +100,7 @@ export function Hoje() {
                     <p className="text-body-sm font-medium text-text-primary">
                       {aula.turmaCodigo} · {aula.moduloNome}
                     </p>
-                    <p className="text-label text-text-muted">{aula.totalAlunos} aluno(s)</p>
+                    <p className="text-label text-text-muted">{plural(aula.totalAlunos, "aluno", "alunos")}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -140,7 +141,10 @@ export function Hoje() {
                     to={
                       p.tipo === "chamada_atrasada"
                         ? `/professor/turmas/${p.turmaId}/aulas/${p.aulaId}/chamada`
-                        : `/professor/turmas/${p.turmaId}`
+                        : p.tipo === "turma_terminando"
+                          ? // "Encerrar turma" fica na aba Alunos.
+                            `/professor/turmas/${p.turmaId}?aba=alunos`
+                          : `/professor/turmas/${p.turmaId}`
                     }
                   >
                     <Button variant="secondary">
@@ -159,7 +163,7 @@ export function Hoje() {
           <Card>
             <p className="mb-1 text-klass-md font-medium text-text-primary">Alunos que pedem atenção</p>
             <p className="mb-3 text-label text-text-muted">
-              Frequência abaixo de 75% (LDB, art. 24) ou média abaixo da mínima da trilha.
+              Frequência abaixo da mínima da turma ou média abaixo da mínima da trilha.
             </p>
             {alunosAtencao === null && !erro && (
               <p className="text-body-sm text-text-secondary">Carregando...</p>

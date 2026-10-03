@@ -1,6 +1,7 @@
 import { supabase } from "@/lib/supabase";
 import { mensagemDeErroBanco } from "@/lib/mensagensDeErroBanco";
 import { buscarTrilhaPorId, listarModulosDaTrilha } from "@/lib/catalogo";
+import { plural } from "@/lib/plural";
 import {
   buscarTurmaDetalhada,
   listarMatriculasDaTurma,
@@ -23,6 +24,23 @@ function hojeISO(): string {
   const mes = String(agora.getMonth() + 1).padStart(2, "0");
   const dia = String(agora.getDate()).padStart(2, "0");
   return `${ano}-${mes}-${dia}`;
+}
+
+/**
+ * O trigger de bloqueio pós-encerramento (notas/presenças de matrícula
+ * concluída ou reprovada) impediu a exclusão. Classe própria para a tela
+ * distinguir esse caso — a operação inteira foi desfeita, nada foi
+ * apagado — de uma falha genérica.
+ */
+export class BloqueioAlunoEncerrado extends Error {}
+
+function lancarErroDeExclusao(error: { message: string; code?: string }, oQue: string): never {
+  if (error.message.includes("Matrícula já encerrada")) {
+    throw new BloqueioAlunoEncerrado(
+      `${oQue} não foi apagada: há registro de aluno já encerrado (aprovado ou reprovado), e o histórico dele não pode mudar. Para apagar, peça à coordenação para desfazer o encerramento desse aluno.`,
+    );
+  }
+  throw new Error(mensagemDeErroBanco(error));
 }
 
 function diasEntre(dataAlvo: string, dataBase: string): number {
@@ -192,7 +210,19 @@ export async function criarAulasEmLote(input: {
 // encerrado, preservando o histórico fechado dele.
 export async function apagarAvaliacao(id: string): Promise<void> {
   const { error } = await diario().from("avaliacoes").delete().eq("id", id);
-  if (error) throw new Error(mensagemDeErroBanco(error));
+  if (error) lancarErroDeExclusao(error, "A avaliação");
+}
+
+// Mesma cascata da avaliação: diario.presencas.aula_id é "on delete
+// cascade", então a chamada da aula vai junto; presença de matrícula
+// encerrada bloqueia a operação inteira (BloqueioAlunoEncerrado). Existe
+// sobretudo para aula criada por engano — pronto_para_encerrar exige
+// chamada em todas as aulas, e uma aula sobrando impedia encerrar a turma.
+export async function apagarAula(id: string): Promise<void> {
+  const { data, error } = await diario().from("aulas").delete().eq("id", id).select("id");
+  if (error) lancarErroDeExclusao(error, "A aula");
+  // Sob RLS, um delete sem permissão não dá erro: só não apaga nada.
+  if (!data || data.length === 0) throw new Error("A aula não foi apagada: ela não existe mais ou você não tem permissão.");
 }
 
 export interface AlunoParaLancamento {
@@ -358,6 +388,8 @@ export async function reativarTurma(turmaId: string): Promise<ResumoReativacaoTu
 }
 
 export interface AvaliacaoComNota {
+  /** id da linha em diario.notas — o Realtime de DELETE só traz isso. */
+  notaId: string | null;
   id: string;
   titulo: string;
   peso: number;
@@ -371,12 +403,14 @@ export async function listarAvaliacoesComNotaDoAluno(
 ): Promise<AvaliacaoComNota[]> {
   const [avaliacoes, notasResp] = await Promise.all([
     listarAvaliacoesDaTurma(turmaId),
-    diario().from("notas").select("avaliacao_id, valor").eq("matricula_id", matriculaId),
+    diario().from("notas").select("id, avaliacao_id, valor").eq("matricula_id", matriculaId),
   ]);
   if (notasResp.error) throw new Error(mensagemDeErroBanco(notasResp.error));
 
   const notaPorAvaliacao = new Map((notasResp.data ?? []).map((n) => [n.avaliacao_id, Number(n.valor)]));
+  const idNotaPorAvaliacao = new Map((notasResp.data ?? []).map((n) => [n.avaliacao_id, n.id]));
   return avaliacoes.map((a) => ({
+    notaId: idNotaPorAvaliacao.get(a.id) ?? null,
     id: a.id,
     titulo: a.titulo,
     peso: a.peso,
@@ -520,7 +554,7 @@ export async function listarPendenciasDoProfessor(professorId: string): Promise<
       const turma = turmaPorId.get(avaliacao.turma_id);
       pendencias.push({
         tipo: "avaliacao_sem_nota",
-        titulo: `${avaliacao.titulo} sem nota para ${faltam} aluno(s)`,
+        titulo: `${avaliacao.titulo} sem nota para ${plural(faltam, "aluno", "alunos")}`,
         detalhe: `${turma?.codigo ?? "—"} · ${turma?.moduloNome ?? "—"}`,
         turmaId: avaliacao.turma_id,
       });
@@ -555,7 +589,7 @@ export async function listarPendenciasDoProfessor(professorId: string): Promise<
     if (dias >= 0 && dias <= 7 && alunosAtivos.length > 0) {
       pendencias.push({
         tipo: "turma_terminando",
-        titulo: `Turma termina em ${dias} dia(s)`,
+        titulo: dias === 0 ? "Turma termina hoje" : `Turma termina em ${plural(dias, "dia", "dias")}`,
         detalhe: `${turma.codigo} · encerrar os alunos`,
         turmaId: turma.id,
       });
@@ -573,10 +607,10 @@ export interface AlunoQuePedeAtencao {
   valor: string;
 }
 
-// Frequência abaixo de 75% é o mínimo legal (LDB, art. 24) — fixo, não o
-// frequenciaMinimaPercentual configurável da turma (que pode ser mais
-// exigente). Média parcial usa o mínimo real da trilha.
-const FREQUENCIA_MINIMA_LEGAL = 75;
+// Frequência comparada com a mínima configurada em cada turma (a mesma
+// que decide a aprovação no encerramento), não com 75% fixo — com um
+// número fixo, aluno abaixo da mínima de uma turma mais exigente não
+// aparecia. Média parcial usa o mínimo real da trilha.
 
 export async function listarAlunosQuePedemAtencaoDoProfessor(
   professorId: string,
@@ -592,7 +626,11 @@ export async function listarAlunosQuePedemAtencaoDoProfessor(
 
     alunos.forEach((aluno, i) => {
       const p = progressos[i];
-      if (p.frequencia !== null && p.frequencia < FREQUENCIA_MINIMA_LEGAL) {
+      if (
+        p.frequencia !== null &&
+        turmaDetalhada &&
+        p.frequencia < turmaDetalhada.frequenciaMinimaPercentual
+      ) {
         resultado.push({
           alunoNome: aluno.alunoNome,
           turmaId: turma.id,

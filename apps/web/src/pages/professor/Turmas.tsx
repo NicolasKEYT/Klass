@@ -6,6 +6,7 @@ import { Card } from "@/components/Card";
 import { PaginaAutenticada } from "@/components/PaginaAutenticada";
 import { Titulo } from "@/components/Titulo";
 import { listarTurmasDoProfessor, type TurmaDoProfessor } from "@/lib/selecao";
+import { plural } from "@/lib/plural";
 
 export function Turmas() {
   const { usuario } = useAuth();
@@ -59,7 +60,7 @@ export function Turmas() {
                 </Titulo>
                 <p className="text-label text-text-muted">
                   {turma.moduloNome} · {turma.trilhaNome} · {turma.periodoInicio} a{" "}
-                  {turma.periodoFim} · {turma.matriculados} aluno(s) matriculado(s)
+                  {turma.periodoFim} · {plural(turma.matriculados, "aluno matriculado", "alunos matriculados")}
                 </p>
               </div>
               <Link

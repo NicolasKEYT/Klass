@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { PDFDownloadLink } from "@react-pdf/renderer";
 import { Award, ChevronDown, ChevronUp, Lock, Unlock } from "lucide-react";
@@ -33,7 +33,7 @@ interface LinhaModulo {
   /** Nomes dos módulos pré-requisito que faltam concluir (só quando sem matrícula). */
   faltantes: string[];
   progresso: ProgressoMatricula | null;
-  avaliacoes: Array<{ id: string; titulo: string; peso: number; nota: number | null }>;
+  avaliacoes: Array<{ id: string; notaId: string | null; titulo: string; peso: number; nota: number | null }>;
 }
 
 interface GrupoTrilha {
@@ -47,6 +47,10 @@ export function Boletim() {
   const { usuario } = useAuth();
   const [grupos, setGrupos] = useState<GrupoTrilha[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  // Leitura do estado mais recente dentro do callback do Realtime (o canal
+  // é criado uma vez e não vê re-renderizações).
+  const gruposRef = useRef<GrupoTrilha[] | null>(null);
+  gruposRef.current = grupos;
   // IDs das matrículas do aluno — usados só para montar o filtro do canal
   // Realtime abaixo (uma trilha por seção, mas o Realtime escuta todas de
   // uma vez).
@@ -136,6 +140,29 @@ export function Boletim() {
     }
   }
 
+  // Recarrega só o card de um módulo (notas, média, frequência) — usado
+  // quando uma nota exibida nele é apagada.
+  async function recarregarModulo(matricula: MatriculaDoAluno) {
+    try {
+      const [progresso, avaliacoes] = await Promise.all([
+        buscarProgressoMatricula(matricula.id),
+        listarAvaliacoesComNotaDoAluno(matricula.id, matricula.turmaId),
+      ]);
+      setGrupos((atual) =>
+        atual
+          ? atual.map((g) => ({
+              ...g,
+              linhas: g.linhas.map((l) =>
+                l.matricula?.id === matricula.id ? { ...l, progresso, avaliacoes } : l,
+              ),
+            }))
+          : atual,
+      );
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Não foi possível atualizar o boletim.");
+    }
+  }
+
   useEffect(() => {
     void carregar();
     // usuario?.id, não usuario: o AuthProvider troca a referência do
@@ -159,6 +186,19 @@ export function Boletim() {
       .on("postgres_changes", { event: "*", schema: "diario", table: "notas", filter: filtro }, () =>
         void carregar(),
       )
+      // O Realtime não entrega DELETE em assinatura com filtro — a
+      // exclusão de uma nota (ex.: professor apagou a avaliação) não
+      // chegava. Esta assinatura é sem filtro e o evento traz só o id da
+      // nota apagada (sem os demais campos, por causa da RLS); se for uma
+      // das notas exibidas, recarrega o card daquele módulo.
+      .on("postgres_changes", { event: "DELETE", schema: "diario", table: "notas" }, (payload) => {
+        const notaId = (payload.old as { id?: string }).id;
+        if (!notaId) return;
+        const linha = gruposRef.current
+          ?.flatMap((g) => g.linhas)
+          .find((l) => l.avaliacoes.some((a) => a.notaId === notaId));
+        if (linha?.matricula) void recarregarModulo(linha.matricula);
+      })
       .on(
         "postgres_changes",
         { event: "*", schema: "diario", table: "presencas", filter: filtro },
