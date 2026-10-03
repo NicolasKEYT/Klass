@@ -1,19 +1,24 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useRef, useState, type KeyboardEvent } from "react";
 import { Trash2 } from "lucide-react";
 import { Aviso } from "@/components/Aviso";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
+import { EsqueletoTabela } from "@/components/Esqueleto";
+import { ErroConsulta } from "@/components/ErroConsulta";
 import { StatusBadge } from "@/components/StatusBadge";
-import { useSincronizacao } from "@/components/IndicadorSincronizacao";
+import { chaves } from "@/lib/consultas/chaves";
+import { useNotasDaTurma, useProgressos } from "@/lib/consultas/diario";
+import { useGravacao } from "@/lib/consultas/gravacao";
+import { invalidar } from "@/lib/consultas/invalidar";
+import { useMatriculasDaTurma } from "@/lib/consultas/selecao";
 import {
   BloqueioAlunoEncerrado,
-  buscarNotasDaAvaliacao,
-  buscarProgressoMatricula,
-  listarAlunosDoDiario,
+  filtrarAlunosDoDiario,
   salvarNotasEmLote,
   type AlunoDoDiario,
   type Avaliacao,
+  type NotaLancada,
 } from "@/lib/diario";
 import type { TurmaDetalhada } from "@/lib/selecao";
 
@@ -65,20 +70,51 @@ export function GradeNotas({
   /** Apaga a avaliação (cascata de notas já é feita pelo banco — ver lib/diario). */
   onApagarAvaliacao: (avaliacaoId: string) => Promise<void>;
 }) {
-  const { notificarSalvando, notificarSalvo, notificarErro } = useSincronizacao();
-  const [alunos, setAlunos] = useState<LinhaAluno[]>([]);
-  const [notas, setNotas] = useState<Record<string, string>>({});
-  const [notasSalvas, setNotasSalvas] = useState<Record<string, string>>({});
-  const [carregando, setCarregando] = useState(true);
+  const gravar = useGravacao();
+  // Alunos, progresso e notas vêm do cache compartilhado com a tela da
+  // turma (já lidos ao abrir a turma): voltar para esta aba não busca nada.
+  const consultaMatriculas = useMatriculasDaTurma(turmaId);
+  const alunosDoDiario = consultaMatriculas.data ? filtrarAlunosDoDiario(consultaMatriculas.data) : undefined;
+  const progressos = useProgressos((alunosDoDiario ?? []).map((a) => a.matriculaId));
+  const avaliacaoIds = avaliacoes.map((a) => a.id);
+  const consultaNotas = useNotasDaTurma(turmaId, avaliacaoIds);
+
+  const alunos: LinhaAluno[] = (alunosDoDiario ?? []).map((a) => {
+    const progresso = progressos.porMatricula.get(a.matriculaId);
+    return { ...a, media: progresso?.media ?? null, frequencia: progresso?.frequencia ?? null };
+  });
+  // Notas gravadas no banco (cache), por célula "avaliacaoId:matriculaId".
+  const notasSalvas: Record<string, string> = {};
+  const valorSalvo: Record<string, number> = {};
+  for (const n of consultaNotas.data ?? []) {
+    notasSalvas[chave(n.avaliacaoId, n.matriculaId)] = String(n.valor);
+    valorSalvo[chave(n.avaliacaoId, n.matriculaId)] = n.valor;
+  }
+
+  // O que o professor digitou e ainda não foi gravado, por célula. Fica
+  // num ref (leitura síncrona nos handlers: Esc + blur no mesmo evento)
+  // espelhado em estado (para re-renderizar). Célula sem rascunho mostra
+  // o valor do cache.
+  const rascunhosRef = useRef<Record<string, string>>({});
+  const [rascunhos, setRascunhos] = useState<Record<string, string>>({});
+  function definirRascunho(k: string, valor: string) {
+    rascunhosRef.current = { ...rascunhosRef.current, [k]: valor };
+    setRascunhos(rascunhosRef.current);
+  }
+  function descartarRascunho(k: string) {
+    const { [k]: _descartado, ...resto } = rascunhosRef.current;
+    rascunhosRef.current = resto;
+    setRascunhos(resto);
+  }
+
   const [erro, setErro] = useState<string | null>(null);
   const [confirmandoApagarId, setConfirmandoApagarId] = useState<string | null>(null);
   const [apagando, setApagando] = useState(false);
-  // Último valor gravado (ou em gravação) por célula, atualizado de forma
-  // síncrona: Enter grava e move o foco, o que dispara o blur da mesma
-  // célula logo em seguida — com só o estado (assíncrono), a segunda
-  // chamada ainda via o valor antigo e regravava. Cada regravação
+  // Valor em gravação por célula, atualizado de forma síncrona: Enter
+  // grava e move o foco, o que dispara o blur da mesma célula logo em
+  // seguida — sem isso, a segunda chamada regravava. Cada regravação
   // reescreve lancada_em, dispara o Realtime e gera "Nota publicada"
-  // falsa nas Novidades do aluno.
+  // falsa nas Novidades do aluno. Sai daqui quando o cache já tem o valor.
   const valoresGravados = useRef<Record<string, number>>({});
   const somaPesos = avaliacoes.reduce((soma, a) => soma + a.peso, 0);
 
@@ -118,85 +154,53 @@ export function GradeNotas({
     }
   }
 
-  useEffect(() => {
-    let ativo = true;
-    async function carregar() {
-      setCarregando(true);
-      try {
-        const listaAlunos = await listarAlunosDoDiario(turmaId);
-        const progressos = await Promise.all(
-          listaAlunos.map((a) => buscarProgressoMatricula(a.matriculaId)),
-        );
-        const notasPorAvaliacao = await Promise.all(
-          avaliacoes.map((a) => buscarNotasDaAvaliacao(a.id)),
-        );
-        if (!ativo) return;
-
-        const mapaNotas: Record<string, string> = {};
-        avaliacoes.forEach((avaliacao, i) => {
-          for (const [matriculaId, valor] of notasPorAvaliacao[i]) {
-            mapaNotas[chave(avaliacao.id, matriculaId)] = String(valor);
-          }
-        });
-        setNotas(mapaNotas);
-        setNotasSalvas(mapaNotas);
-        valoresGravados.current = Object.fromEntries(
-          Object.entries(mapaNotas).map(([k, v]) => [k, Number(v)]),
-        );
-        setAlunos(listaAlunos.map((a, i) => ({ ...a, media: progressos[i].media, frequencia: progressos[i].frequencia })));
-      } catch (e) {
-        if (ativo) setErro(e instanceof Error ? e.message : "Não foi possível carregar a grade.");
-      } finally {
-        if (ativo) setCarregando(false);
-      }
-    }
-    void carregar();
-    return () => {
-      ativo = false;
-    };
-  }, [turmaId, avaliacoes]);
-
-  async function salvarCelula(avaliacaoId: string, matriculaId: string, valorTexto: string) {
+  async function salvarCelula(avaliacaoId: string, matriculaId: string) {
     const k = chave(avaliacaoId, matriculaId);
-    const texto = valorTexto.trim();
+    if (!(k in rascunhosRef.current)) return;
+    const texto = rascunhosRef.current[k].trim();
     if (texto === "") return;
     const valor = lerNota(texto);
     if (valor === null) {
       setErro(MENSAGEM_NOTA_INVALIDA);
-      setNotas((atual) => ({ ...atual, [k]: notasSalvas[k] ?? "" }));
+      descartarRascunho(k);
       return;
     }
     // Sem mudança em relação ao último valor gravado: nada a fazer.
-    const anterior = valoresGravados.current[k];
-    if (anterior === valor) return;
+    const emGravacao = k in valoresGravados.current;
+    const anterior = emGravacao ? valoresGravados.current[k] : valorSalvo[k];
+    if (anterior === valor) {
+      if (!emGravacao) descartarRascunho(k);
+      return;
+    }
     valoresGravados.current[k] = valor;
     setErro(null);
-    notificarSalvando();
     try {
-      await salvarNotasEmLote(avaliacaoId, lancadoPor, [{ matriculaId, valor }]);
-      setNotasSalvas((atual) => ({ ...atual, [k]: String(valor) }));
-      notificarSalvo();
-      // Recalcula média/frequência da linha afetada sem recarregar a grade inteira.
-      const aluno = alunos.find((a) => a.matriculaId === matriculaId);
-      if (aluno) {
-        const progresso = await buscarProgressoMatricula(matriculaId);
-        setAlunos((atual) =>
-          atual.map((a) => (a.matriculaId === matriculaId ? { ...a, media: progresso.media, frequencia: progresso.frequencia } : a)),
-        );
-      }
+      await gravar(
+        () => salvarNotasEmLote(avaliacaoId, lancadoPor, [{ matriculaId, valor }]),
+        async (qc) => {
+          // A célula vira o valor gravado direto no cache (sem reler a
+          // grade inteira); média/frequência da linha são relidas.
+          qc.setQueryData<NotaLancada[]>(chaves.diario.notas(turmaId, avaliacaoIds), (atual) => [
+            ...(atual ?? []).filter((n) => !(n.avaliacaoId === avaliacaoId && n.matriculaId === matriculaId)),
+            { avaliacaoId, matriculaId, valor },
+          ]);
+          descartarRascunho(k);
+          await invalidar.nota(qc, matriculaId);
+        },
+      );
     } catch (e) {
-      // Não gravou: volta a referência para a próxima tentativa gravar de novo.
-      if (anterior === undefined) delete valoresGravados.current[k];
-      else valoresGravados.current[k] = anterior;
       setErro(e instanceof Error ? e.message : "Não foi possível salvar a nota.");
-      notificarErro();
+    } finally {
+      // Gravou (o cache já tem o valor) ou falhou (a próxima tentativa
+      // compara de novo com o banco).
+      delete valoresGravados.current[k];
     }
   }
 
   function aoTeclar(evento: KeyboardEvent<HTMLInputElement>, avaliacaoId: string, matriculaId: string, indiceLinha: number) {
     if (evento.key === "Enter") {
       evento.preventDefault();
-      void salvarCelula(avaliacaoId, matriculaId, notas[chave(avaliacaoId, matriculaId)] ?? "");
+      void salvarCelula(avaliacaoId, matriculaId);
       // Desce para a mesma coluna, próxima linha.
       const proximaLinha = alunos[indiceLinha + 1];
       if (proximaLinha) {
@@ -204,8 +208,7 @@ export function GradeNotas({
         proximoInput?.focus();
       }
     } else if (evento.key === "Escape") {
-      const k = chave(avaliacaoId, matriculaId);
-      setNotas((atual) => ({ ...atual, [k]: notasSalvas[k] ?? "" }));
+      descartarRascunho(chave(avaliacaoId, matriculaId));
       (evento.target as HTMLInputElement).blur();
     }
   }
@@ -217,8 +220,22 @@ export function GradeNotas({
     return mediaBaixa || freqBaixa ? "abaixo_da_media" : null;
   }
 
-  if (carregando) {
-    return <p className="text-body-sm text-text-secondary">Carregando...</p>;
+  const erroDeLeitura = consultaMatriculas.error ?? progressos.erro ?? consultaNotas.error;
+  if (erroDeLeitura && (!alunosDoDiario || !consultaNotas.data)) {
+    return (
+      <ErroConsulta
+        erro={erroDeLeitura}
+        padrao="Não foi possível carregar a grade."
+        tentarDeNovo={() => {
+          if (consultaMatriculas.isError) void consultaMatriculas.refetch();
+          if (consultaNotas.isError) void consultaNotas.refetch();
+          progressos.tentarDeNovo();
+        }}
+      />
+    );
+  }
+  if (!alunosDoDiario || progressos.pendente || consultaNotas.isPending) {
+    return <EsqueletoTabela linhas={Math.max(alunosDoDiario?.length ?? 3, 1)} colunas={avaliacoes.length + 4} />;
   }
 
   return (
@@ -342,9 +359,9 @@ export function GradeNotas({
                           inputMode="decimal"
                           disabled={!podeEditar}
                           className="h-10 w-20 rounded-klass-control border border-border bg-surface px-2 text-center font-mono text-body-sm tabular-nums text-text-primary transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:bg-neutral-subtle disabled:text-text-muted"
-                          value={notas[k] ?? ""}
-                          onChange={(e) => setNotas((atual) => ({ ...atual, [k]: e.target.value }))}
-                          onBlur={(e) => void salvarCelula(avaliacao.id, aluno.matriculaId, e.target.value)}
+                          value={rascunhos[k] ?? notasSalvas[k] ?? ""}
+                          onChange={(e) => definirRascunho(k, e.target.value)}
+                          onBlur={() => void salvarCelula(avaliacao.id, aluno.matriculaId)}
                           onKeyDown={(e) => aoTeclar(e, avaliacao.id, aluno.matriculaId, indiceLinha)}
                         />
                       </td>

@@ -220,6 +220,15 @@ siga o artigo (cliente).
 - **Tipos gerados do banco:** rode `supabase gen types typescript` e use
   os tipos gerados no cliente Supabase, para que errar o nome de uma
   coluna vire erro de compilação em vez de bug em produção.
+- **Leitura de dados pelo cache (TanStack Query).** As telas leem pelos
+  hooks de `apps/web/src/lib/consultas/` (um arquivo por bounded context),
+  que embrulham as funções de `lib/` — estas continuam sendo a única camada
+  que chama o Supabase. Chaves só em `consultas/chaves.ts`, dependendo de
+  ids (nunca do objeto `usuario`). Toda gravação passa por `useGravacao` e
+  invalida o que mudou (`consultas/invalidar.ts`); eventos do Realtime
+  invalidam o cache em vez de recarregar a tela. Não é desvio do artigo: o
+  frontend segue falando direto com o Supabase, o cache só evita repetir
+  a mesma leitura a cada troca de tela.
 
 ### Onde a regra de negócio mora
 

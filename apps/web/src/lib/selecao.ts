@@ -1,7 +1,7 @@
 import { supabase } from "@/lib/supabase";
 import { mensagemDeErroBanco } from "@/lib/mensagensDeErroBanco";
 import { listarModulosDaTrilha } from "@/lib/catalogo";
-import type { Matricula, StatusMatricula, Turma } from "@klass/types";
+import type { Matricula, Modulo, StatusMatricula, Turma } from "@klass/types";
 
 // Ponto único de acesso a selecao.* — mesmo padrão de apps/web/src/lib/catalogo.ts.
 function selecao() {
@@ -455,6 +455,9 @@ export interface TurmaDoProfessor {
   periodoInicio: string;
   periodoFim: string;
   matriculados: number;
+  /** Critérios de aprovação — o "Hoje" compara frequência/média com eles. */
+  frequenciaMinimaPercentual: number;
+  trilhaMediaMinima: number;
 }
 
 export async function listarTurmasDoProfessor(professorId: string): Promise<TurmaDoProfessor[]> {
@@ -487,6 +490,8 @@ export async function listarTurmasDoProfessor(professorId: string): Promise<Turm
       matriculados: (matriculasResp.data ?? []).filter(
         (m) => m.turma_id === turma.id && m.status === "matriculada",
       ).length,
+      frequenciaMinimaPercentual: turma.frequencia_minima_percentual,
+      trilhaMediaMinima: contexto?.trilhaMediaMinima ?? 6,
     };
   });
 }
@@ -523,8 +528,9 @@ export interface ModuloComTurmas {
 export async function listarModulosComTurmasDaTrilha(
   trilhaId: string,
   alunoId: string | null,
+  modulosConhecidos?: Modulo[],
 ): Promise<ModuloComTurmas[]> {
-  const modulos = await listarModulosDaTrilha(trilhaId);
+  const modulos = modulosConhecidos ?? (await listarModulosDaTrilha(trilhaId));
   if (modulos.length === 0) return [];
 
   const moduloIds = modulos.map((m) => m.id);

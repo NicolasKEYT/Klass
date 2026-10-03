@@ -1,6 +1,7 @@
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Badge } from "@/components/Badge";
 import { useAuth } from "@/auth";
+import { LinkComPrefetch } from "@/components/LinkComPrefetch";
 import { navPorPapel } from "./itensDeNavegacao";
 
 // D3 (klass-uikit.pdf, decisão de desenho) — "barra lateral com rótulos no
@@ -52,7 +53,7 @@ export function BarraLateral() {
             location.pathname === item.para ||
             (item.para !== "/" && location.pathname.startsWith(item.para));
           return (
-            <Link
+            <LinkComPrefetch
               key={item.para}
               to={item.para}
               className={`flex items-center gap-3 rounded-klass-control px-3 py-2.5 text-klass-md font-medium transition ${
@@ -63,7 +64,7 @@ export function BarraLateral() {
             >
               <item.Icone className="h-5 w-5" aria-hidden />
               {item.texto}
-            </Link>
+            </LinkComPrefetch>
           );
         })}
       </nav>

@@ -1,5 +1,6 @@
-import { useEffect, useState, type FormEvent } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { useState, type FormEvent } from "react";
+import { useParams, useSearchParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { Pencil, Trash2 } from "lucide-react";
 import { useAuth } from "@/auth";
 import { Aviso } from "@/components/Aviso";
@@ -7,40 +8,43 @@ import { BotaoVoltar } from "@/components/BotaoVoltar";
 import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
 import { GradeNotas } from "@/components/diario/GradeNotas";
+import { Esqueleto, EsqueletoCards, EsqueletoTabela, RegiaoCarregando } from "@/components/Esqueleto";
+import { ErroConsulta } from "@/components/ErroConsulta";
 import { Input } from "@/components/Input";
+import { LinkComPrefetch } from "@/components/LinkComPrefetch";
 import { PaginaAutenticada } from "@/components/PaginaAutenticada";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Titulo } from "@/components/Titulo";
+import {
+  opcoesDiario,
+  useAulasDaTurma,
+  useAvaliacoesDaTurma,
+  useNotasDaTurma,
+  useProgressos,
+} from "@/lib/consultas/diario";
+import { useGravacao } from "@/lib/consultas/gravacao";
+import { invalidar } from "@/lib/consultas/invalidar";
+import { useMatriculasDaTurma, useTurma } from "@/lib/consultas/selecao";
 import {
   apagarAula,
   apagarAvaliacao,
   atualizarAula,
   BloqueioAlunoEncerrado,
-  buscarPresencasDaAula,
-  buscarProgressoMatricula,
   calcularDatasRecorrentes,
   criarAula,
   criarAulasEmLote,
   criarAvaliacao,
   encerrarMatricula,
   encerrarTurma,
-  listarAlunosDoDiario,
-  listarAulasDaTurma,
-  listarAvaliacoesDaTurma,
+  filtrarAlunosDoDiario,
   proximaOrdemAvaliacao,
   type AlunoDoDiario,
   type Aula,
-  type Avaliacao,
   type ProgressoMatricula,
   type ResumoEncerramentoTurma,
 } from "@/lib/diario";
 import { plural } from "@/lib/plural";
-import {
-  buscarTurmaDetalhada,
-  PERIODO_TURMA_DATA_MAX,
-  PERIODO_TURMA_DATA_MIN,
-  type TurmaDetalhada,
-} from "@/lib/selecao";
+import { PERIODO_TURMA_DATA_MAX, PERIODO_TURMA_DATA_MIN } from "@/lib/selecao";
 
 type Aba = "avaliacoes" | "aulas" | "alunos";
 type ModoCriacaoAula = "unica" | "recorrencia";
@@ -91,13 +95,33 @@ export function DetalheTurma() {
       { replace: true },
     );
   }
-  const [turma, setTurma] = useState<TurmaDetalhada | null | undefined>(undefined);
-  const [avaliacoes, setAvaliacoes] = useState<Avaliacao[]>([]);
-  const [aulas, setAulas] = useState<Aula[]>([]);
-  const [alunos, setAlunos] = useState<AlunoComProgresso[]>([]);
-  // A lista de alunos chega depois do resto (espera o progresso de cada
-  // um) — sem isso, "Nenhum aluno matriculado" aparecia durante a carga.
-  const [alunosCarregados, setAlunosCarregados] = useState(false);
+  const gravar = useGravacao();
+  const qc = useQueryClient();
+  // Tudo que as três abas mostram é lido junto, em paralelo, ao abrir a
+  // turma — trocar de aba só troca o que aparece, sem buscar nada. As
+  // notas da grade também (mesma entrada de cache que a GradeNotas usa).
+  const consultaTurma = useTurma(id);
+  const consultaAvaliacoes = useAvaliacoesDaTurma(id);
+  const consultaAulas = useAulasDaTurma(id);
+  const consultaMatriculas = useMatriculasDaTurma(id);
+  const alunosDoDiario = consultaMatriculas.data ? filtrarAlunosDoDiario(consultaMatriculas.data) : undefined;
+  const progressos = useProgressos((alunosDoDiario ?? []).map((a) => a.matriculaId));
+  useNotasDaTurma(id, consultaAvaliacoes.data?.map((a) => a.id));
+
+  const turma = consultaTurma.data;
+  const avaliacoes = consultaAvaliacoes.data ?? [];
+  const aulas = consultaAulas.data ?? [];
+  // A lista de alunos só aparece com o progresso de cada um — sem isso,
+  // "Nenhum aluno matriculado" ou médias "—" apareciam durante a carga.
+  const alunosCarregados = !!alunosDoDiario && !progressos.pendente;
+  const alunos: AlunoComProgresso[] = alunosCarregados
+    ? alunosDoDiario.flatMap((a) => {
+        const progresso = progressos.porMatricula.get(a.matriculaId);
+        return progresso ? [{ ...a, progresso }] : [];
+      })
+    : [];
+  const consultasDaTela = [consultaTurma, consultaAvaliacoes, consultaAulas, consultaMatriculas];
+  const erroDeLeitura = consultasDaTela.find((c) => c.isError)?.error ?? progressos.erro;
   const [erro, setErro] = useState<string | null>(null);
   const [mensagem, setMensagem] = useState<string | null>(null);
 
@@ -138,34 +162,6 @@ export function DetalheTurma() {
   const [encerrandoTurma, setEncerrandoTurma] = useState(false);
   const [resumoEncerramento, setResumoEncerramento] = useState<ResumoEncerramentoTurma | null>(null);
 
-  async function carregar() {
-    if (!id) return;
-    try {
-      const [dadosTurma, listaAvaliacoes, listaAulas, listaAlunos] = await Promise.all([
-        buscarTurmaDetalhada(id),
-        listarAvaliacoesDaTurma(id),
-        listarAulasDaTurma(id),
-        listarAlunosDoDiario(id),
-      ]);
-      setTurma(dadosTurma);
-      setAvaliacoes(listaAvaliacoes);
-      setAulas(listaAulas);
-
-      const progressos = await Promise.all(
-        listaAlunos.map((a) => buscarProgressoMatricula(a.matriculaId)),
-      );
-      setAlunos(listaAlunos.map((a, i) => ({ ...a, progresso: progressos[i] })));
-      setAlunosCarregados(true);
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : "Não foi possível carregar a turma.");
-    }
-  }
-
-  useEffect(() => {
-    void carregar();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
-
   async function aoCriarAvaliacao(evento: FormEvent) {
     evento.preventDefault();
     if (!id) return;
@@ -173,20 +169,22 @@ export function DetalheTurma() {
     setMensagem(null);
     setSalvandoAvaliacao(true);
     try {
-      const ordem = await proximaOrdemAvaliacao(id);
-      await criarAvaliacao({
-        turmaId: id,
-        titulo: novoTitulo,
-        descricao: novaDescricao,
-        peso: novoPeso,
-        ordem,
-      });
+      await gravar(
+        async () =>
+          criarAvaliacao({
+            turmaId: id,
+            titulo: novoTitulo,
+            descricao: novaDescricao,
+            peso: novoPeso,
+            ordem: await proximaOrdemAvaliacao(id),
+          }),
+        (qc) => invalidar.avaliacoes(qc, id),
+      );
       setNovoTitulo("");
       setNovaDescricao("");
       setNovoPeso(1);
       setMostrarNovaAvaliacao(false);
       setMensagem("Avaliação criada.");
-      await carregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível criar a avaliação.");
     } finally {
@@ -201,18 +199,21 @@ export function DetalheTurma() {
     setMensagem(null);
     setSalvandoAula(true);
     try {
-      await criarAula({
-        turmaId: id,
-        data: novaData,
-        horario: novoHorario,
-        descricao: novaAulaDescricao,
-      });
+      await gravar(
+        () =>
+          criarAula({
+            turmaId: id,
+            data: novaData,
+            horario: novoHorario,
+            descricao: novaAulaDescricao,
+          }),
+        (qc) => invalidar.aulas(qc, id),
+      );
       setNovaData("");
       setNovoHorario("");
       setNovaAulaDescricao("");
       setMostrarNovaAula(false);
       setMensagem("Aula criada.");
-      await carregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível criar a aula.");
     } finally {
@@ -263,12 +264,16 @@ export function DetalheTurma() {
     setMensagem(null);
     setSalvandoAula(true);
     try {
-      await criarAulasEmLote({
-        turmaId: id,
-        datas: datasNovas,
-        horario: recorrenciaHorario,
-        descricao: recorrenciaDescricao,
-      });
+      await gravar(
+        () =>
+          criarAulasEmLote({
+            turmaId: id,
+            datas: datasNovas,
+            horario: recorrenciaHorario,
+            descricao: recorrenciaDescricao,
+          }),
+        (qc) => invalidar.aulas(qc, id),
+      );
       setDiasSelecionados([]);
       setRecorrenciaInicio("");
       setRecorrenciaFim("");
@@ -276,7 +281,6 @@ export function DetalheTurma() {
       setRecorrenciaDescricao("");
       setMostrarNovaAula(false);
       setMensagem(`${plural(datasNovas.length, "aula criada", "aulas criadas")}.`);
-      await carregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível gerar as aulas.");
     } finally {
@@ -296,15 +300,18 @@ export function DetalheTurma() {
 
   async function aoSalvarEdicaoAula(evento: FormEvent) {
     evento.preventDefault();
-    if (!editandoAulaId) return;
+    if (!editandoAulaId || !id) return;
     setErro(null);
     setMensagem(null);
     setSalvandoEdicaoAula(true);
     try {
-      await atualizarAula(editandoAulaId, { data: editData, horario: editHorario, descricao: editDescricao });
+      const aulaId = editandoAulaId;
+      await gravar(
+        () => atualizarAula(aulaId, { data: editData, horario: editHorario, descricao: editDescricao }),
+        (qc) => invalidar.aulas(qc, id, aulaId),
+      );
       setEditandoAulaId(null);
       setMensagem("Aula atualizada.");
-      await carregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível atualizar a aula.");
     } finally {
@@ -319,7 +326,8 @@ export function DetalheTurma() {
     setApagandoAulaId(aula.id);
     setSituacaoApagarAula(undefined);
     try {
-      const presencas = await buscarPresencasDaAula(aula.id);
+      // staleTime 0: a decisão de apagar precisa da chamada atual, não do cache.
+      const presencas = await qc.fetchQuery({ ...opcoesDiario.presencas(aula.id), staleTime: 0 });
       const encerrados = alunos
         .filter(
           (a) => (a.status === "concluida" || a.status === "reprovada") && presencas.has(a.matriculaId),
@@ -333,14 +341,14 @@ export function DetalheTurma() {
   }
 
   async function aoConfirmarApagarAula(aulaId: string) {
+    if (!id) return;
     setErro(null);
     setMensagem(null);
     setApagandoAula(true);
     try {
-      await apagarAula(aulaId);
+      await gravar(() => apagarAula(aulaId), (qc) => invalidar.aulas(qc, id, aulaId));
       setApagandoAulaId(null);
       setMensagem("Aula apagada.");
-      await carregar();
     } catch (e) {
       if (e instanceof BloqueioAlunoEncerrado) setApagandoAulaId(null);
       setErro(e instanceof Error ? e.message : "Não foi possível apagar a aula.");
@@ -350,20 +358,20 @@ export function DetalheTurma() {
   }
 
   async function aoApagarAvaliacao(avaliacaoId: string) {
+    if (!id) return;
     setMensagem(null);
-    await apagarAvaliacao(avaliacaoId);
+    await gravar(() => apagarAvaliacao(avaliacaoId), (qc) => invalidar.avaliacoes(qc, id));
     setMensagem("Avaliação apagada.");
-    await carregar();
   }
 
   async function aoEncerrar(matriculaId: string) {
+    if (!id) return;
     setErro(null);
     setMensagem(null);
     setEncerrandoId(matriculaId);
     try {
-      await encerrarMatricula(matriculaId);
+      await gravar(() => encerrarMatricula(matriculaId), (qc) => invalidar.matriculas(qc, id));
       setMensagem("Resultado do aluno lançado.");
-      await carregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível encerrar o aluno.");
     } finally {
@@ -377,10 +385,9 @@ export function DetalheTurma() {
     setMensagem(null);
     setEncerrandoTurma(true);
     try {
-      const resumo = await encerrarTurma(id);
+      const resumo = await gravar(() => encerrarTurma(id), (qc) => invalidar.matriculas(qc, id));
       setResumoEncerramento(resumo);
       setConfirmandoEncerrarTurma(false);
-      await carregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível encerrar a turma.");
     } finally {
@@ -409,14 +416,29 @@ export function DetalheTurma() {
             {erro}
           </Aviso>
         )}
+        {erroDeLeitura && (
+          <ErroConsulta
+            className="mb-4"
+            erro={erroDeLeitura}
+            padrao="Não foi possível carregar a turma."
+            tentarDeNovo={() => {
+              consultasDaTela.forEach((c) => c.isError && void c.refetch());
+              progressos.tentarDeNovo();
+            }}
+          />
+        )}
         {mensagem && (
           <Aviso variant="success" className="mb-4">
             {mensagem}
           </Aviso>
         )}
 
-        {turma === undefined && !erro && (
-          <p className="text-body-sm text-text-secondary">Carregando...</p>
+        {consultaTurma.isPending && !erroDeLeitura && (
+          <RegiaoCarregando className="mb-6 flex flex-col gap-2 rounded-klass-card border border-border bg-surface px-klass-card-x py-6">
+            <Esqueleto className="h-8 w-40" />
+            <Esqueleto className="h-4 w-64" />
+            <Esqueleto className="h-3 w-48" />
+          </RegiaoCarregando>
         )}
         {turma === null && <p className="text-body-sm text-text-secondary">Turma não encontrada.</p>}
 
@@ -451,7 +473,9 @@ export function DetalheTurma() {
             {aba === "avaliacoes" && (
               <>
                 <div className="mb-4 flex items-center justify-between">
-                  <Titulo nivel="secao">Avaliações ({avaliacoes.length})</Titulo>
+                  <Titulo nivel="secao">
+                    Avaliações{consultaAvaliacoes.data ? ` (${avaliacoes.length})` : ""}
+                  </Titulo>
                   <Button onClick={() => setMostrarNovaAvaliacao((v) => !v)}>
                     {mostrarNovaAvaliacao ? "Cancelar" : "Nova avaliação"}
                   </Button>
@@ -500,7 +524,8 @@ export function DetalheTurma() {
                   </Card>
                 )}
 
-                {avaliacoes.length === 0 && (
+                {consultaAvaliacoes.isPending && <EsqueletoTabela linhas={3} colunas={6} />}
+                {consultaAvaliacoes.data?.length === 0 && (
                   <p className="text-body-sm text-text-secondary">
                     Nenhuma avaliação cadastrada ainda.
                   </p>
@@ -520,7 +545,9 @@ export function DetalheTurma() {
             {aba === "aulas" && (
               <>
                 <div className="mb-4 flex items-center justify-between">
-                  <Titulo nivel="secao">Aulas ({aulas.length})</Titulo>
+                  <Titulo nivel="secao">
+                    Aulas{consultaAulas.data ? ` (${aulas.length})` : ""}
+                  </Titulo>
                   <Button
                     onClick={() => {
                       setMostrarNovaAula((v) => !v);
@@ -693,7 +720,8 @@ export function DetalheTurma() {
                 )}
 
                 <div className="flex flex-col gap-2">
-                  {aulas.length === 0 && (
+                  {consultaAulas.isPending && <EsqueletoCards quantidade={4} altura="h-16" />}
+                  {consultaAulas.data?.length === 0 && (
                     <p className="text-body-sm text-text-secondary">Nenhuma aula cadastrada ainda.</p>
                   )}
                   {aulas.map((aula) =>
@@ -827,12 +855,12 @@ export function DetalheTurma() {
                             <Trash2 className="h-3.5 w-3.5" aria-hidden />
                             Apagar
                           </button>
-                          <Link
+                          <LinkComPrefetch
                             to={`/professor/turmas/${id}/aulas/${aula.id}/chamada`}
                             className="text-body-sm font-medium text-primary hover:underline"
                           >
                             Fazer chamada
-                          </Link>
+                          </LinkComPrefetch>
                         </div>
                       </Card>
                     ),
@@ -898,9 +926,7 @@ export function DetalheTurma() {
                 )}
 
                 <div className="flex flex-col gap-2">
-                  {!alunosCarregados && !erro && (
-                    <p className="text-body-sm text-text-secondary">Carregando...</p>
-                  )}
+                  {!alunosCarregados && !erroDeLeitura && <EsqueletoCards quantidade={3} altura="h-16" />}
                   {alunosCarregados && alunos.length === 0 && (
                     <p className="text-body-sm text-text-secondary">
                       Nenhum aluno matriculado ainda.

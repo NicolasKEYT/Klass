@@ -1,6 +1,8 @@
 import { useEffect, useState, type ReactNode } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import type { Profile } from "@klass/types";
+import { queryClient } from "@/lib/consultas/cliente";
+import { limparUltimaGravacao } from "@/lib/consultas/estadoGravacao";
 import { supabase } from "@/lib/supabase";
 import { AuthContext, type CadastroResultado } from "./AuthContext";
 import { mensagemDeErroAuth } from "./mensagensDeErro";
@@ -30,6 +32,11 @@ async function buscarProfileComRetry(userId: string): Promise<Profile | null> {
   return segunda.data ?? null;
 }
 
+function esvaziarCache() {
+  queryClient.clear();
+  limparUltimaGravacao();
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [usuario, setUsuario] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -55,6 +62,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const novoUsuario = session?.user ?? null;
 
       if (!novoUsuario) {
+        // Saiu: o cache de leitura era desta conta (a RLS decide o que cada
+        // uma vê) — não pode aparecer para a próxima.
+        if (idCarregado !== null) esvaziarCache();
         idCarregado = null;
         setUsuario(null);
         setProfile(null);
@@ -72,6 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Usuário novo/diferente (primeiro load, login, troca de conta):
       // aí sim carrega o profile. `carregando` cobre toda a busca para o
       // / não renderizar "Olá, ...!" com profile ainda nulo após o login.
+      if (idCarregado !== null) esvaziarCache();
       idCarregado = novoUsuario.id;
       setCarregando(true);
       setUsuario(novoUsuario);

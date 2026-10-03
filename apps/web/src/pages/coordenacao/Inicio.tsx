@@ -1,24 +1,27 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import { Search } from "lucide-react";
 import { Badge } from "@/components/Badge";
 import { BarraDeMeta } from "@/components/BarraDeMeta";
 import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
+import { Esqueleto, RegiaoCarregando } from "@/components/Esqueleto";
+import { ErroConsulta } from "@/components/ErroConsulta";
 import { Input } from "@/components/Input";
+import { LinkComPrefetch } from "@/components/LinkComPrefetch";
 import { Titulo } from "@/components/Titulo";
-import { listarTrilhas } from "@/lib/catalogo";
+import { useTrilhas } from "@/lib/consultas/catalogo";
+import { useBuscaDeAlunos } from "@/lib/consultas/identidade";
 import {
-  buscarAlunosPorNome,
-  buscarIndicadoresCoordenacao,
-  listarPendenciasCoordenacao,
-  listarTurmasEmAndamento,
-  type IndicadoresCoordenacao,
+  useFrequenciasCoordenacao,
+  useIndicadoresDasViews,
+  usePendenciasCoordenacao,
+} from "@/lib/consultas/painelCoordenacao";
+import { useTurmasDaCoordenacao } from "@/lib/consultas/selecao";
+import {
+  montarIndicadores,
+  montarTurmasEmAndamento,
   type PendenciaCoordenacao,
-  type ResultadoBuscaAluno,
-  type TurmaEmAndamento,
 } from "@/lib/painelCoordenacao";
-import type { Trilha } from "@klass/types";
 
 const TEXTO_PENDENCIA: Record<PendenciaCoordenacao["tipo"], (q: number) => string> = {
   inscricoes: (q) => `${q} inscrição(ões) para aprovar`,
@@ -44,47 +47,35 @@ const LINK_PENDENCIA: Record<PendenciaCoordenacao["tipo"], string> = {
 // trigger, sem etapa manual de "emitir". Em vez de fingir uma ação que
 // não existe, o painel mostra só os 3 cards com dado e ação reais.
 export function Inicio() {
-  const [indicadores, setIndicadores] = useState<IndicadoresCoordenacao | null>(null);
-  const [pendencias, setPendencias] = useState<PendenciaCoordenacao[] | null>(null);
-  const [turmas, setTurmas] = useState<TurmaEmAndamento[] | null>(null);
-  const [trilhas, setTrilhas] = useState<Trilha[]>([]);
-  const [erro, setErro] = useState<string | null>(null);
+  // Frequências calculadas uma vez só e usadas nos indicadores e na tabela;
+  // a lista de turmas é a mesma da tela "Turmas" (cache compartilhado).
+  const consultaFrequencias = useFrequenciasCoordenacao();
+  const consultaViews = useIndicadoresDasViews();
+  const consultaPendencias = usePendenciasCoordenacao();
+  const consultaTurmas = useTurmasDaCoordenacao();
+  const consultaTrilhas = useTrilhas();
+  const pendencias = consultaPendencias.data;
+  const indicadores =
+    consultaFrequencias.data && consultaViews.data
+      ? montarIndicadores(consultaFrequencias.data, consultaViews.data)
+      : null;
+  const turmas =
+    consultaTurmas.data && consultaFrequencias.data
+      ? montarTurmasEmAndamento(consultaTurmas.data, consultaFrequencias.data.porTurma)
+      : null;
+  const trilhas = consultaTrilhas.data ?? [];
+  const consultas = [consultaFrequencias, consultaViews, consultaPendencias, consultaTurmas, consultaTrilhas];
+  const erro = consultas.find((c) => c.isError)?.error ?? null;
 
   const [termoBusca, setTermoBusca] = useState("");
-  const [alunosEncontrados, setAlunosEncontrados] = useState<ResultadoBuscaAluno[]>([]);
-
+  // Espera o usuário parar de digitar (300 ms) antes de consultar.
+  const [termoConsultado, setTermoConsultado] = useState("");
   useEffect(() => {
-    Promise.all([
-      buscarIndicadoresCoordenacao(),
-      listarPendenciasCoordenacao(),
-      listarTurmasEmAndamento(),
-      listarTrilhas(),
-    ])
-      .then(([ind, pend, turm, tril]) => {
-        setIndicadores(ind);
-        setPendencias(pend);
-        setTurmas(turm);
-        setTrilhas(tril);
-      })
-      .catch((e) => setErro(e instanceof Error ? e.message : "Não foi possível carregar o painel."));
-  }, []);
-
-  useEffect(() => {
-    if (termoBusca.trim().length < 2) {
-      setAlunosEncontrados([]);
-      return;
-    }
-    let ativo = true;
-    const debounce = setTimeout(() => {
-      buscarAlunosPorNome(termoBusca)
-        .then((r) => ativo && setAlunosEncontrados(r))
-        .catch(() => ativo && setAlunosEncontrados([]));
-    }, 300);
-    return () => {
-      ativo = false;
-      clearTimeout(debounce);
-    };
+    const debounce = setTimeout(() => setTermoConsultado(termoBusca), 300);
+    return () => clearTimeout(debounce);
   }, [termoBusca]);
+  const consultaAlunos = useBuscaDeAlunos(termoConsultado);
+  const alunosEncontrados = termoBusca.trim().length >= 2 ? (consultaAlunos.data ?? []) : [];
 
   const turmasFiltradas = (turmas ?? []).filter(
     (t) =>
@@ -114,7 +105,14 @@ export function Inicio() {
         </div>
       </div>
 
-      {erro && <p className="mb-4 text-body-sm text-danger">{erro}</p>}
+      {erro && (
+        <ErroConsulta
+          className="mb-4"
+          erro={erro}
+          padrao="Não foi possível carregar o painel."
+          tentarDeNovo={() => consultas.forEach((c) => c.isError && void c.refetch())}
+        />
+      )}
 
       {mostrandoBusca ? (
         <div className="flex flex-col gap-6">
@@ -138,11 +136,11 @@ export function Inicio() {
             )}
             <div className="flex flex-col gap-2">
               {turmasFiltradas.map((t) => (
-                <Link key={t.id} to={`/coordenacao/turmas/${t.id}`}>
+                <LinkComPrefetch key={t.id} to={`/coordenacao/turmas/${t.id}`}>
                   <Card className="text-body-sm text-text-primary transition hover:border-text-primary/40">
                     {t.codigo} · {t.moduloNome} · {t.trilhaNome}
                   </Card>
-                </Link>
+                </LinkComPrefetch>
               ))}
             </div>
           </div>
@@ -153,9 +151,9 @@ export function Inicio() {
             )}
             <div className="flex flex-col gap-2">
               {trilhasFiltradas.map((t) => (
-                <Link key={t.id} to={`/coordenacao/trilhas/${t.slug}/editar`}>
+                <LinkComPrefetch key={t.id} to={`/coordenacao/trilhas/${t.slug}/editar`}>
                   <Card className="text-body-sm text-text-primary transition hover:border-text-primary/40">{t.nome}</Card>
-                </Link>
+                </LinkComPrefetch>
               ))}
             </div>
           </div>
@@ -166,9 +164,15 @@ export function Inicio() {
             Precisa de você
           </Titulo>
           <div className="mb-6 grid gap-4 sm:grid-cols-3">
-            {pendencias === null && !erro && (
-              <p className="text-body-sm text-text-secondary">Carregando...</p>
-            )}
+            {consultaPendencias.isPending &&
+              [0, 1, 2].map((i) => (
+                <RegiaoCarregando key={i} className="flex flex-col gap-2 rounded-klass-card border border-border bg-surface px-klass-card-x py-6">
+                  <Esqueleto className="h-9 w-12" />
+                  <Esqueleto className="h-4 w-40" />
+                  <Esqueleto className="h-3 w-32" />
+                  <Esqueleto className="mt-1 h-10 w-full" />
+                </RegiaoCarregando>
+              ))}
             {pendencias?.length === 0 && (
               <p className="text-body-sm text-text-secondary sm:col-span-3">
                 Nenhuma pendência no momento.
@@ -181,15 +185,27 @@ export function Inicio() {
                 </span>
                 <p className="text-body-sm text-text-secondary">{TEXTO_PENDENCIA[p.tipo](p.quantidade)}</p>
                 <p className="text-label text-text-muted">{p.detalhe}</p>
-                <Link to={LINK_PENDENCIA[p.tipo]}>
+                <LinkComPrefetch to={LINK_PENDENCIA[p.tipo]}>
                   <Button variant="secondary" className="mt-1 w-full">
                     Revisar
                   </Button>
-                </Link>
+                </LinkComPrefetch>
               </Card>
             ))}
           </div>
 
+          {!indicadores && !erro ? (
+            <div className="mb-6 grid gap-4 sm:grid-cols-3">
+              {[0, 1, 2].map((i) => (
+                <RegiaoCarregando key={i} className="flex flex-col gap-2 rounded-klass-card border border-border bg-surface px-klass-card-x py-6">
+                  <Esqueleto className="h-3 w-32" />
+                  <Esqueleto className="h-9 w-16" />
+                  <Esqueleto className="h-3 w-20" />
+                  <Esqueleto className="h-2 w-full" />
+                </RegiaoCarregando>
+              ))}
+            </div>
+          ) : (
           <div className="mb-6 grid gap-4 sm:grid-cols-3">
             <Card>
               <p className="text-label font-medium text-text-muted">Frequência média</p>
@@ -242,6 +258,7 @@ export function Inicio() {
               />
             </Card>
           </div>
+          )}
 
           <Titulo nivel="secao" className="mb-3">
             Turmas em andamento
@@ -259,22 +276,26 @@ export function Inicio() {
                 </tr>
               </thead>
               <tbody>
-                {turmas === null && !erro && (
-                  <tr>
-                    <td className="px-4 py-3 text-body-sm text-text-secondary" colSpan={6}>
-                      Carregando...
-                    </td>
-                  </tr>
-                )}
+                {turmas === null &&
+                  !erro &&
+                  [0, 1, 2, 3].map((i) => (
+                    <tr key={i} className="h-[52px] border-b border-border last:border-b-0" aria-busy="true">
+                      {[0, 1, 2, 3, 4, 5].map((j) => (
+                        <td key={j} className="px-4 py-3">
+                          <Esqueleto className="h-4 w-20" />
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
                 {turmas?.map((t) => (
                   <tr key={t.id} className="h-[52px] border-b border-border last:border-b-0">
                     <td className="px-4 py-3">
-                      <Link
+                      <LinkComPrefetch
                         to={`/coordenacao/turmas/${t.id}`}
                         className="text-body-sm font-medium text-primary hover:underline"
                       >
                         {t.codigo}
-                      </Link>
+                      </LinkComPrefetch>
                     </td>
                     <td className="px-4 py-3 text-body-sm text-text-secondary">{t.moduloNome}</td>
                     <td className="px-4 py-3 text-body-sm text-text-secondary">{t.professorNome}</td>

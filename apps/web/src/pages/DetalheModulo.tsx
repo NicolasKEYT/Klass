@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { useQueries } from "@tanstack/react-query";
 import { Check, Clock, Lock } from "lucide-react";
 import { useAuth } from "@/auth";
 import { Aviso } from "@/components/Aviso";
@@ -7,25 +8,23 @@ import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
 import { BotaoVoltar } from "@/components/BotaoVoltar";
+import { Esqueleto, EsqueletoCards, RegiaoCarregando } from "@/components/Esqueleto";
+import { ErroConsulta } from "@/components/ErroConsulta";
 import { IconeCatalogo } from "@/components/IconeCatalogo";
 import { PaginaAutenticada } from "@/components/PaginaAutenticada";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Titulo } from "@/components/Titulo";
 import {
-  buscarTrilhaPorId,
-  buscarTrilhaPorSlug,
-  listarModulosDaTrilha,
-  listarPreRequisitosDoModulo,
-} from "@/lib/catalogo";
-import {
-  inscreverAluno,
-  listarMatriculasDoAluno,
-  listarModulosComTurmasDaTrilha,
-  type MatriculaDoAluno,
-  type StatusMatricula,
-  type TurmaDisponivel,
-} from "@/lib/selecao";
-import type { Modulo, NivelModulo, Trilha } from "@klass/types";
+  opcoesCatalogo,
+  useModulosDaTrilha,
+  usePreRequisitosDoModulo,
+  useTrilhaPorSlug,
+} from "@/lib/consultas/catalogo";
+import { useGravacao } from "@/lib/consultas/gravacao";
+import { invalidar } from "@/lib/consultas/invalidar";
+import { useMatriculasDoAluno, useTurmasDaTrilha } from "@/lib/consultas/selecao";
+import { inscreverAluno, type StatusMatricula } from "@/lib/selecao";
+import type { NivelModulo } from "@klass/types";
 
 const NIVEL_LABEL: Record<NivelModulo, string> = {
   iniciante: "Iniciante",
@@ -57,121 +56,95 @@ export function DetalheModulo() {
   const { slug, moduloId } = useParams<{ slug: string; moduloId: string }>();
   const { usuario, profile } = useAuth();
   const navigate = useNavigate();
+  const gravar = useGravacao();
 
-  const [trilha, setTrilha] = useState<Trilha | null | undefined>(undefined);
-  const [modulo, setModulo] = useState<Modulo | null>(null);
-  const [carregando, setCarregando] = useState(true);
-  // Incrementado após uma inscrição bem-sucedida, para recarregar a
-  // matrícula e trocar o botão pelo estado "Em análise".
-  const [recarga, setRecarga] = useState(0);
-  const [matriculasNoModulo, setMatriculasNoModulo] = useState<MatriculaDoAluno[]>([]);
-  const [preRequisitos, setPreRequisitos] = useState<PreRequisitoStatus[]>([]);
-  const [turmas, setTurmas] = useState<TurmaDisponivel[]>([]);
-  const [turmaSelecionada, setTurmaSelecionada] = useState<string | null>(null);
+  // Pré-requisitos e matrículas não dependem da trilha: saem junto com
+  // ela. Módulos e turmas esperam só o id da trilha (que pode já estar em
+  // cache, vindo do catálogo).
+  const consultaTrilha = useTrilhaPorSlug(slug);
+  const trilha = consultaTrilha.data;
+  const consultaModulos = useModulosDaTrilha(trilha?.id);
+  const consultaPreRequisitos = usePreRequisitosDoModulo(moduloId);
+  const consultaTurmas = useTurmasDaTrilha(trilha?.id, usuario?.id ?? null);
+  const consultaMatriculas = useMatriculasDoAluno(usuario?.id);
+
+  // Hoje o banco só aceita pré-requisito da mesma trilha, mas o slug
+  // de outra trilha é buscado mesmo assim — o nome e o link vêm do
+  // próprio pré-requisito, nunca mais como "—".
+  const outrasTrilhaIds = [
+    ...new Set(
+      (consultaPreRequisitos.data ?? []).map((p) => p.trilha_id).filter((id) => id !== trilha?.id),
+    ),
+  ];
+  const outrasTrilhas = useQueries({
+    queries: trilha ? outrasTrilhaIds.map((id) => opcoesCatalogo.trilhaPorId(id)) : [],
+  });
+
+  const [escolha, setEscolha] = useState<{ moduloId: string; turmaId: string } | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [mensagem, setMensagem] = useState<string | null>(null);
   const [inscrevendo, setInscrevendo] = useState(false);
 
-  useEffect(() => {
-    if (!slug || !moduloId) return;
-    let ativo = true;
+  const consultas = [consultaTrilha, consultaModulos, consultaPreRequisitos, consultaTurmas, consultaMatriculas];
+  const erroDeLeitura = consultas.find((c) => c.isError)?.error ?? null;
+  // Primeira carga: algum dado ainda não chegou. A trilha nula (não
+  // encontrada) encerra a espera — os demais nem rodam.
+  const carregando =
+    consultaTrilha.isPending ||
+    (!!trilha &&
+      (consultaModulos.isPending ||
+        consultaPreRequisitos.isPending ||
+        consultaTurmas.isPending ||
+        consultaMatriculas.isPending ||
+        outrasTrilhas.some((t) => t.isPending)));
+  const atualizando = consultaTurmas.isFetching || consultaMatriculas.isFetching;
 
-    async function carregar() {
-      setErro(null);
-      setCarregando(true);
-      try {
-        // A trilha só vai para o estado junto com o módulo, no fim: antes,
-        // ela era definida sozinha e a tela caía em "Módulo não
-        // encontrado" durante toda a busca do módulo.
-        const trilhaEncontrada = await buscarTrilhaPorSlug(slug!);
-        if (!ativo) return;
-        if (!trilhaEncontrada) {
-          setTrilha(null);
-          setModulo(null);
-          return;
-        }
+  const modulo = consultaModulos.data?.find((m) => m.id === moduloId) ?? null;
+  const minhasMatriculas = consultaMatriculas.data ?? [];
 
-        const [modulos, preReqs, modulosComTurmas, minhasMatriculas] = await Promise.all([
-          listarModulosDaTrilha(trilhaEncontrada.id),
-          listarPreRequisitosDoModulo(moduloId!),
-          listarModulosComTurmasDaTrilha(trilhaEncontrada.id, usuario?.id ?? null),
-          usuario ? listarMatriculasDoAluno(usuario.id) : Promise.resolve([]),
-        ]);
-        if (!ativo) return;
+  const slugPorTrilha = new Map<string, string>();
+  if (trilha) slugPorTrilha.set(trilha.id, trilha.slug);
+  for (const t of outrasTrilhas) if (t.data) slugPorTrilha.set(t.data.id, t.data.slug);
 
-        // Hoje o banco só aceita pré-requisito da mesma trilha, mas o slug
-        // de outra trilha é buscado mesmo assim — o nome e o link vêm do
-        // próprio pré-requisito, nunca mais como "—".
-        const outrasTrilhaIds = [
-          ...new Set(preReqs.map((p) => p.trilha_id).filter((id) => id !== trilhaEncontrada.id)),
-        ];
-        const outrasTrilhas = await Promise.all(outrasTrilhaIds.map((id) => buscarTrilhaPorId(id)));
-        if (!ativo) return;
-        const slugPorTrilha = new Map<string, string>([[trilhaEncontrada.id, trilhaEncontrada.slug]]);
-        for (const t of outrasTrilhas) if (t) slugPorTrilha.set(t.id, t.slug);
-
-        const statusPreReq: PreRequisitoStatus[] = preReqs.map((pr) => {
-          const slugTrilha = slugPorTrilha.get(pr.trilha_id);
-          const base = {
-            moduloId: pr.id,
-            nome: pr.nome,
-            rota: slugTrilha ? `/catalogo/${slugTrilha}/modulos/${pr.id}` : "/catalogo",
-          };
-          // some/find por status, não a primeira matrícula do módulo: depois
-          // de uma reinscrição o aluno pode ter mais de uma ali.
-          const doModulo = minhasMatriculas.filter((m) => m.moduloId === pr.id);
-          const concluida = doModulo.find((m) => m.status === "concluida");
-          if (concluida) return { ...base, status: "concluido", data: concluida.periodoFim };
-          const cursando = doModulo.find((m) => m.status === "matriculada");
-          if (cursando) return { ...base, status: "cursando", data: cursando.periodoFim };
-          return { ...base, status: "pendente", data: null };
-        });
-
-        const turmasDoModulo = modulosComTurmas.find((m) => m.moduloId === moduloId)?.turmas ?? [];
-
-        setTrilha(trilhaEncontrada);
-        setModulo(modulos.find((m) => m.id === moduloId) ?? null);
-        setPreRequisitos(statusPreReq);
-        setMatriculasNoModulo(minhasMatriculas.filter((m) => m.moduloId === moduloId));
-        setTurmas(turmasDoModulo);
-        // Turma onde o aluno já teve matrícula não pode ser escolhida de
-        // novo (unique aluno+turma no banco) — pré-seleciona a primeira livre.
-        setTurmaSelecionada(
-          turmasDoModulo.find((t) => !t.minhaMatricula && t.vagasRestantes > 0)?.id ?? null,
-        );
-      } catch (e) {
-        if (ativo) setErro(e instanceof Error ? e.message : "Não foi possível carregar o módulo.");
-      } finally {
-        if (ativo) setCarregando(false);
-      }
-    }
-
-    void carregar();
-    return () => {
-      ativo = false;
+  const preRequisitos: PreRequisitoStatus[] = (consultaPreRequisitos.data ?? []).map((pr) => {
+    const slugTrilha = slugPorTrilha.get(pr.trilha_id);
+    const base = {
+      moduloId: pr.id,
+      nome: pr.nome,
+      rota: slugTrilha ? `/catalogo/${slugTrilha}/modulos/${pr.id}` : "/catalogo",
     };
-    // usuario?.id, não usuario: o AuthProvider troca a referência do
-    // objeto usuario a cada revalidação de sessão (foco de aba, refresh de
-    // token — ver AuthProvider.tsx), mesmo sendo o mesmo usuário. Depender
-    // do objeto inteiro reiniciava esta busca a cada troca de aba,
-    // cancelando a chamada em andamento; se a corrida terminasse mal, a
-    // tela ficava com erro=null e módulo=null — "Módulo não encontrado"
-    // falso, sem nenhum erro real por trás.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slug, moduloId, usuario?.id, recarga]);
+    // some/find por status, não a primeira matrícula do módulo: depois
+    // de uma reinscrição o aluno pode ter mais de uma ali.
+    const doModulo = minhasMatriculas.filter((m) => m.moduloId === pr.id);
+    const concluida = doModulo.find((m) => m.status === "concluida");
+    if (concluida) return { ...base, status: "concluido", data: concluida.periodoFim };
+    const cursando = doModulo.find((m) => m.status === "matriculada");
+    if (cursando) return { ...base, status: "cursando", data: cursando.periodoFim };
+    return { ...base, status: "pendente", data: null };
+  });
+  const turmas = consultaTurmas.data?.find((m) => m.moduloId === moduloId)?.turmas ?? [];
+  const matriculasNoModulo = minhasMatriculas.filter((m) => m.moduloId === moduloId);
+  // Turma onde o aluno já teve matrícula não pode ser escolhida de
+  // novo (unique aluno+turma no banco) — pré-seleciona a primeira livre.
+  const turmaSelecionada =
+    escolha && escolha.moduloId === moduloId
+      ? escolha.turmaId
+      : (turmas.find((t) => !t.minhaMatricula && t.vagasRestantes > 0)?.id ?? null);
 
   const preRequisitosPendentes = preRequisitos.filter((p) => p.status !== "concluido");
   const podeInscrever = preRequisitosPendentes.length === 0;
 
   async function aoInscrever() {
-    if (!turmaSelecionada) return;
+    if (!turmaSelecionada || !usuario) return;
     setErro(null);
     setMensagem(null);
     setInscrevendo(true);
     try {
-      await inscreverAluno(turmaSelecionada);
+      await gravar(
+        () => inscreverAluno(turmaSelecionada),
+        (qc) => invalidar.inscricao(qc, usuario.id),
+      );
       setMensagem("Inscrição enviada — a coordenação vai avaliar em breve.");
-      setRecarga((n) => n + 1);
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível se inscrever nesta turma.");
     } finally {
@@ -181,25 +154,38 @@ export function DetalheModulo() {
 
   // Erro de carregamento (rede, RLS, timeout) precisa vir antes das
   // checagens abaixo — sem isso, uma falha na consulta ficava mascarada
-  // como "Módulo não encontrado" (trilha/modulo nunca chegavam a ser
-  // definidos) ou como um "Carregando..." que nunca resolve.
-  if (erro && !modulo) {
+  // como "Módulo não encontrado" ou como um carregamento que nunca resolve.
+  if (erroDeLeitura && !modulo) {
     return (
       <PaginaAutenticada largura="estreita">
         <Link to="/catalogo" className="mb-4 flex items-center gap-1.5 text-body-sm font-medium text-text-secondary hover:text-text-primary">
           ← Catálogo
         </Link>
-        <Aviso variant="danger">{erro}</Aviso>
+        <ErroConsulta
+          erro={erroDeLeitura}
+          padrao="Não foi possível carregar o módulo."
+          tentarDeNovo={() => consultas.forEach((c) => c.isError && void c.refetch())}
+        />
       </PaginaAutenticada>
     );
   }
 
-  // Comparar o id evita mostrar o módulo anterior ao trocar de módulo e
-  // evita piscar a tela inteira no recarregamento pós-inscrição.
-  if (carregando && modulo?.id !== moduloId) {
+  // "Módulo não encontrado" só com a leitura concluída: trilha inexistente
+  // ou módulo fora da lista de módulos dela.
+  if (carregando) {
     return (
       <PaginaAutenticada largura="estreita">
-        <p className="text-body-sm text-text-secondary">Carregando...</p>
+        <RegiaoCarregando className="flex flex-col gap-3">
+          <Esqueleto className="h-4 w-32" />
+          <Esqueleto className="h-8 w-64" />
+          <div className="flex gap-2">
+            <Esqueleto className="h-6 w-24" />
+            <Esqueleto className="h-6 w-16" />
+            <Esqueleto className="h-6 w-32" />
+          </div>
+          <Esqueleto className="h-4 w-full" />
+        </RegiaoCarregando>
+        <EsqueletoCards className="mt-4" quantidade={2} altura="h-36" />
       </PaginaAutenticada>
     );
   }
@@ -319,7 +305,7 @@ export function DetalheModulo() {
                       name="turma"
                       className="h-5 w-5 accent-acento"
                       checked={turmaSelecionada === turma.id}
-                      onChange={() => setTurmaSelecionada(turma.id)}
+                      onChange={() => setEscolha({ moduloId: moduloId!, turmaId: turma.id })}
                       disabled={turma.vagasRestantes <= 0 || turma.minhaMatricula !== null}
                     />
                     <div>
@@ -343,7 +329,7 @@ export function DetalheModulo() {
           <Button
             className="mt-4 w-full"
             variant={!podeInscrever ? "tracejado" : "primary"}
-            disabled={!podeInscrever || !turmaSelecionada || inscrevendo || carregando || turmas.length === 0}
+            disabled={!podeInscrever || !turmaSelecionada || inscrevendo || atualizando || turmas.length === 0}
             title={
               !podeInscrever
                 ? `Conclua ${preRequisitosPendentes.map((p) => p.nome).join(", ")} antes de se inscrever.`

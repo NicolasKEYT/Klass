@@ -1,19 +1,27 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Aviso } from "@/components/Aviso";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
+import { EsqueletoCards } from "@/components/Esqueleto";
+import { ErroConsulta } from "@/components/ErroConsulta";
 import { IconeCatalogo } from "@/components/IconeCatalogo";
+import { LinkComPrefetch } from "@/components/LinkComPrefetch";
 import { PaginaAutenticada } from "@/components/PaginaAutenticada";
 import { Titulo } from "@/components/Titulo";
-import { apagarTrilha, definirPublicacaoTrilha, listarTrilhasComContagem } from "@/lib/catalogo";
+import { apagarTrilha, definirPublicacaoTrilha } from "@/lib/catalogo";
+import { useTrilhasComContagem } from "@/lib/consultas/catalogo";
+import { useGravacao } from "@/lib/consultas/gravacao";
+import { invalidar } from "@/lib/consultas/invalidar";
 import type { Trilha } from "@klass/types";
 
 type TrilhaComContagem = Trilha & { totalModulos: number };
 
 export function Trilhas() {
-  const [trilhas, setTrilhas] = useState<TrilhaComContagem[] | null>(null);
+  const consulta = useTrilhasComContagem();
+  const trilhas = consulta.data;
+  const gravar = useGravacao();
   const [erro, setErro] = useState<string | null>(null);
   const [mensagem, setMensagem] = useState<string | null>(null);
   // Confirmação inline, não window.confirm — dialogs nativos ficam
@@ -23,27 +31,14 @@ export function Trilhas() {
   // não disparar a mesma ação duas vezes.
   const [processando, setProcessando] = useState(false);
 
-  async function carregar() {
-    try {
-      setTrilhas(await listarTrilhasComContagem());
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : "Não foi possível carregar as trilhas.");
-    }
-  }
-
-  useEffect(() => {
-    void carregar();
-  }, []);
-
   async function alternarPublicacao(trilha: TrilhaComContagem) {
     if (processando) return;
     setErro(null);
     setMensagem(null);
     setProcessando(true);
     try {
-      await definirPublicacaoTrilha(trilha.id, !trilha.publicada);
+      await gravar(() => definirPublicacaoTrilha(trilha.id, !trilha.publicada), invalidar.catalogo);
       setMensagem(trilha.publicada ? "Trilha voltou para rascunho." : "Trilha publicada.");
-      await carregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível atualizar a trilha.");
     } finally {
@@ -57,10 +52,9 @@ export function Trilhas() {
     setMensagem(null);
     setProcessando(true);
     try {
-      await apagarTrilha(trilha.id);
+      await gravar(() => apagarTrilha(trilha.id), invalidar.catalogo);
       setMensagem("Trilha apagada.");
       setConfirmandoApagarId(null);
-      await carregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível apagar a trilha.");
     } finally {
@@ -88,15 +82,15 @@ export function Trilhas() {
           </Aviso>
         )}
 
-        {/* Sem isso, a navegação client-side entre rotas (onde o
-            "Carregando..." do <Autenticado> já resolveu antes) deixava a
-            tela em branco — sem indicação nenhuma — pelo tempo do
-            fetch, o que lia como travado. Num reload cheio isso passava
-            despercebido porque o carregando da autenticação mascarava
-            parte da espera. */}
-        {!erro && trilhas === null && (
-          <p className="text-body-sm text-text-secondary">Carregando...</p>
+        {consulta.isError && !trilhas && (
+          <ErroConsulta
+            className="mb-4"
+            erro={consulta.error}
+            padrao="Não foi possível carregar as trilhas."
+            tentarDeNovo={() => void consulta.refetch()}
+          />
         )}
+        {consulta.isPending && <EsqueletoCards quantidade={4} altura="h-24" />}
         {trilhas?.length === 0 && (
           <p className="text-body-sm text-text-secondary">Nenhuma trilha cadastrada ainda.</p>
         )}
@@ -139,12 +133,12 @@ export function Trilhas() {
                   </>
                 ) : (
                   <>
-                    <Link
+                    <LinkComPrefetch
                       to={`/coordenacao/trilhas/${trilha.slug}/editar`}
                       className="text-body-sm font-medium text-primary hover:underline"
                     >
                       Editar
-                    </Link>
+                    </LinkComPrefetch>
                     <Button
                       variant="secondary"
                       disabled={processando}

@@ -1,5 +1,6 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { Aviso } from "@/components/Aviso";
 import { Badge } from "@/components/Badge";
 import { BotaoVoltar } from "@/components/BotaoVoltar";
@@ -21,26 +22,33 @@ import {
 } from "@dnd-kit/sortable";
 import { Card } from "@/components/Card";
 import { Arrastavel } from "@/components/Arrastavel";
+import { Esqueleto, EsqueletoCards, EsqueletoPagina, RegiaoCarregando } from "@/components/Esqueleto";
+import { ErroConsulta } from "@/components/ErroConsulta";
 import { CamposCertificacao } from "@/components/CamposCertificacao";
 import { IconeCatalogo, IconePicker } from "@/components/IconeCatalogo";
 import { Input } from "@/components/Input";
 import { PaginaAutenticada } from "@/components/PaginaAutenticada";
 import { Titulo } from "@/components/Titulo";
-import { trilhaTemCertificados } from "@/lib/certificacao";
 import {
   apagarModulo,
   atualizarModulo,
   atualizarTrilha,
-  buscarTrilhaPorSlug,
   criarModulo,
   definirPreRequisito,
   gerarSlug,
-  listarModulosDaTrilha,
-  listarPreRequisitosIdsDaTrilha,
   proximaOrdemDisponivel,
   reordenarModulos,
   trocarOrdemModulos,
 } from "@/lib/catalogo";
+import {
+  useModulosDaTrilha,
+  usePreRequisitosIdsDaTrilha,
+  useTrilhaPorSlug,
+} from "@/lib/consultas/catalogo";
+import { useTrilhaTemCertificados } from "@/lib/consultas/certificacao";
+import { chaves } from "@/lib/consultas/chaves";
+import { useGravacao } from "@/lib/consultas/gravacao";
+import { invalidar } from "@/lib/consultas/invalidar";
 import type { Modulo, NivelModulo, TipoCertificacao, Trilha } from "@klass/types";
 
 const NIVEIS: NivelModulo[] = ["iniciante", "intermediario", "avancado"];
@@ -50,25 +58,63 @@ const NIVEL_LABEL: Record<NivelModulo, string> = {
   avancado: "Avançado",
 };
 
+// Tela carregada sob demanda (dnd-kit): ver App.tsx. A trilha costuma já
+// estar em cache (vinda da lista de trilhas); o editor só monta com ela.
 export function EditarTrilha() {
   const { slug: slugRota } = useParams<{ slug: string }>();
-  const navigate = useNavigate();
+  const consulta = useTrilhaPorSlug(slugRota);
+  const trilha = consulta.data;
 
-  const [trilha, setTrilha] = useState<Trilha | null>(null);
-  const [modulos, setModulos] = useState<Modulo[]>([]);
-  const [preRequisitos, setPreRequisitos] = useState<Map<string, Set<string>>>(new Map());
-  const [carregando, setCarregando] = useState(true);
+  if (consulta.isPending) {
+    return (
+      <PaginaAutenticada>
+        <EsqueletoPagina />
+      </PaginaAutenticada>
+    );
+  }
+  if (!trilha) {
+    return (
+      <PaginaAutenticada>
+        <BotaoVoltar />
+        {consulta.isError ? (
+          <ErroConsulta
+            erro={consulta.error}
+            padrao="Não foi possível carregar a trilha."
+            tentarDeNovo={() => void consulta.refetch()}
+          />
+        ) : (
+          <Aviso variant="danger">Trilha não encontrada.</Aviso>
+        )}
+      </PaginaAutenticada>
+    );
+  }
+  // key: trocar de trilha recria o formulário; trocar só o slug (salvar
+  // com endereço novo) mantém o que está sendo editado.
+  return <EditorDeTrilha key={trilha.id} trilha={trilha} slugRota={slugRota!} />;
+}
+
+function EditorDeTrilha({ trilha, slugRota }: { trilha: Trilha; slugRota: string }) {
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+  const gravar = useGravacao();
+
+  const consultaModulos = useModulosDaTrilha(trilha.id);
+  const consultaPreRequisitos = usePreRequisitosIdsDaTrilha(trilha.id);
+  const temCertificados = useTrilhaTemCertificados(trilha.id).data ?? false;
+  const modulos = consultaModulos.data ?? [];
+  const preRequisitos = consultaPreRequisitos.data ?? new Map<string, Set<string>>();
+  const erroDeLeitura = consultaModulos.error ?? consultaPreRequisitos.error;
   const [erro, setErro] = useState<string | null>(null);
   const [mensagem, setMensagem] = useState<string | null>(null);
 
-  const [nome, setNome] = useState("");
-  const [slug, setSlug] = useState("");
-  const [descricao, setDescricao] = useState("");
-  const [descricaoCurta, setDescricaoCurta] = useState("");
-  const [icone, setIcone] = useState<string | null>(null);
-  const [tipoCertificacao, setTipoCertificacao] = useState<TipoCertificacao>("trilha");
-  const [mediaMinima, setMediaMinima] = useState("6");
-  const [temCertificados, setTemCertificados] = useState(false);
+  // O formulário parte da trilha como estava ao abrir a tela.
+  const [nome, setNome] = useState(trilha.nome);
+  const [slug, setSlug] = useState(trilha.slug);
+  const [descricao, setDescricao] = useState(trilha.descricao);
+  const [descricaoCurta, setDescricaoCurta] = useState(trilha.descricao_curta ?? "");
+  const [icone, setIcone] = useState<string | null>(trilha.icone);
+  const [tipoCertificacao, setTipoCertificacao] = useState<TipoCertificacao>(trilha.tipo_certificacao);
+  const [mediaMinima, setMediaMinima] = useState(String(trilha.media_minima));
   const [salvandoTrilha, setSalvandoTrilha] = useState(false);
 
   const [mostrarNovoModulo, setMostrarNovoModulo] = useState(false);
@@ -104,47 +150,7 @@ export function EditarTrilha() {
   // um segundo clique durante o round-trip refazia a ação.
   const [processandoModulo, setProcessandoModulo] = useState(false);
 
-  async function carregar() {
-    if (!slugRota) return;
-    setErro(null);
-    try {
-      const encontrada = await buscarTrilhaPorSlug(slugRota);
-      if (!encontrada) {
-        setErro("Trilha não encontrada.");
-        setCarregando(false);
-        return;
-      }
-      setTrilha(encontrada);
-      setNome(encontrada.nome);
-      setSlug(encontrada.slug);
-      setDescricao(encontrada.descricao);
-      setDescricaoCurta(encontrada.descricao_curta ?? "");
-      setIcone(encontrada.icone);
-      setTipoCertificacao(encontrada.tipo_certificacao);
-      setMediaMinima(String(encontrada.media_minima));
-
-      const [listaModulos, mapaPreRequisitos, jaTemCertificados] = await Promise.all([
-        listarModulosDaTrilha(encontrada.id),
-        listarPreRequisitosIdsDaTrilha(encontrada.id),
-        trilhaTemCertificados(encontrada.id),
-      ]);
-      setModulos(listaModulos);
-      setPreRequisitos(mapaPreRequisitos);
-      setTemCertificados(jaTemCertificados);
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : "Não foi possível carregar a trilha.");
-    } finally {
-      setCarregando(false);
-    }
-  }
-
-  useEffect(() => {
-    void carregar();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slugRota]);
-
   async function salvarTrilha(voltarParaLista: boolean) {
-    if (!trilha) return;
     setErro(null);
     setMensagem(null);
     const media = Number(mediaMinima);
@@ -154,26 +160,33 @@ export function EditarTrilha() {
     }
     setSalvandoTrilha(true);
     try {
-      const atualizada = await atualizarTrilha(trilha.id, {
-        nome,
-        slug,
-        descricao,
-        descricao_curta: descricaoCurta || null,
-        icone,
-        tipo_certificacao: tipoCertificacao,
-        media_minima: media,
-      });
-      setTrilha(atualizada);
+      const atualizada = await gravar(() =>
+        atualizarTrilha(trilha.id, {
+          nome,
+          slug,
+          descricao,
+          descricao_curta: descricaoCurta || null,
+          icone,
+          tipo_certificacao: tipoCertificacao,
+          media_minima: media,
+        }),
+      );
+      // A trilha salva vai direto para o cache do endereço (novo ou não)
+      // antes de qualquer releitura: com o slug trocado, reler pelo
+      // endereço antigo daria "não encontrada" no meio do caminho.
+      qc.setQueryData(chaves.catalogo.trilhaPorSlug(atualizada.slug), atualizada);
+      if (atualizada.slug !== slugRota) {
+        // O slug é a chave da URL desta tela — troca a rota para o novo
+        // endereço para um refresh não cair em "trilha não encontrada".
+        navigate(`/coordenacao/trilhas/${atualizada.slug}/editar`, { replace: true });
+      }
+      void invalidar.catalogo(qc);
       setMensagem("Dados da trilha salvos.");
       if (voltarParaLista) {
         // Espera o aviso de sucesso aparecer antes de sair da tela —
         // um redirecionamento instantâneo nunca deixaria o usuário vê-lo.
         await new Promise((resolve) => setTimeout(resolve, 700));
         navigate("/coordenacao/trilhas");
-      } else if (atualizada.slug !== slugRota) {
-        // O slug mudou e é a chave da URL desta tela — troca a rota para o
-        // novo endereço para um refresh não cair em "trilha não encontrada".
-        navigate(`/coordenacao/trilhas/${atualizada.slug}/editar`, { replace: true });
       }
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível salvar a trilha.");
@@ -189,21 +202,23 @@ export function EditarTrilha() {
 
   async function aoCriarModulo(evento: FormEvent) {
     evento.preventDefault();
-    if (!trilha) return;
     setErro(null);
     setMensagem(null);
     setSalvandoModulo(true);
     try {
-      const ordem = await proximaOrdemDisponivel(trilha.id);
-      await criarModulo({
-        trilhaId: trilha.id,
-        ordem,
-        nome: novoModuloNome,
-        descricao: novoModuloDescricao,
-        nivel: novoModuloNivel,
-        cargaHorariaHoras: novoModuloCarga,
-        icone: novoModuloIcone,
-      });
+      await gravar(
+        async () =>
+          criarModulo({
+            trilhaId: trilha.id,
+            ordem: await proximaOrdemDisponivel(trilha.id),
+            nome: novoModuloNome,
+            descricao: novoModuloDescricao,
+            nivel: novoModuloNivel,
+            cargaHorariaHoras: novoModuloCarga,
+            icone: novoModuloIcone,
+          }),
+        invalidar.catalogo,
+      );
       setNovoModuloNome("");
       setNovoModuloDescricao("");
       setNovoModuloNivel("iniciante");
@@ -211,7 +226,6 @@ export function EditarTrilha() {
       setNovoModuloIcone(null);
       setMostrarNovoModulo(false);
       setMensagem("Módulo adicionado.");
-      await carregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível criar o módulo.");
     } finally {
@@ -235,16 +249,20 @@ export function EditarTrilha() {
     setMensagem(null);
     setProcessandoModulo(true);
     try {
-      await atualizarModulo(moduloEmEdicaoId, {
-        nome: edicaoNome,
-        descricao: edicaoDescricao,
-        nivel: edicaoNivel,
-        carga_horaria_horas: edicaoCarga,
-        icone: edicaoIcone,
-      });
+      const moduloId = moduloEmEdicaoId;
+      await gravar(
+        () =>
+          atualizarModulo(moduloId, {
+            nome: edicaoNome,
+            descricao: edicaoDescricao,
+            nivel: edicaoNivel,
+            carga_horaria_horas: edicaoCarga,
+            icone: edicaoIcone,
+          }),
+        invalidar.catalogo,
+      );
       setModuloEmEdicaoId(null);
       setMensagem("Módulo atualizado.");
-      await carregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível salvar o módulo.");
     } finally {
@@ -258,10 +276,9 @@ export function EditarTrilha() {
     setMensagem(null);
     setProcessandoModulo(true);
     try {
-      await apagarModulo(modulo.id);
+      await gravar(() => apagarModulo(modulo.id), invalidar.catalogo);
       setMensagem("Módulo apagado.");
       setConfirmandoApagarModuloId(null);
-      await carregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível apagar o módulo.");
     } finally {
@@ -277,8 +294,7 @@ export function EditarTrilha() {
     setErro(null);
     setReordenando(true);
     try {
-      await trocarOrdemModulos(modulo.id, alvo.id);
-      await carregar();
+      await gravar(() => trocarOrdemModulos(modulo.id, alvo.id), invalidar.catalogo);
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível reordenar.");
     } finally {
@@ -296,14 +312,13 @@ export function EditarTrilha() {
     if (de < 0 || para < 0) return;
 
     const nova = arrayMove(modulos, de, para);
-    setModulos(nova);
+    qc.setQueryData<Modulo[]>(chaves.catalogo.modulos(trilha.id), nova);
     setErro(null);
     try {
-      await reordenarModulos(nova.map((m) => m.id));
-      await carregar();
+      await gravar(() => reordenarModulos(nova.map((m) => m.id)), invalidar.catalogo);
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível reordenar.");
-      await carregar();
+      await qc.invalidateQueries({ queryKey: chaves.catalogo.modulos(trilha.id) });
     }
   }
 
@@ -314,7 +329,7 @@ export function EditarTrilha() {
     // marca de "selecionado" demorava um round-trip inteiro para sumir ao
     // desmarcar. Só recarregamos do banco se a gravação falhar (revertendo
     // para o estado real).
-    setPreRequisitos((atual) => {
+    qc.setQueryData<Map<string, Set<string>>>(chaves.catalogo.preRequisitosIdsDaTrilha(trilha.id), (atual) => {
       const copia = new Map(atual);
       const doModulo = new Set(copia.get(modulo.id) ?? []);
       if (ativo) doModulo.add(preRequisitoId);
@@ -323,28 +338,14 @@ export function EditarTrilha() {
       return copia;
     });
     try {
-      await definirPreRequisito(modulo.id, preRequisitoId, ativo);
+      await gravar(
+        () => definirPreRequisito(modulo.id, preRequisitoId, ativo),
+        (qc) => invalidar.preRequisitos(qc, trilha.id),
+      );
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível atualizar o pré-requisito.");
-      await carregar();
+      await qc.invalidateQueries({ queryKey: chaves.catalogo.preRequisitosIdsDaTrilha(trilha.id) });
     }
-  }
-
-  if (carregando) {
-    return (
-      <PaginaAutenticada>
-        <p className="text-body-sm text-text-secondary">Carregando...</p>
-      </PaginaAutenticada>
-    );
-  }
-
-  if (!trilha) {
-    return (
-      <PaginaAutenticada>
-        <BotaoVoltar />
-        <Aviso variant="danger">{erro ?? "Trilha não encontrada."}</Aviso>
-      </PaginaAutenticada>
-    );
   }
 
   return (
@@ -361,6 +362,17 @@ export function EditarTrilha() {
           <Aviso variant="success" className="mb-4">
             {mensagem}
           </Aviso>
+        )}
+        {erroDeLeitura && (
+          <ErroConsulta
+            className="mb-4"
+            erro={erroDeLeitura}
+            padrao="Não foi possível carregar os módulos da trilha."
+            tentarDeNovo={() => {
+              if (consultaModulos.isError) void consultaModulos.refetch();
+              if (consultaPreRequisitos.isError) void consultaPreRequisitos.refetch();
+            }}
+          />
         )}
 
         <Card className="mb-6">
@@ -459,9 +471,15 @@ export function EditarTrilha() {
         </Card>
 
         <div className="mb-4 flex items-center justify-between">
-          <Titulo nivel="secao">
-            Módulos ({modulos.length}) · {trilha.carga_horaria_total}h
-          </Titulo>
+          {consultaModulos.data ? (
+            <Titulo nivel="secao">
+              Módulos ({modulos.length}) · {trilha.carga_horaria_total}h
+            </Titulo>
+          ) : (
+            <RegiaoCarregando>
+              <Esqueleto className="h-6 w-40" />
+            </RegiaoCarregando>
+          )}
           <Button onClick={() => setMostrarNovoModulo((v) => !v)}>
             {mostrarNovoModulo ? "Cancelar" : "Adicionar módulo"}
           </Button>
@@ -525,6 +543,10 @@ export function EditarTrilha() {
           </Card>
         )}
 
+        {(consultaModulos.isPending || consultaPreRequisitos.isPending) && !erroDeLeitura && (
+          <EsqueletoCards quantidade={3} altura="h-36" />
+        )}
+        {consultaModulos.data && consultaPreRequisitos.data && (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={aoArrastar}>
           <SortableContext
             items={modulos.map((m) => m.id)}
@@ -671,6 +693,7 @@ export function EditarTrilha() {
             </div>
           </SortableContext>
         </DndContext>
+        )}
     </PaginaAutenticada>
   );
 }

@@ -1,5 +1,6 @@
-import { Link, useLocation } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import { useAuth } from "@/auth";
+import { LinkComPrefetch } from "@/components/LinkComPrefetch";
 import { navMobilePorPapel } from "./itensDeNavegacao";
 
 // D3 (klass-uikit.pdf) — "celular: barra inferior fixa, 64px, rótulo
@@ -23,7 +24,7 @@ export function BarraInferior() {
           location.pathname === item.para ||
           (item.para !== "/" && location.pathname.startsWith(item.para));
         return (
-          <Link
+          <LinkComPrefetch
             key={item.para}
             to={item.para}
             className={`flex flex-1 flex-col items-center justify-center gap-0.5 ${
@@ -34,7 +35,7 @@ export function BarraInferior() {
             <span className={`text-label ${ativo ? "font-semibold" : "font-medium"}`}>
               {item.texto}
             </span>
-          </Link>
+          </LinkComPrefetch>
         );
       })}
     </nav>

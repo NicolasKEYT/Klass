@@ -1,15 +1,20 @@
-import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { useAuth } from "@/auth";
-import { Aviso } from "@/components/Aviso";
 import { Badge } from "@/components/Badge";
 import { BotaoVoltar } from "@/components/BotaoVoltar";
 import { Card } from "@/components/Card";
+import { Esqueleto, EsqueletoCards, RegiaoCarregando } from "@/components/Esqueleto";
+import { ErroConsulta } from "@/components/ErroConsulta";
 import { IconeCatalogo } from "@/components/IconeCatalogo";
+import { LinkComPrefetch } from "@/components/LinkComPrefetch";
 import { PaginaAutenticada } from "@/components/PaginaAutenticada";
 import { Titulo } from "@/components/Titulo";
-import { buscarTrilhaPorSlug, listarModulosDaTrilha, listarPreRequisitosDaTrilha } from "@/lib/catalogo";
-import type { Modulo, NivelModulo, Trilha } from "@klass/types";
+import {
+  useModulosDaTrilha,
+  usePreRequisitosDaTrilha,
+  useTrilhaPorSlug,
+} from "@/lib/consultas/catalogo";
+import type { NivelModulo } from "@klass/types";
 
 const NIVEL_LABEL: Record<NivelModulo, string> = {
   iniciante: "Iniciante",
@@ -27,36 +32,13 @@ const NIVEL_LABEL: Record<NivelModulo, string> = {
 export function DetalheTrilha() {
   const { slug } = useParams<{ slug: string }>();
   const { profile } = useAuth();
-  const [trilha, setTrilha] = useState<Trilha | null | undefined>(undefined);
-  const [modulos, setModulos] = useState<Modulo[]>([]);
-  const [preRequisitos, setPreRequisitos] = useState<Map<string, string[]>>(new Map());
-  const [erro, setErro] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!slug) return;
-    let ativo = true;
-    async function carregar() {
-      try {
-        const encontrada = await buscarTrilhaPorSlug(slug!);
-        if (!ativo) return;
-        setTrilha(encontrada);
-        if (!encontrada) return;
-        const [listaModulos, mapaPreRequisitos] = await Promise.all([
-          listarModulosDaTrilha(encontrada.id),
-          listarPreRequisitosDaTrilha(encontrada.id),
-        ]);
-        if (!ativo) return;
-        setModulos(listaModulos);
-        setPreRequisitos(mapaPreRequisitos);
-      } catch (e) {
-        if (ativo) setErro(e instanceof Error ? e.message : "Não foi possível carregar a trilha.");
-      }
-    }
-    void carregar();
-    return () => {
-      ativo = false;
-    };
-  }, [slug]);
+  // O cabeçalho vem da listagem do catálogo, se já estiver em cache.
+  const consultaTrilha = useTrilhaPorSlug(slug);
+  const trilha = consultaTrilha.data;
+  const consultaModulos = useModulosDaTrilha(trilha?.id);
+  const consultaPreRequisitos = usePreRequisitosDaTrilha(trilha?.id);
+  const preRequisitos = consultaPreRequisitos.data;
+  const erro = consultaTrilha.error ?? consultaModulos.error ?? consultaPreRequisitos.error;
 
   return (
     <PaginaAutenticada>
@@ -64,13 +46,24 @@ export function DetalheTrilha() {
           devolvia ao módulo, que por sua vez volta para cá (loop). */}
       <BotaoVoltar para="/catalogo" rotulo="Catálogo" />
       {erro && (
-        <Aviso variant="danger" className="mb-4">
-          {erro}
-        </Aviso>
+        <ErroConsulta
+          className="mb-4"
+          erro={erro}
+          padrao="Não foi possível carregar a trilha."
+          tentarDeNovo={() => {
+            if (consultaTrilha.isError) void consultaTrilha.refetch();
+            if (consultaModulos.isError) void consultaModulos.refetch();
+            if (consultaPreRequisitos.isError) void consultaPreRequisitos.refetch();
+          }}
+        />
       )}
       {trilha === null && <p className="text-body-sm text-text-secondary">Trilha não encontrada.</p>}
-      {trilha === undefined && !erro && (
-        <p className="text-body-sm text-text-secondary">Carregando...</p>
+      {consultaTrilha.isPending && !erro && (
+        <RegiaoCarregando className="flex flex-col gap-3">
+          <Esqueleto className="h-8 w-64" />
+          <Esqueleto className="h-4 w-full max-w-xl" />
+          <Esqueleto className="h-3 w-40" />
+        </RegiaoCarregando>
       )}
 
       {trilha && (
@@ -84,37 +77,42 @@ export function DetalheTrilha() {
             Carga horária total: {trilha.carga_horaria_total}h
           </p>
 
-          <div className="mt-6 flex flex-col gap-3">
-            {modulos.map((modulo) => (
-              <Link key={modulo.id} to={`/catalogo/${trilha.slug}/modulos/${modulo.id}`}>
-                <Card className="flex flex-col gap-2 transition hover:border-text-primary/40">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <IconeCatalogo nome={modulo.icone} className="h-5 w-5 text-text-secondary" />
-                      <Titulo nivel="item" as="h2">
-                        {modulo.ordem}. {modulo.nome}
-                      </Titulo>
+          {(consultaModulos.isPending || consultaPreRequisitos.isPending) && !erro && (
+            <EsqueletoCards className="mt-6" altura="h-32" />
+          )}
+          {consultaModulos.data && preRequisitos && (
+            <div className="mt-6 flex flex-col gap-3">
+              {consultaModulos.data.map((modulo) => (
+                <LinkComPrefetch key={modulo.id} to={`/catalogo/${trilha.slug}/modulos/${modulo.id}`}>
+                  <Card className="flex flex-col gap-2 transition hover:border-text-primary/40">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <IconeCatalogo nome={modulo.icone} className="h-5 w-5 text-text-secondary" />
+                        <Titulo nivel="item" as="h2">
+                          {modulo.ordem}. {modulo.nome}
+                        </Titulo>
+                      </div>
+                      <Badge variant="neutral">{NIVEL_LABEL[modulo.nivel]}</Badge>
                     </div>
-                    <Badge variant="neutral">{NIVEL_LABEL[modulo.nivel]}</Badge>
-                  </div>
-                  <p className="text-body-sm text-text-secondary">{modulo.descricao}</p>
-                  <p className="text-label text-text-muted">{modulo.carga_horaria_horas}h</p>
-                  {(preRequisitos.get(modulo.id)?.length ?? 0) > 0 && (
-                    <p className="text-label text-text-muted">
-                      Requer: {preRequisitos.get(modulo.id)!.join(", ")}
+                    <p className="text-body-sm text-text-secondary">{modulo.descricao}</p>
+                    <p className="text-label text-text-muted">{modulo.carga_horaria_horas}h</p>
+                    {(preRequisitos.get(modulo.id)?.length ?? 0) > 0 && (
+                      <p className="text-label text-text-muted">
+                        Requer: {preRequisitos.get(modulo.id)!.join(", ")}
+                      </p>
+                    )}
+                    {/* A inscrição continua dentro do módulo; o card só
+                        precisa deixar claro que é por ali que ela acontece. */}
+                    <p className="text-label font-medium text-primary">
+                      {profile?.papel === "aluno"
+                        ? "Ver turmas, condições e inscrição →"
+                        : "Ver turmas e condições →"}
                     </p>
-                  )}
-                  {/* A inscrição continua dentro do módulo; o card só
-                      precisa deixar claro que é por ali que ela acontece. */}
-                  <p className="text-label font-medium text-primary">
-                    {profile?.papel === "aluno"
-                      ? "Ver turmas, condições e inscrição →"
-                      : "Ver turmas e condições →"}
-                  </p>
-                </Card>
-              </Link>
-            ))}
-          </div>
+                  </Card>
+                </LinkComPrefetch>
+              ))}
+            </div>
+          )}
         </>
       )}
     </PaginaAutenticada>

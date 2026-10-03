@@ -1,33 +1,31 @@
-import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useState } from "react";
+import { useParams } from "react-router-dom";
 import { Aviso } from "@/components/Aviso";
 import { BotaoVoltar } from "@/components/BotaoVoltar";
 import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
+import { Esqueleto, EsqueletoCards, RegiaoCarregando } from "@/components/Esqueleto";
+import { ErroConsulta } from "@/components/ErroConsulta";
+import { LinkComPrefetch } from "@/components/LinkComPrefetch";
 import { PaginaAutenticada } from "@/components/PaginaAutenticada";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Titulo } from "@/components/Titulo";
 import { useAuth } from "@/auth";
+import { useAulasDaTurma, useAvaliacoesDaTurma, useProgressos } from "@/lib/consultas/diario";
+import { useGravacao } from "@/lib/consultas/gravacao";
+import { invalidar } from "@/lib/consultas/invalidar";
+import { useMatriculasDaTurma, useTurma } from "@/lib/consultas/selecao";
 import {
-  buscarProgressoMatricula,
   desfazerEncerramento,
-  listarAlunosDoDiario,
-  listarAulasDaTurma,
-  listarAvaliacoesDaTurma,
+  filtrarAlunosDoDiario,
   reativarTurma,
   type AlunoDoDiario,
-  type Aula,
-  type Avaliacao,
   type ProgressoMatricula,
 } from "@/lib/diario";
 import {
   aprovarMatricula,
-  buscarTurmaDetalhada,
-  listarMatriculasDaTurma,
   rejeitarMatricula,
   removerAlunoDaTurma,
-  type MatriculaListagem,
-  type TurmaDetalhada,
 } from "@/lib/selecao";
 
 interface AlunoComProgresso extends AlunoDoDiario {
@@ -37,15 +35,34 @@ interface AlunoComProgresso extends AlunoDoDiario {
 export function DetalheTurma() {
   const { id } = useParams<{ id: string }>();
   const { usuario } = useAuth();
-  const [turma, setTurma] = useState<TurmaDetalhada | null | undefined>(undefined);
-  const [matriculas, setMatriculas] = useState<MatriculaListagem[]>([]);
+  const gravar = useGravacao();
+  // Uma lista de matrículas alimenta inscrições, matriculados, histórico e
+  // o diário (antes eram duas buscas da mesma tabela); tudo em paralelo.
+  const consultaTurma = useTurma(id);
+  const consultaMatriculas = useMatriculasDaTurma(id);
+  const consultaAvaliacoes = useAvaliacoesDaTurma(id);
+  const consultaAulas = useAulasDaTurma(id);
+  const alunosDoDiario = consultaMatriculas.data ? filtrarAlunosDoDiario(consultaMatriculas.data) : undefined;
+  const progressos = useProgressos((alunosDoDiario ?? []).map((a) => a.matriculaId));
+  const turma = consultaTurma.data;
+  const matriculas = consultaMatriculas.data ?? [];
+  const avaliacoes = consultaAvaliacoes.data ?? [];
+  const aulas = consultaAulas.data ?? [];
+  const alunosDiario: AlunoComProgresso[] =
+    alunosDoDiario && !progressos.pendente
+      ? alunosDoDiario.flatMap((a) => {
+          const progresso = progressos.porMatricula.get(a.matriculaId);
+          return progresso ? [{ ...a, progresso }] : [];
+        })
+      : [];
+  const consultas = [consultaTurma, consultaMatriculas, consultaAvaliacoes, consultaAulas];
+  const erroDeLeitura = consultas.find((c) => c.isError)?.error ?? progressos.erro;
+  const carregandoDiario =
+    consultaAvaliacoes.isPending || consultaAulas.isPending || !alunosDoDiario || progressos.pendente;
   const [erro, setErro] = useState<string | null>(null);
   const [mensagem, setMensagem] = useState<string | null>(null);
   const [rejeitandoId, setRejeitandoId] = useState<string | null>(null);
   const [motivo, setMotivo] = useState("");
-  const [avaliacoes, setAvaliacoes] = useState<Avaliacao[]>([]);
-  const [aulas, setAulas] = useState<Aula[]>([]);
-  const [alunosDiario, setAlunosDiario] = useState<AlunoComProgresso[]>([]);
   const [desfazendoId, setDesfazendoId] = useState<string | null>(null);
   const [removendoId, setRemovendoId] = useState<string | null>(null);
   const [motivoRemocao, setMotivoRemocao] = useState("");
@@ -58,45 +75,14 @@ export function DetalheTurma() {
   const [reativandoTurma, setReativandoTurma] = useState(false);
   const [reativadas, setReativadas] = useState<number | null>(null);
 
-  async function carregar() {
-    if (!id) return;
-    try {
-      const [dadosTurma, dadosMatriculas, listaAvaliacoes, listaAulas, listaAlunosDiario] =
-        await Promise.all([
-          buscarTurmaDetalhada(id),
-          listarMatriculasDaTurma(id),
-          listarAvaliacoesDaTurma(id),
-          listarAulasDaTurma(id),
-          listarAlunosDoDiario(id),
-        ]);
-      setTurma(dadosTurma);
-      setMatriculas(dadosMatriculas);
-      setAvaliacoes(listaAvaliacoes);
-      setAulas(listaAulas);
-
-      const progressos = await Promise.all(
-        listaAlunosDiario.map((a) => buscarProgressoMatricula(a.matriculaId)),
-      );
-      setAlunosDiario(listaAlunosDiario.map((a, i) => ({ ...a, progresso: progressos[i] })));
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : "Não foi possível carregar a turma.");
-    }
-  }
-
-  useEffect(() => {
-    void carregar();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
-
   async function aoAprovar(matriculaId: string) {
-    if (!usuario || processando) return;
+    if (!usuario || !id || processando) return;
     setErro(null);
     setMensagem(null);
     setProcessando(true);
     try {
-      await aprovarMatricula(matriculaId, usuario.id);
+      await gravar(() => aprovarMatricula(matriculaId, usuario.id), (qc) => invalidar.matriculas(qc, id));
       setMensagem("Matrícula aprovada — o aluno recebe um e-mail de confirmação.");
-      await carregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível aprovar a matrícula.");
     } finally {
@@ -105,16 +91,18 @@ export function DetalheTurma() {
   }
 
   async function aoConfirmarRejeicao(matriculaId: string) {
-    if (!usuario || processando) return;
+    if (!usuario || !id || processando) return;
     setErro(null);
     setMensagem(null);
     setProcessando(true);
     try {
-      await rejeitarMatricula(matriculaId, usuario.id, motivo);
+      await gravar(
+        () => rejeitarMatricula(matriculaId, usuario.id, motivo),
+        (qc) => invalidar.matriculas(qc, id),
+      );
       setMensagem("Matrícula rejeitada.");
       setRejeitandoId(null);
       setMotivo("");
-      await carregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível rejeitar a matrícula.");
     } finally {
@@ -123,15 +111,14 @@ export function DetalheTurma() {
   }
 
   async function aoDesfazer(matriculaId: string) {
-    if (processando) return;
+    if (!id || processando) return;
     setErro(null);
     setMensagem(null);
     setProcessando(true);
     try {
-      await desfazerEncerramento(matriculaId);
+      await gravar(() => desfazerEncerramento(matriculaId), (qc) => invalidar.matriculas(qc, id));
       setMensagem("Encerramento desfeito — a matrícula voltou a 'matriculada'.");
       setDesfazendoId(null);
-      await carregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível desfazer o encerramento.");
     } finally {
@@ -140,16 +127,18 @@ export function DetalheTurma() {
   }
 
   async function aoRemover(matriculaId: string) {
-    if (processando) return;
+    if (!id || processando) return;
     setErro(null);
     setMensagem(null);
     setProcessando(true);
     try {
-      await removerAlunoDaTurma(matriculaId, motivoRemocao);
+      await gravar(
+        () => removerAlunoDaTurma(matriculaId, motivoRemocao),
+        (qc) => invalidar.matriculas(qc, id),
+      );
       setMensagem("Aluno removido da turma. Ele vê o motivo nas próprias matrículas.");
       setRemovendoId(null);
       setMotivoRemocao("");
-      await carregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível remover o aluno.");
     } finally {
@@ -163,10 +152,9 @@ export function DetalheTurma() {
     setMensagem(null);
     setReativandoTurma(true);
     try {
-      const resumo = await reativarTurma(id);
+      const resumo = await gravar(() => reativarTurma(id), (qc) => invalidar.matriculas(qc, id));
       setReativadas(resumo.reativadas);
       setConfirmandoReativarTurma(false);
-      await carregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível reativar a turma.");
     } finally {
@@ -200,14 +188,33 @@ export function DetalheTurma() {
           </Aviso>
         )}
 
-        {turma === undefined && !erro && (
-          <p className="text-body-sm text-text-secondary">Carregando...</p>
+        {erroDeLeitura && (
+          <ErroConsulta
+            className="mb-4"
+            erro={erroDeLeitura}
+            padrao="Não foi possível carregar a turma."
+            tentarDeNovo={() => {
+              consultas.forEach((c) => c.isError && void c.refetch());
+              progressos.tentarDeNovo();
+            }}
+          />
+        )}
+        {(consultaTurma.isPending || consultaMatriculas.isPending) && !erroDeLeitura && (
+          <>
+            <RegiaoCarregando className="mb-6 flex flex-col gap-2 rounded-klass-card border border-border bg-surface px-klass-card-x py-6">
+              <Esqueleto className="h-8 w-40" />
+              <Esqueleto className="h-4 w-64" />
+              <Esqueleto className="h-3 w-80" />
+            </RegiaoCarregando>
+            <Esqueleto className="mb-3 h-6 w-56" />
+            <EsqueletoCards quantidade={2} altura="h-16" />
+          </>
         )}
         {turma === null && (
           <p className="text-body-sm text-text-secondary">Turma não encontrada.</p>
         )}
 
-        {turma && (
+        {turma && consultaMatriculas.data && (
           <>
             <Card className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
               <div>
@@ -220,11 +227,11 @@ export function DetalheTurma() {
                   {turma.vagasTotal} vagas · frequência mínima {turma.frequenciaMinimaPercentual}%
                 </p>
               </div>
-              <Link to={`/coordenacao/turmas/${turma.id}/editar`}>
+              <LinkComPrefetch to={`/coordenacao/turmas/${turma.id}/editar`}>
                 <Button variant="secondary" className="whitespace-nowrap">
                   Editar turma
                 </Button>
-              </Link>
+              </LinkComPrefetch>
             </Card>
 
             <Titulo nivel="secao" className="mb-3">
@@ -462,6 +469,9 @@ export function DetalheTurma() {
             <Titulo nivel="secao" className="mb-3">
               Diário
             </Titulo>
+            {carregandoDiario && !erroDeLeitura && <EsqueletoCards quantidade={3} altura="h-20" />}
+            {!carregandoDiario && (
+            <>
             <Card className="mb-4">
               <p className="mb-2 text-label font-medium text-text-secondary">
                 Avaliações ({avaliacoes.length})
@@ -518,6 +528,8 @@ export function DetalheTurma() {
                 </Card>
               ))}
             </div>
+            </>
+            )}
           </>
         )}
     </PaginaAutenticada>

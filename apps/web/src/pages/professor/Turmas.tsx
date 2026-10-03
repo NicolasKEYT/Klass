@@ -1,50 +1,32 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import { useAuth } from "@/auth";
-import { Aviso } from "@/components/Aviso";
 import { Card } from "@/components/Card";
+import { EsqueletoCards } from "@/components/Esqueleto";
+import { ErroConsulta } from "@/components/ErroConsulta";
+import { LinkComPrefetch } from "@/components/LinkComPrefetch";
 import { PaginaAutenticada } from "@/components/PaginaAutenticada";
 import { Titulo } from "@/components/Titulo";
-import { listarTurmasDoProfessor, type TurmaDoProfessor } from "@/lib/selecao";
+import { useTurmasDoProfessor } from "@/lib/consultas/selecao";
 import { plural } from "@/lib/plural";
 
 export function Turmas() {
+  // Mesma entrada de cache do "Hoje": vindo de lá, a lista já está pronta.
   const { usuario } = useAuth();
-  const [turmas, setTurmas] = useState<TurmaDoProfessor[] | null>(null);
-  const [erro, setErro] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!usuario) return;
-    let ativo = true;
-    listarTurmasDoProfessor(usuario.id)
-      .then((t) => {
-        if (ativo) setTurmas(t);
-      })
-      .catch((e) => {
-        if (ativo) setErro(e instanceof Error ? e.message : "Não foi possível carregar suas turmas.");
-      });
-    return () => {
-      ativo = false;
-    };
-    // usuario?.id, não usuario: o AuthProvider troca a referência do
-    // objeto a cada revalidação de sessão (foco de aba, refresh de
-    // token), mesmo sendo o mesmo usuário — sem isso, esta busca
-    // reiniciava a cada troca de aba.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [usuario?.id]);
+  const consulta = useTurmasDoProfessor(usuario?.id);
+  const turmas = consulta.data;
 
   return (
     <PaginaAutenticada>
         <Titulo className="mb-6">Minhas turmas</Titulo>
 
-        {erro && (
-          <Aviso variant="danger" className="mb-4">
-            {erro}
-          </Aviso>
+        {consulta.isError && !turmas && (
+          <ErroConsulta
+            className="mb-4"
+            erro={consulta.error}
+            padrao="Não foi possível carregar suas turmas."
+            tentarDeNovo={() => void consulta.refetch()}
+          />
         )}
-        {!erro && turmas === null && (
-          <p className="text-body-sm text-text-secondary">Carregando...</p>
-        )}
+        {consulta.isPending && <EsqueletoCards quantidade={3} altura="h-24" />}
         {turmas?.length === 0 && (
           <p className="text-body-sm text-text-secondary">
             Nenhuma turma atribuída a você ainda.
@@ -63,12 +45,12 @@ export function Turmas() {
                   {turma.periodoFim} · {plural(turma.matriculados, "aluno matriculado", "alunos matriculados")}
                 </p>
               </div>
-              <Link
+              <LinkComPrefetch
                 to={`/professor/turmas/${turma.id}`}
                 className="text-body-sm font-medium text-primary hover:underline"
               >
                 Detalhes
-              </Link>
+              </LinkComPrefetch>
             </Card>
           ))}
         </div>

@@ -1,40 +1,36 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { Aviso } from "@/components/Aviso";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
+import { EsqueletoCards } from "@/components/Esqueleto";
+import { ErroConsulta } from "@/components/ErroConsulta";
+import { LinkComPrefetch } from "@/components/LinkComPrefetch";
 import { PaginaAutenticada } from "@/components/PaginaAutenticada";
 import { Titulo } from "@/components/Titulo";
-import { listarTurmasParaCoordenacao, type TurmaListagem } from "@/lib/selecao";
+import { useTurmasDaCoordenacao } from "@/lib/consultas/selecao";
 
 export function Turmas() {
-  const [turmas, setTurmas] = useState<TurmaListagem[] | null>(null);
-  const [erro, setErro] = useState<string | null>(null);
-
-  useEffect(() => {
-    listarTurmasParaCoordenacao()
-      .then(setTurmas)
-      .catch((e) => setErro(e instanceof Error ? e.message : "Não foi possível carregar as turmas."));
-  }, []);
+  // Mesma entrada de cache da tabela "Turmas em andamento" do Início.
+  const consulta = useTurmasDaCoordenacao();
+  const turmas = consulta.data;
 
   return (
     <PaginaAutenticada largura="ampla">
         <div className="mb-6 flex items-center justify-between">
           <Titulo>Turmas</Titulo>
-          <Link to="/coordenacao/turmas/nova">
+          <LinkComPrefetch to="/coordenacao/turmas/nova">
             <Button>Nova turma</Button>
-          </Link>
+          </LinkComPrefetch>
         </div>
 
-        {erro && (
-          <Aviso variant="danger" className="mb-4">
-            {erro}
-          </Aviso>
+        {consulta.isError && !turmas && (
+          <ErroConsulta
+            className="mb-4"
+            erro={consulta.error}
+            padrao="Não foi possível carregar as turmas."
+            tentarDeNovo={() => void consulta.refetch()}
+          />
         )}
-        {!erro && turmas === null && (
-          <p className="text-body-sm text-text-secondary">Carregando...</p>
-        )}
+        {consulta.isPending && <EsqueletoCards quantidade={4} altura="h-24" />}
         {turmas?.length === 0 && (
           <p className="text-body-sm text-text-secondary">Nenhuma turma cadastrada ainda.</p>
         )}
@@ -60,12 +56,12 @@ export function Turmas() {
                 </p>
               </div>
 
-              <Link
+              <LinkComPrefetch
                 to={`/coordenacao/turmas/${turma.id}`}
                 className="text-body-sm font-medium text-primary hover:underline"
               >
                 Detalhes
-              </Link>
+              </LinkComPrefetch>
             </Card>
           ))}
         </div>

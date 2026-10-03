@@ -1,8 +1,7 @@
-import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Badge } from "@/components/Badge";
 import { Card } from "@/components/Card";
-import { verificarPorHash } from "@/lib/certificacao";
+import { useVerificacaoDeCertificado } from "@/lib/consultas/certificacao";
 import type { CertificadoVerificado } from "@klass/types";
 
 type Estado =
@@ -19,26 +18,22 @@ function formatarData(iso: string): string {
 // pessoa da internet. Layout standalone, sem o cabeçalho autenticado do app.
 export function VerificarCertificado() {
   const { hash } = useParams<{ hash: string }>();
-  const [estado, setEstado] = useState<Estado>({ fase: "carregando" });
-
-  useEffect(() => {
-    if (!hash) {
-      setEstado({ fase: "nao-encontrado" });
-      return;
-    }
-    verificarPorHash(hash)
-      .then((certificado) =>
-        setEstado(
-          certificado ? { fase: "valido", certificado } : { fase: "nao-encontrado" },
-        ),
-      )
-      .catch((e) =>
-        setEstado({
-          fase: "erro",
-          mensagem: e instanceof Error ? e.message : "Não foi possível verificar o certificado.",
-        }),
-      );
-  }, [hash]);
+  const consulta = useVerificacaoDeCertificado(hash);
+  const estado: Estado = !hash
+    ? { fase: "nao-encontrado" }
+    : consulta.isPending
+      ? { fase: "carregando" }
+      : consulta.isError
+        ? {
+            fase: "erro",
+            mensagem:
+              consulta.error instanceof Error
+                ? consulta.error.message
+                : "Não foi possível verificar o certificado.",
+          }
+        : consulta.data
+          ? { fase: "valido", certificado: consulta.data }
+          : { fase: "nao-encontrado" };
 
   return (
     <div className="flex min-h-screen flex-col items-center bg-background p-6">

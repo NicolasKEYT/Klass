@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Aviso } from "@/components/Aviso";
 import { BotaoVoltar } from "@/components/BotaoVoltar";
@@ -7,13 +7,18 @@ import { Card } from "@/components/Card";
 import { Input } from "@/components/Input";
 import { PaginaAutenticada } from "@/components/PaginaAutenticada";
 import { Titulo } from "@/components/Titulo";
+import { EsqueletoCards } from "@/components/Esqueleto";
+import { ErroConsulta } from "@/components/ErroConsulta";
+import { useGravacao } from "@/lib/consultas/gravacao";
+import { useProfessores } from "@/lib/consultas/identidade";
+import { invalidar } from "@/lib/consultas/invalidar";
+import { useTurma } from "@/lib/consultas/selecao";
 import {
   atualizarTurma,
-  buscarTurmaDetalhada,
-  listarProfessores,
   validarPeriodoTurma,
   PERIODO_TURMA_DATA_MIN,
   PERIODO_TURMA_DATA_MAX,
+  type TurmaDetalhada,
 } from "@/lib/selecao";
 
 // Módulo/trilha não são editáveis aqui: a turma é a oferta de um módulo
@@ -23,46 +28,75 @@ import {
 // que antes só dava para definir na criação.
 export function EditarTurma() {
   const { id } = useParams<{ id: string }>();
+  // A turma costuma já estar em cache (vinda do detalhe da turma).
+  const consultaTurma = useTurma(id);
+  const consultaProfessores = useProfessores();
+  const turma = consultaTurma.data;
+  const erroDeLeitura = consultaTurma.error ?? consultaProfessores.error;
+
+  if (erroDeLeitura) {
+    return (
+      <PaginaAutenticada largura="estreita">
+        <BotaoVoltar />
+        <ErroConsulta
+          erro={erroDeLeitura}
+          padrao="Não foi possível carregar a turma."
+          tentarDeNovo={() => {
+            if (consultaTurma.isError) void consultaTurma.refetch();
+            if (consultaProfessores.isError) void consultaProfessores.refetch();
+          }}
+        />
+      </PaginaAutenticada>
+    );
+  }
+
+  if (consultaTurma.isPending || consultaProfessores.isPending) {
+    return (
+      <PaginaAutenticada largura="estreita">
+        <EsqueletoCards quantidade={1} altura="h-96" />
+      </PaginaAutenticada>
+    );
+  }
+
+  if (!turma) {
+    return (
+      <PaginaAutenticada largura="estreita">
+        <BotaoVoltar />
+        <Aviso variant="danger">Turma não encontrada.</Aviso>
+      </PaginaAutenticada>
+    );
+  }
+
+  return <FormularioTurma key={turma.id} turma={turma} professores={consultaProfessores.data ?? []} />;
+}
+
+function FormularioTurma({
+  turma,
+  professores,
+}: {
+  turma: TurmaDetalhada;
+  professores: Array<{ id: string; nomeCompleto: string }>;
+}) {
+  const id = turma.id;
   const navigate = useNavigate();
+  const gravar = useGravacao();
+  const contexto = { moduloNome: turma.moduloNome, trilhaNome: turma.trilhaNome };
 
-  const [contexto, setContexto] = useState<{ moduloNome: string; trilhaNome: string } | null>(null);
-  const [professores, setProfessores] = useState<Array<{ id: string; nomeCompleto: string }>>([]);
-  const [carregando, setCarregando] = useState(true);
-
-  const [codigo, setCodigo] = useState("");
-  const [professorId, setProfessorId] = useState("");
-  const [periodoInicio, setPeriodoInicio] = useState("");
-  const [periodoFim, setPeriodoFim] = useState("");
-  const [vagasTotal, setVagasTotal] = useState(30);
-  const [frequenciaMinimaPercentual, setFrequenciaMinimaPercentual] = useState(75);
+  // O formulário parte da turma como estava ao abrir a tela.
+  const [codigo, setCodigo] = useState(turma.codigo);
+  const [professorId, setProfessorId] = useState(turma.professorId);
+  const [periodoInicio, setPeriodoInicio] = useState(turma.periodoInicio);
+  const [periodoFim, setPeriodoFim] = useState(turma.periodoFim);
+  const [vagasTotal, setVagasTotal] = useState(turma.vagasTotal);
+  const [frequenciaMinimaPercentual, setFrequenciaMinimaPercentual] = useState(
+    turma.frequenciaMinimaPercentual,
+  );
 
   const [erro, setErro] = useState<string | null>(null);
   const [mensagem, setMensagem] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
 
-  useEffect(() => {
-    if (!id) return;
-    Promise.all([buscarTurmaDetalhada(id), listarProfessores()])
-      .then(([turma, listaProfessores]) => {
-        setProfessores(listaProfessores);
-        if (!turma) {
-          setErro("Turma não encontrada.");
-          return;
-        }
-        setContexto({ moduloNome: turma.moduloNome, trilhaNome: turma.trilhaNome });
-        setCodigo(turma.codigo);
-        setProfessorId(turma.professorId);
-        setPeriodoInicio(turma.periodoInicio);
-        setPeriodoFim(turma.periodoFim);
-        setVagasTotal(turma.vagasTotal);
-        setFrequenciaMinimaPercentual(turma.frequenciaMinimaPercentual);
-      })
-      .catch((e) => setErro(e instanceof Error ? e.message : "Não foi possível carregar a turma."))
-      .finally(() => setCarregando(false));
-  }, [id]);
-
   async function salvar(voltar: boolean) {
-    if (!id) return;
     setErro(null);
     setMensagem(null);
     const erroPeriodo = validarPeriodoTurma(periodoInicio, periodoFim);
@@ -72,14 +106,18 @@ export function EditarTurma() {
     }
     setSalvando(true);
     try {
-      await atualizarTurma(id, {
-        codigo,
-        professorId,
-        periodoInicio,
-        periodoFim,
-        vagasTotal,
-        frequenciaMinimaPercentual,
-      });
+      await gravar(
+        () =>
+          atualizarTurma(id, {
+            codigo,
+            professorId,
+            periodoInicio,
+            periodoFim,
+            vagasTotal,
+            frequenciaMinimaPercentual,
+          }),
+        (qc) => invalidar.turma(qc, id),
+      );
       setMensagem("Turma atualizada.");
       if (voltar) {
         // Espera o aviso aparecer antes de sair da tela.
@@ -96,23 +134,6 @@ export function EditarTurma() {
   async function aoSubmeter(evento: FormEvent) {
     evento.preventDefault();
     await salvar(true);
-  }
-
-  if (carregando) {
-    return (
-      <PaginaAutenticada largura="estreita">
-        <p className="text-body-sm text-text-secondary">Carregando...</p>
-      </PaginaAutenticada>
-    );
-  }
-
-  if (!contexto) {
-    return (
-      <PaginaAutenticada largura="estreita">
-        <BotaoVoltar />
-        <Aviso variant="danger">{erro ?? "Turma não encontrada."}</Aviso>
-      </PaginaAutenticada>
-    );
   }
 
   return (

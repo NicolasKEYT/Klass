@@ -1,19 +1,16 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import { useAuth } from "@/auth";
-import { Aviso } from "@/components/Aviso";
 import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
+import { EsqueletoLinhas } from "@/components/Esqueleto";
+import { ErroConsulta } from "@/components/ErroConsulta";
+import { LinkComPrefetch } from "@/components/LinkComPrefetch";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Titulo } from "@/components/Titulo";
 import {
-  listarAlunosQuePedemAtencaoDoProfessor,
-  listarAulasDeHojeDoProfessor,
-  listarPendenciasDoProfessor,
-  type AlunoQuePedeAtencao,
-  type AulaDeHoje,
-  type PendenciaProfessor,
-} from "@/lib/diario";
+  useAlunosQuePedemAtencao,
+  useAulasDeHoje,
+  usePendenciasDoProfessor,
+} from "@/lib/consultas/diario";
 import { plural } from "@/lib/plural";
 
 function dataPorExtenso(): string {
@@ -29,49 +26,22 @@ function dataPorExtenso(): string {
 // genérica anterior. Três cards construídos com dado real (turmas, aulas,
 // avaliações, notas, presenças do próprio professor) — nada inventado.
 export function Hoje() {
+  // Só o id do usuário entra nas chaves: a revalidação de sessão ao focar
+  // a aba troca o objeto `usuario`, mas não dispara busca nenhuma. As três
+  // consultas compartilham a lista de turmas do cache (antes, cada card
+  // buscava as turmas de novo).
   const { usuario } = useAuth();
-  const [aulas, setAulas] = useState<AulaDeHoje[] | null>(null);
-  const [pendencias, setPendencias] = useState<PendenciaProfessor[] | null>(null);
-  const [alunosAtencao, setAlunosAtencao] = useState<AlunoQuePedeAtencao[] | null>(null);
-  const [erro, setErro] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!usuario) return;
-    let ativo = true;
-    Promise.all([
-      listarAulasDeHojeDoProfessor(usuario.id),
-      listarPendenciasDoProfessor(usuario.id),
-      listarAlunosQuePedemAtencaoDoProfessor(usuario.id),
-    ])
-      .then(([a, p, al]) => {
-        if (!ativo) return;
-        setAulas(a);
-        setPendencias(p);
-        setAlunosAtencao(al);
-      })
-      .catch((e) => {
-        if (ativo) setErro(e instanceof Error ? e.message : "Não foi possível carregar o painel.");
-      });
-    return () => {
-      ativo = false;
-    };
-    // usuario?.id, não usuario: o AuthProvider troca a referência do
-    // objeto a cada revalidação de sessão (foco de aba, refresh de
-    // token), mesmo sendo o mesmo usuário — sem isso, o painel recarregava
-    // a cada troca de aba.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [usuario?.id]);
+  const consultaAulas = useAulasDeHoje(usuario?.id);
+  const consultaPendencias = usePendenciasDoProfessor(usuario?.id);
+  const consultaAtencao = useAlunosQuePedemAtencao(usuario?.id);
+  const aulas = consultaAulas.data;
+  const pendencias = consultaPendencias.data;
+  const alunosAtencao = consultaAtencao.data;
 
   return (
     <>
       <p className="text-body-sm text-text-secondary">{dataPorExtenso()}</p>
       <Titulo className="mb-6">Hoje</Titulo>
-
-      {erro && (
-        <Aviso variant="danger" className="mb-4">
-          {erro}
-        </Aviso>
-      )}
 
       {/* Duas colunas — esquerda mais larga (aulas do dia), direita mais
           estreita (pendências, depois alunos que pedem atenção), medido
@@ -83,9 +53,14 @@ export function Hoje() {
               Aulas de hoje {aulas && `(${aulas.length})`}
             </p>
           </div>
-          {aulas === null && !erro && (
-            <p className="text-body-sm text-text-secondary">Carregando...</p>
+          {consultaAulas.isError && !aulas && (
+            <ErroConsulta
+              erro={consultaAulas.error}
+              padrao="Não foi possível carregar as aulas de hoje."
+              tentarDeNovo={() => void consultaAulas.refetch()}
+            />
           )}
+          {consultaAulas.isPending && <EsqueletoLinhas quantidade={2} />}
           {aulas?.length === 0 && (
             <p className="text-body-sm text-text-secondary">Nenhuma aula programada para hoje.</p>
           )}
@@ -108,11 +83,11 @@ export function Hoje() {
                     tipo="aula"
                     status={aula.chamadaFeita ? "chamada_feita" : "chamada_pendente"}
                   />
-                  <Link to={`/professor/turmas/${aula.turmaId}/aulas/${aula.id}/chamada`}>
+                  <LinkComPrefetch to={`/professor/turmas/${aula.turmaId}/aulas/${aula.id}/chamada`}>
                     <Button variant={aula.chamadaFeita ? "secondary" : "primary"}>
                       {aula.chamadaFeita ? "Ver" : "Fazer chamada"}
                     </Button>
-                  </Link>
+                  </LinkComPrefetch>
                 </div>
               </div>
             ))}
@@ -124,9 +99,14 @@ export function Hoje() {
             <p className="mb-3 text-klass-md font-medium text-text-primary">
               Pendências {pendencias && `(${pendencias.length})`}
             </p>
-            {pendencias === null && !erro && (
-              <p className="text-body-sm text-text-secondary">Carregando...</p>
+            {consultaPendencias.isError && !pendencias && (
+              <ErroConsulta
+                erro={consultaPendencias.error}
+                padrao="Não foi possível carregar as pendências."
+                tentarDeNovo={() => void consultaPendencias.refetch()}
+              />
             )}
+            {consultaPendencias.isPending && <EsqueletoLinhas quantidade={3} />}
             {pendencias?.length === 0 && (
               <p className="text-body-sm text-text-secondary">Nenhuma pendência no momento.</p>
             )}
@@ -137,7 +117,7 @@ export function Hoje() {
                     <p className="text-body-sm font-medium text-text-primary">{p.titulo}</p>
                     <p className="text-label text-text-muted">{p.detalhe}</p>
                   </div>
-                  <Link
+                  <LinkComPrefetch
                     to={
                       p.tipo === "chamada_atrasada"
                         ? `/professor/turmas/${p.turmaId}/aulas/${p.aulaId}/chamada`
@@ -154,7 +134,7 @@ export function Hoje() {
                           ? "Fazer chamada"
                           : "Revisar"}
                     </Button>
-                  </Link>
+                  </LinkComPrefetch>
                 </div>
               ))}
             </div>
@@ -165,15 +145,20 @@ export function Hoje() {
             <p className="mb-3 text-label text-text-muted">
               Frequência abaixo da mínima da turma ou média abaixo da mínima da trilha.
             </p>
-            {alunosAtencao === null && !erro && (
-              <p className="text-body-sm text-text-secondary">Carregando...</p>
+            {consultaAtencao.isError && !alunosAtencao && (
+              <ErroConsulta
+                erro={consultaAtencao.error}
+                padrao="Não foi possível carregar os alunos que pedem atenção."
+                tentarDeNovo={() => void consultaAtencao.refetch()}
+              />
             )}
+            {consultaAtencao.isPending && <EsqueletoLinhas quantidade={2} />}
             {alunosAtencao?.length === 0 && (
               <p className="text-body-sm text-text-secondary">Nenhum aluno nessa situação.</p>
             )}
             <div className="flex flex-col divide-y divide-border">
               {alunosAtencao?.map((a, i) => (
-                <Link
+                <LinkComPrefetch
                   key={i}
                   to={`/professor/turmas/${a.turmaId}`}
                   className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"
@@ -187,7 +172,7 @@ export function Hoje() {
                   <span className="font-mono text-klass-md font-semibold tabular-nums text-text-primary">
                     {a.valor}
                   </span>
-                </Link>
+                </LinkComPrefetch>
               ))}
             </div>
           </Card>

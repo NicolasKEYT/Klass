@@ -1,6 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { mensagemDeErroBanco } from "@/lib/mensagensDeErroBanco";
-import { listarTurmasParaCoordenacao, type TurmaListagem } from "@/lib/selecao";
+import type { TurmaListagem } from "@/lib/selecao";
 
 // D7 (klass-uikit.pdf) — dados do painel "Início" da coordenação. Mistura
 // catalogo (as duas views novas), selecao e diario de propósito: é uma
@@ -34,19 +34,25 @@ function hojeISO(): string {
 // cliente para não fazer uma chamada RPC por matrícula do sistema
 // inteiro. Devolve a frequência média geral, quantos alunos estão abaixo
 // do mínimo legal (75%, LDB art. 24) e a frequência média POR TURMA (usada
-// na tabela "Turmas em andamento").
-async function calcularFrequencias(): Promise<{
+// na tabela "Turmas em andamento"). Uma consulta só alimenta os
+// indicadores e a tabela — antes o painel calculava tudo duas vezes.
+// Ainda traz todas as presenças das turmas ativas para o navegador: uma
+// função agregada no banco resolveria isto com uma linha por turma.
+export interface FrequenciasCoordenacao {
   mediaGeral: number | null;
   abaixoDoMinimo: number;
-  porTurma: Map<string, number>;
-}> {
+  /** turma_id -> frequência média. Record (não Map) para caber no cache. */
+  porTurma: Record<string, number>;
+}
+
+export async function calcularFrequencias(): Promise<FrequenciasCoordenacao> {
   const { data: matriculas, error } = await selecao()
     .from("matriculas")
     .select("id, turma_id")
     .eq("status", "matriculada");
   if (error) throw new Error(mensagemDeErroBanco(error));
   if (!matriculas || matriculas.length === 0) {
-    return { mediaGeral: null, abaixoDoMinimo: 0, porTurma: new Map() };
+    return { mediaGeral: null, abaixoDoMinimo: 0, porTurma: {} };
   }
 
   const turmaIds = [...new Set(matriculas.map((m) => m.turma_id))];
@@ -101,9 +107,9 @@ async function calcularFrequencias(): Promise<{
     somaPorTurma.set(m.turma_id, acumuladoTurma);
   }
 
-  const porTurma = new Map<string, number>();
+  const porTurma: Record<string, number> = {};
   for (const [turmaId, { soma, cont }] of somaPorTurma) {
-    porTurma.set(turmaId, soma / cont);
+    porTurma[turmaId] = soma / cont;
   }
 
   return { mediaGeral: contGeral > 0 ? somaGeral / contGeral : null, abaixoDoMinimo, porTurma };
@@ -117,9 +123,18 @@ export interface IndicadoresCoordenacao {
   periodoEvasao: string | null;
 }
 
-export async function buscarIndicadoresCoordenacao(): Promise<IndicadoresCoordenacao> {
-  const [{ mediaGeral, abaixoDoMinimo }, desempenhoResp, evasaoResp] = await Promise.all([
-    calcularFrequencias(),
+export interface IndicadoresDasViews {
+  totalAprovados: number;
+  totalEncerrados: number;
+  evasaoSemestreAtual: number | null;
+  periodoEvasao: string | null;
+}
+
+// Só as duas views do artigo (vw_desempenho_por_trilha, vw_taxa_evasao);
+// a frequência vem de calcularFrequencias e as duas se juntam em
+// montarIndicadores.
+export async function buscarIndicadoresDasViews(): Promise<IndicadoresDasViews> {
+  const [desempenhoResp, evasaoResp] = await Promise.all([
     catalogo()
       .from("vw_desempenho_por_trilha")
       .select("total_aprovados, total_encerrados"),
@@ -141,11 +156,24 @@ export async function buscarIndicadoresCoordenacao(): Promise<IndicadoresCoorden
   const linhaEvasao = evasaoResp.data?.[0];
 
   return {
-    frequenciaMedia: mediaGeral,
-    alunosAbaixoDoMinimo: abaixoDoMinimo,
-    aprovacaoModulosEncerrados: totalEncerrados > 0 ? (totalAprovados / totalEncerrados) * 100 : null,
+    totalAprovados,
+    totalEncerrados,
     evasaoSemestreAtual: linhaEvasao ? Number(linhaEvasao.taxa_evasao_percentual) : null,
     periodoEvasao: linhaEvasao?.periodo ?? null,
+  };
+}
+
+export function montarIndicadores(
+  frequencias: FrequenciasCoordenacao,
+  views: IndicadoresDasViews,
+): IndicadoresCoordenacao {
+  return {
+    frequenciaMedia: frequencias.mediaGeral,
+    alunosAbaixoDoMinimo: frequencias.abaixoDoMinimo,
+    aprovacaoModulosEncerrados:
+      views.totalEncerrados > 0 ? (views.totalAprovados / views.totalEncerrados) * 100 : null,
+    evasaoSemestreAtual: views.evasaoSemestreAtual,
+    periodoEvasao: views.periodoEvasao,
   };
 }
 
@@ -161,12 +189,24 @@ export async function listarPendenciasCoordenacao(): Promise<PendenciaCoordenaca
   const pendencias: PendenciaCoordenacao[] = [];
   const hoje = hojeISO();
 
-  const { data: inscricoes, error: erroInscricoes } = await selecao()
-    .from("matriculas")
-    .select("criado_em")
-    .eq("status", "inscrita")
-    .order("criado_em", { ascending: true });
-  if (erroInscricoes) throw new Error(mensagemDeErroBanco(erroInscricoes));
+  // As quatro leituras são independentes: saem juntas. Só as presenças
+  // dependem das aulas passadas e ficam para depois.
+  const [inscricoesResp, turmasResp, aulasResp, matriculasAtivasResp] = await Promise.all([
+    selecao()
+      .from("matriculas")
+      .select("criado_em")
+      .eq("status", "inscrita")
+      .order("criado_em", { ascending: true }),
+    selecao().from("turmas").select("id, codigo, periodo_fim"),
+    diario().from("aulas").select("id, turma_id, data").lt("data", hoje),
+    selecao().from("matriculas").select("turma_id").eq("status", "matriculada"),
+  ]);
+  if (inscricoesResp.error) throw new Error(mensagemDeErroBanco(inscricoesResp.error));
+  if (turmasResp.error) throw new Error(mensagemDeErroBanco(turmasResp.error));
+  if (aulasResp.error) throw new Error(mensagemDeErroBanco(aulasResp.error));
+  if (matriculasAtivasResp.error) throw new Error(mensagemDeErroBanco(matriculasAtivasResp.error));
+
+  const inscricoes = inscricoesResp.data;
   if (inscricoes && inscricoes.length > 0) {
     const diasEspera = Math.round(
       (Date.now() - new Date(inscricoes[0].criado_em).getTime()) / 86_400_000,
@@ -178,15 +218,10 @@ export async function listarPendenciasCoordenacao(): Promise<PendenciaCoordenaca
     });
   }
 
-  const { data: turmas, error: erroTurmas } = await selecao().from("turmas").select("id, codigo, periodo_fim");
-  if (erroTurmas) throw new Error(mensagemDeErroBanco(erroTurmas));
+  const turmas = turmasResp.data;
   const turmaPorId = new Map((turmas ?? []).map((t) => [t.id, t]));
 
-  const { data: aulasPassadas, error: erroAulas } = await diario()
-    .from("aulas")
-    .select("id, turma_id, data")
-    .lt("data", hoje);
-  if (erroAulas) throw new Error(mensagemDeErroBanco(erroAulas));
+  const aulasPassadas = aulasResp.data;
   const aulaIds = (aulasPassadas ?? []).map((a) => a.id);
   const { data: presencas, error: erroPresencas } =
     aulaIds.length > 0
@@ -203,12 +238,7 @@ export async function listarPendenciasCoordenacao(): Promise<PendenciaCoordenaca
     pendencias.push({ tipo: "chamadas_atrasadas", quantidade: atrasadas.length, detalhe: exemplos });
   }
 
-  const { data: matriculasAtivas, error: erroMatAtivas } = await selecao()
-    .from("matriculas")
-    .select("turma_id")
-    .eq("status", "matriculada");
-  if (erroMatAtivas) throw new Error(mensagemDeErroBanco(erroMatAtivas));
-  const turmasComAtivos = new Set((matriculasAtivas ?? []).map((m) => m.turma_id));
+  const turmasComAtivos = new Set((matriculasAtivasResp.data ?? []).map((m) => m.turma_id));
   const terminando = (turmas ?? []).filter((t) => {
     const dias = Math.round(
       (new Date(`${t.periodo_fim}T00:00:00`).getTime() - new Date(`${hoje}T00:00:00`).getTime()) /
@@ -232,8 +262,12 @@ export interface TurmaEmAndamento extends TurmaListagem {
   situacao: string;
 }
 
-export async function listarTurmasEmAndamento(): Promise<TurmaEmAndamento[]> {
-  const [turmas, { porTurma }] = await Promise.all([listarTurmasParaCoordenacao(), calcularFrequencias()]);
+// Pura: a lista de turmas é a mesma da tela "Turmas" (cache compartilhado)
+// e a frequência por turma vem de calcularFrequencias.
+export function montarTurmasEmAndamento(
+  turmas: TurmaListagem[],
+  porTurma: Record<string, number>,
+): TurmaEmAndamento[] {
   const hoje = hojeISO();
 
   return turmas.map((t) => {
@@ -247,7 +281,7 @@ export async function listarTurmasEmAndamento(): Promise<TurmaEmAndamento[]> {
     } else {
       situacao = "Em andamento";
     }
-    return { ...t, frequenciaMedia: porTurma.get(t.id) ?? null, situacao };
+    return { ...t, frequenciaMedia: porTurma[t.id] ?? null, situacao };
   });
 }
 

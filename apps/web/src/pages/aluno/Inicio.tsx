@@ -1,19 +1,18 @@
-import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Award, Bell, CheckCheck, FileText } from "lucide-react";
 import { useAuth } from "@/auth";
-import { Aviso } from "@/components/Aviso";
 import { BarraDeMeta } from "@/components/BarraDeMeta";
 import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
+import { EsqueletoLinhas, RegiaoCarregando } from "@/components/Esqueleto";
+import { ErroConsulta } from "@/components/ErroConsulta";
+import { LinkComPrefetch } from "@/components/LinkComPrefetch";
 import { Titulo } from "@/components/Titulo";
-import {
-  buscarProximoPassoDoAluno,
-  listarNovidadesDoAluno,
-  type NovidadeAluno,
-  type ProximoPassoAluno,
-} from "@/lib/diario";
-import { listarMatriculasDoAluno, type MatriculaDoAluno } from "@/lib/selecao";
+import { useModulosDaTrilha, useTrilhaPorId } from "@/lib/consultas/catalogo";
+import { useNovidadesDoAluno, useProgresso } from "@/lib/consultas/diario";
+import { useMatriculasDoAluno } from "@/lib/consultas/selecao";
+import { escolherMatriculaEmAndamento, montarProximoPasso, type ProximoPassoAluno } from "@/lib/diario";
+import type { MatriculaDoAluno } from "@/lib/selecao";
 
 // Quando não há módulo em curso (passo = null), o motivo muda a mensagem:
 // a mesma frase de "explore o catálogo" aparecia para quem só esperava a
@@ -43,58 +42,55 @@ function tempoRelativo(iso: string): string {
 // do Realtime.
 export function Inicio() {
   const { usuario, profile } = useAuth();
-  const [passo, setPasso] = useState<ProximoPassoAluno | null | undefined>(undefined);
+  // Cada pedaço vem da sua entrada no cache (as mesmas do Boletim): a
+  // matrícula escolhida decide quais trilha, módulos e progresso ler.
+  const consultaMatriculas = useMatriculasDoAluno(usuario?.id);
+  const matriculas = consultaMatriculas.data;
+  const escolha = matriculas ? escolherMatriculaEmAndamento(matriculas) : undefined;
+  const consultaTrilha = useTrilhaPorId(escolha?.matricula.trilhaId);
+  const consultaModulos = useModulosDaTrilha(escolha?.matricula.trilhaId);
+  const consultaProgresso = useProgresso(escolha?.matricula.id);
   // undefined = ainda carregando; [] = carregou e não há nada — sem essa
   // distinção, "Nada novo por enquanto." aparecia durante a carga.
-  const [novidades, setNovidades] = useState<NovidadeAluno[] | undefined>(undefined);
-  const [situacao, setSituacao] = useState<SituacaoSemCurso>("sem_matricula");
-  const [erro, setErro] = useState<string | null>(null);
+  const consultaNovidades = useNovidadesDoAluno(usuario?.id);
+  const novidades = consultaNovidades.data;
 
-  useEffect(() => {
-    if (!usuario) return;
-    let ativo = true;
-    setErro(null);
-    Promise.all([
-      buscarProximoPassoDoAluno(usuario.id),
-      listarNovidadesDoAluno(usuario.id),
-      listarMatriculasDoAluno(usuario.id),
-    ])
-      .then(([p, n, matriculas]) => {
-        if (!ativo) return;
-        setSituacao(situacaoSemCurso(matriculas));
-        setPasso(p);
-        setNovidades(n);
-      })
-      .catch((e) => {
-        // Erro de carregamento não pode virar "passo = null" — esse valor
-        // já tem um significado real (aluno sem matrícula em andamento) e
-        // mostra a mensagem de "explore o catálogo". Confundir os dois
-        // escondia falha de rede/RLS por trás de uma mensagem enganosa
-        // (mesma causa raiz do "Módulo não encontrado" de DetalheModulo).
-        if (ativo) setErro(e instanceof Error ? e.message : "Não foi possível carregar seu painel.");
-      });
-    return () => {
-      ativo = false;
-    };
-    // usuario?.id, não usuario: o AuthProvider troca a referência do
-    // objeto a cada revalidação de sessão (foco de aba, refresh de
-    // token), mesmo sendo o mesmo usuário — sem isso, esta busca
-    // reiniciava a cada troca de aba.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [usuario?.id]);
+  // Erro de carregamento não pode virar "passo = null" — esse valor já
+  // tem um significado real (aluno sem matrícula em andamento) e mostra a
+  // mensagem de "explore o catálogo". Confundir os dois escondia falha de
+  // rede/RLS por trás de uma mensagem enganosa.
+  const consultasDoPasso = escolha
+    ? [consultaMatriculas, consultaTrilha, consultaModulos, consultaProgresso]
+    : [consultaMatriculas];
+  const consultaComErro = consultasDoPasso.find((c) => c.isError);
+  const erro = consultaComErro?.error ?? null;
+
+  let passo: ProximoPassoAluno | null | undefined;
+  if (escolha === undefined) passo = undefined;
+  else if (escolha === null) passo = null;
+  else if (!consultaTrilha.data || !consultaModulos.data || !consultaProgresso.data)
+    passo = consultaTrilha.data === null ? null : undefined;
+  else passo = montarProximoPasso(escolha, consultaTrilha.data, consultaModulos.data, consultaProgresso.data);
+  const situacao = situacaoSemCurso(matriculas ?? []);
 
   return (
     <>
       <Titulo>Olá, {profile?.nome_completo?.split(" ")[0] ?? "..."}</Titulo>
 
       {erro && (
-        <Aviso variant="danger" className="mt-4">
-          {erro}
-        </Aviso>
+        <ErroConsulta
+          className="mt-4"
+          erro={erro}
+          padrao="Não foi possível carregar seu painel."
+          tentarDeNovo={() => consultasDoPasso.forEach((c) => c.isError && void c.refetch())}
+        />
       )}
 
       {!erro && passo === undefined && (
-        <div className="mt-4 h-40 animate-pulse rounded-klass-card border border-border bg-surface-subtle" />
+        <RegiaoCarregando className="mt-4 flex flex-col gap-4">
+          <div className="h-48 animate-pulse rounded-klass-card border border-border bg-surface-subtle" />
+          <div className="h-32 animate-pulse rounded-klass-card border border-border bg-surface-subtle" />
+        </RegiaoCarregando>
       )}
 
       {!erro && passo === null && (
@@ -155,9 +151,9 @@ export function Inicio() {
               {passo.trilhaNome} · {passo.modulosConcluidos} de {passo.totalModulos} módulos ·
               cursando {passo.moduloAtualNome}
             </p>
-            <Link to="/aluno/boletim">
+            <LinkComPrefetch to="/aluno/boletim">
               <Button className="mt-3 w-full">Ver boletim</Button>
-            </Link>
+            </LinkComPrefetch>
           </Card>
 
           <Card className="mt-4">
@@ -184,8 +180,15 @@ export function Inicio() {
           <Bell className="h-4 w-4" aria-hidden />
           Novidades
         </p>
-        {!erro && novidades === undefined && (
-          <p className="text-body-sm text-text-secondary">Carregando...</p>
+        {consultaNovidades.isError && !novidades && (
+          <ErroConsulta
+            erro={consultaNovidades.error}
+            padrao="Não foi possível carregar as novidades."
+            tentarDeNovo={() => void consultaNovidades.refetch()}
+          />
+        )}
+        {consultaNovidades.isPending && (
+          <EsqueletoLinhas quantidade={3} />
         )}
         {novidades?.length === 0 && (
           <p className="text-body-sm text-text-secondary">Nada novo por enquanto.</p>

@@ -219,11 +219,16 @@ export async function definirPreRequisito(
   if (error) throw new Error(mensagemDeErroBanco(error));
 }
 
-/** modulo_id -> nomes dos módulos que são pré-requisito dele, para exibição. */
+/**
+ * modulo_id -> nomes dos módulos que são pré-requisito dele, para exibição.
+ * `modulos` opcional: quem já tem a lista em cache passa adiante e evita
+ * buscá-la de novo antes dos pré-requisitos (uma ida ao banco a menos).
+ */
 export async function listarPreRequisitosDaTrilha(
   trilhaId: string,
+  modulosConhecidos?: Modulo[],
 ): Promise<Map<string, string[]>> {
-  const modulos = await listarModulosDaTrilha(trilhaId);
+  const modulos = modulosConhecidos ?? (await listarModulosDaTrilha(trilhaId));
   const idParaNome = new Map(modulos.map((m) => [m.id, m.nome]));
   const moduloIds = modulos.map((m) => m.id);
   if (moduloIds.length === 0) return new Map();
@@ -248,8 +253,9 @@ export async function listarPreRequisitosDaTrilha(
 /** modulo_id -> ids dos módulos que são pré-requisito dele — para marcar checkboxes na edição. */
 export async function listarPreRequisitosIdsDaTrilha(
   trilhaId: string,
+  modulosConhecidos?: Modulo[],
 ): Promise<Map<string, Set<string>>> {
-  const modulos = await listarModulosDaTrilha(trilhaId);
+  const modulos = modulosConhecidos ?? (await listarModulosDaTrilha(trilhaId));
   const moduloIds = modulos.map((m) => m.id);
   if (moduloIds.length === 0) return new Map();
 

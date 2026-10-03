@@ -10,6 +10,8 @@ import { Input } from "@/components/Input";
 import { PaginaAutenticada } from "@/components/PaginaAutenticada";
 import { Titulo } from "@/components/Titulo";
 import { criarTrilha, gerarSlug } from "@/lib/catalogo";
+import { useGravacao } from "@/lib/consultas/gravacao";
+import { invalidar } from "@/lib/consultas/invalidar";
 import type { TipoCertificacao } from "@klass/types";
 
 // Tempo pra o aviso de sucesso ficar visível antes de navegar — sem
@@ -18,6 +20,7 @@ const ATRASO_ANTES_DE_NAVEGAR_MS = 700;
 
 export function NovaTrilha() {
   const navigate = useNavigate();
+  const gravar = useGravacao();
   const [nome, setNome] = useState("");
   const [slug, setSlug] = useState("");
   const [slugEditadoManualmente, setSlugEditadoManualmente] = useState(false);
@@ -50,15 +53,19 @@ export function NovaTrilha() {
     }
     setEnviando(true);
     try {
-      const trilha = await criarTrilha({
-        nome,
-        slug,
-        descricao,
-        descricaoCurta,
-        icone,
-        tipoCertificacao,
-        mediaMinima: media,
-      });
+      const trilha = await gravar(
+        () =>
+          criarTrilha({
+            nome,
+            slug,
+            descricao,
+            descricaoCurta,
+            icone,
+            tipoCertificacao,
+            mediaMinima: media,
+          }),
+        invalidar.catalogo,
+      );
       setMensagem("Trilha criada.");
       await new Promise((resolve) => setTimeout(resolve, ATRASO_ANTES_DE_NAVEGAR_MS));
       navigate(
