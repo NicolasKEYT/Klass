@@ -92,7 +92,7 @@ export function DetalheTrilha() {
                           {modulo.ordem}. {modulo.nome}
                         </Titulo>
                       </div>
-                      <Badge variant="neutral">{NIVEL_LABEL[modulo.nivel]}</Badge>
+                      <Badge variant="contorno">{NIVEL_LABEL[modulo.nivel]}</Badge>
                     </div>
                     <p className="text-body-sm text-text-secondary">{modulo.descricao}</p>
                     <p className="text-label text-text-muted">{modulo.carga_horaria_horas}h</p>

@@ -1,42 +1,42 @@
 import type { HTMLAttributes } from "react";
 
-type BadgeVariant = "success" | "neutral" | "live" | "danger" | "tracejado";
+// Os nomes dizem a forma, não o significado: "success"/"danger" enganavam
+// (não há verde nem vermelho no sistema).
+export type BadgeVariant = "preenchido" | "contorno" | "tracejado" | "alerta";
 
 interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
   variant?: BadgeVariant;
 }
 
-// Prompt 17 (klass-uikit.pdf, correção de fidelidade) — o vocabulário de
-// badges do UI Kit de alta-fidelidade é monocromático: preenchimento
-// preto sólido para o estado mais "digno de nota" de cada contexto
-// (Concluído, Chamada pendente, Sem conexão), contorno cinza para os
-// demais (Matriculado, Reprovado, Cursando...), e borda tracejada para
-// estados incertos/em espera (Em análise, Salvando..., Bloqueado). Cor
-// nunca carrega o significado sozinha — ícone + texto sempre acompanham
-// (ver StatusBadge). Os nomes de variante ficam os mesmos de antes da
-// correção (menos código pra tocar), só o mapeamento de classe mudou.
+// Vocabulário monocromático do UI Kit (klass-uikit.pdf, Fundamentos pág. 2,
+// Boletim pág. 5, Notas pág. 9): preenchido preto só para o estado mais
+// digno de nota de cada contexto (Concluído, Chamada pendente); contorno
+// para os demais estados, situações de turma e tags (nível, carga
+// horária, trilha); tracejado para o que está em espera (Em análise,
+// Bloqueado); alerta é contorno com a borda de controle, mais escura,
+// como "Abaixo da média" na grade de notas. Cor nunca carrega o
+// significado sozinha — ícone + texto sempre acompanham (ver StatusBadge).
 const variantClasses: Record<BadgeVariant, string> = {
-  success: "rounded-klass-pill bg-primary text-white", // preenchido preto — estado positivo/definitivo
-  neutral: "rounded-klass-pill bg-neutral-subtle text-text-secondary", // tag informativa (nível, carga horária...)
-  live: "rounded-klass-pill border border-border bg-surface text-text-secondary", // contorno + ponto (sincronização)
-  danger: "rounded-klass-pill border border-border bg-surface text-text-primary", // contorno — negativo/recusado
-  tracejado: "rounded-klass-pill border border-dashed border-border bg-surface text-text-secondary", // incerto/em espera
+  preenchido: "bg-primary text-white",
+  contorno: "border border-border bg-surface text-text-primary",
+  tracejado: "border border-dashed border-border bg-surface text-text-secondary",
+  alerta: "border border-controle bg-surface text-text-primary",
 };
 
 export function Badge({
-  variant = "neutral",
+  variant = "contorno",
   className = "",
   children,
   ...props
 }: BadgeProps) {
   return (
+    // whitespace-nowrap + shrink-0: badge nunca quebra em duas linhas nem
+    // espreme o título ao lado. Se faltar espaço, quem o contém usa
+    // flex-wrap e o badge desce inteiro para baixo do título.
     <span
-      className={`inline-flex items-center gap-1.5 px-3 py-1 text-label font-medium ${variantClasses[variant]} ${className}`}
+      className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-klass-pill px-3 py-1 text-label font-medium ${variantClasses[variant]} ${className}`}
       {...props}
     >
-      {variant === "live" && (
-        <span className="h-2 w-2 rounded-full bg-primary" aria-hidden />
-      )}
       {children}
     </span>
   );

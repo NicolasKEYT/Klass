@@ -1,5 +1,7 @@
 import { useNavigate } from "react-router-dom";
+import { Avatar } from "@/components/Avatar";
 import { IndicadorSincronizacao } from "@/components/IndicadorSincronizacao";
+import { LinkComPrefetch } from "@/components/LinkComPrefetch";
 import { useAuth } from "@/auth";
 
 // D13 — o indicador de sincronização fica sempre visível no topo de toda
@@ -31,6 +33,17 @@ export function TiraSuperior() {
 
       <div className="flex items-center gap-3">
         <IndicadorSincronizacao />
+        {/* Menu do usuário no celular: o avatar abre o Perfil. A
+            coordenação não tem Perfil no celular (só o Início é usável). */}
+        {profile && profile.papel !== "coordenacao" && (
+          <LinkComPrefetch
+            to="/perfil"
+            aria-label={`Perfil de ${profile.nome_completo}`}
+            className="rounded-full md:hidden"
+          >
+            <Avatar nome={profile.nome_completo} />
+          </LinkComPrefetch>
+        )}
         {profile && (
           <button
             type="button"

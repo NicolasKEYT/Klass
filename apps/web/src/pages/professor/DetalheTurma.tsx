@@ -6,6 +6,7 @@ import { useAuth } from "@/auth";
 import { Aviso } from "@/components/Aviso";
 import { BotaoVoltar } from "@/components/BotaoVoltar";
 import { Button } from "@/components/Button";
+import { Avatar } from "@/components/Avatar";
 import { Card } from "@/components/Card";
 import { GradeNotas } from "@/components/diario/GradeNotas";
 import { Esqueleto, EsqueletoCards, EsqueletoTabela, RegiaoCarregando } from "@/components/Esqueleto";
@@ -891,7 +892,9 @@ export function DetalheTurma() {
                         </form>
                       </Card>
                     ) : (
-                      <Card key={aula.id} className="flex items-center justify-between gap-3">
+                      // flex-wrap: no celular as ações descem para baixo da data
+                      // em vez de vazar do card.
+                      <Card key={aula.id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
                         <div>
                           <p className="text-body-sm font-medium text-text-primary">
                             {aula.data}
@@ -901,7 +904,7 @@ export function DetalheTurma() {
                             <p className="text-label text-text-muted">{aula.descricao}</p>
                           )}
                         </div>
-                        <div className="flex shrink-0 items-center gap-3">
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                           <button
                             type="button"
                             onClick={() => aoAbrirEdicaoAula(aula)}
@@ -1001,21 +1004,24 @@ export function DetalheTurma() {
                     : undefined;
                   return (
                     <Card key={aluno.matriculaId} className="flex items-center justify-between gap-4">
-                      <div className="flex flex-col gap-0.5">
-                        <div className="flex items-center gap-2">
-                          <span className="text-body-sm font-medium text-text-primary">
-                            {aluno.alunoNome}
+                      <div className="flex min-w-0 items-start gap-3">
+                        <Avatar nome={aluno.alunoNome} />
+                        <div className="flex min-w-0 flex-col gap-0.5">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-body-sm font-medium text-text-primary">
+                              {aluno.alunoNome}
+                            </span>
+                            <StatusBadge tipo="matricula" status={aluno.status} />
+                          </div>
+                          <span className="text-label text-text-muted">
+                            Média:{" "}
+                            {aluno.progresso.media !== null ? aluno.progresso.media.toFixed(1) : "—"}{" "}
+                            · Frequência:{" "}
+                            {aluno.progresso.frequencia !== null
+                              ? `${aluno.progresso.frequencia.toFixed(0)}%`
+                              : "—"}
                           </span>
-                          <StatusBadge tipo="matricula" status={aluno.status} />
                         </div>
-                        <span className="text-label text-text-muted">
-                          Média:{" "}
-                          {aluno.progresso.media !== null ? aluno.progresso.media.toFixed(1) : "—"}{" "}
-                          · Frequência:{" "}
-                          {aluno.progresso.frequencia !== null
-                            ? `${aluno.progresso.frequencia.toFixed(0)}%`
-                            : "—"}
-                        </span>
                       </div>
                       {aluno.status === "matriculada" && (
                         <Button

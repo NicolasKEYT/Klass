@@ -429,7 +429,7 @@ function EditorDeTrilha({ trilha, slugRota }: { trilha: Trilha; slugRota: string
               <textarea
                 required
                 rows={4}
-                className="rounded-klass-control border border-border bg-surface px-3.5 py-2 text-body-sm text-text-primary transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                className="rounded-klass-control border border-controle bg-surface px-3.5 py-2 text-body-sm text-text-primary transition focus:border-primary"
                 value={descricao}
                 onChange={(e) => setDescricao(e.target.value)}
               />
@@ -515,7 +515,7 @@ function EditorDeTrilha({ trilha, slugRota }: { trilha: Trilha; slugRota: string
                 <label className="flex flex-1 flex-col gap-1.5">
                   <span className="text-label font-medium text-text-secondary">Nível</span>
                   <select
-                    className="h-12 sm:h-10 rounded-klass-control border border-border bg-surface px-3.5 text-body-sm text-text-primary transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    className="h-12 sm:h-10 rounded-klass-control border border-controle bg-surface px-3.5 text-body-sm text-text-primary transition focus:border-primary"
                     value={novoModuloNivel}
                     onChange={(e) => setNovoModuloNivel(e.target.value as NivelModulo)}
                   >
@@ -569,7 +569,7 @@ function EditorDeTrilha({ trilha, slugRota }: { trilha: Trilha; slugRota: string
                   />
                   <div className="flex gap-4">
                     <select
-                      className="h-12 sm:h-10 flex-1 rounded-klass-control border border-border bg-surface px-3.5 text-body-sm text-text-primary transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                      className="h-12 sm:h-10 flex-1 rounded-klass-control border border-controle bg-surface px-3.5 text-body-sm text-text-primary transition focus:border-primary"
                       value={edicaoNivel}
                       onChange={(e) => setEdicaoNivel(e.target.value as NivelModulo)}
                     >
@@ -609,7 +609,7 @@ function EditorDeTrilha({ trilha, slugRota }: { trilha: Trilha; slugRota: string
                       <Titulo nivel="item" as="h3">
                         {modulo.nome}
                       </Titulo>
-                      <Badge variant="neutral">{NIVEL_LABEL[modulo.nivel]}</Badge>
+                      <Badge variant="contorno">{NIVEL_LABEL[modulo.nivel]}</Badge>
                     </div>
                     <div className="flex items-center gap-2">
                       <Button

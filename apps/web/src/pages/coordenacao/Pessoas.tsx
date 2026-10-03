@@ -5,6 +5,7 @@ import { useAuth } from "@/auth";
 import { Aviso } from "@/components/Aviso";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
+import { Avatar } from "@/components/Avatar";
 import { Card } from "@/components/Card";
 import { EsqueletoCards } from "@/components/Esqueleto";
 import { ErroConsulta } from "@/components/ErroConsulta";
@@ -18,7 +19,7 @@ import { alterarPapel, PAPEIS, rotuloDoPapel } from "@/lib/identidade";
 import { plural } from "@/lib/plural";
 
 const CLASSE_SELECT =
-  "h-12 sm:h-10 rounded-klass-control border border-border bg-surface px-3.5 text-body-sm text-text-primary transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20";
+  "h-12 sm:h-10 rounded-klass-control border border-controle bg-surface px-3.5 text-body-sm text-text-primary transition focus:border-primary";
 
 // D3 — "Pessoas": lista de perfis com troca de papel. Não há convite por
 // e-mail (depende de infraestrutura de e-mail; fica com a futura visão do
@@ -149,10 +150,11 @@ export function Pessoas() {
             <Card key={pessoa.id} className="flex flex-col gap-3">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-2">
+                  <Avatar nome={pessoa.nomeCompleto} className="mr-1" />
                   <span className="truncate text-body-sm font-medium text-text-primary">
                     {pessoa.nomeCompleto}
                   </span>
-                  <Badge variant="neutral">{rotuloDoPapel(pessoa.papel)}</Badge>
+                  <Badge variant="contorno">{rotuloDoPapel(pessoa.papel)}</Badge>
                 </div>
                 {ehEuMesmo ? (
                   // Trocar o próprio papel tiraria a coordenação de si mesma

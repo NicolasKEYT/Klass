@@ -10,6 +10,7 @@ import { DetalheModulo } from "@/pages/DetalheModulo";
 import { DetalheTrilha } from "@/pages/DetalheTrilha";
 import { Entrar } from "@/pages/Entrar";
 import { Home } from "@/pages/Home";
+import { Perfil } from "@/pages/Perfil";
 import { VerificarCertificado } from "@/pages/VerificarCertificado";
 import { Boletim } from "@/pages/aluno/Boletim";
 import { Certificados as CertificadosDoAluno } from "@/pages/aluno/Certificados";
@@ -58,6 +59,9 @@ export default function App() {
               dedicada por módulo, com pré-requisitos e escolha de turma,
               separada da visão geral da trilha. */}
           <Route path="/catalogo/:slug/modulos/:moduloId" element={<DetalheModulo />} />
+          {/* D3 — Perfil (nome, papel, e-mail, Sair): barra inferior do
+              professor e menu do usuário do aluno. */}
+          <Route path="/perfil" element={<Perfil />} />
 
           <Route element={<Autenticado papel="coordenacao" />}>
             <Route path="/coordenacao/trilhas" element={<Trilhas />} />

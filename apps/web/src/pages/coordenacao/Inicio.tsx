@@ -267,9 +267,10 @@ export function Inicio() {
             Turmas em andamento
           </Titulo>
           {/* No celular a tabela rola na horizontal dentro do cartão, em vez
-              de espremer as colunas. */}
+              de espremer as colunas. No desktop ela cabe no cartão: nomes de
+              módulo/professor quebram linha, o badge de situação não. */}
           <Card className="overflow-x-auto !px-0 !py-0">
-            <table className="w-full min-w-max text-left">
+            <table className="w-full min-w-max text-left md:min-w-0">
               <thead>
                 <tr className="border-b border-border text-label text-text-muted">
                   <th className="px-4 py-3 font-medium">Turma</th>
@@ -336,7 +337,7 @@ export function Inicio() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <Badge variant="neutral">{t.situacao}</Badge>
+                      <Badge variant="contorno">{t.situacao}</Badge>
                     </td>
                   </tr>
                 ))}

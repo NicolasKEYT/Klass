@@ -218,9 +218,9 @@ export function DetalheModulo() {
         <Titulo>{modulo.nome}</Titulo>
       </div>
       <div className="mt-2 flex flex-wrap gap-2">
-        <Badge variant="neutral">{NIVEL_LABEL[modulo.nivel]}</Badge>
-        <Badge variant="neutral">{modulo.carga_horaria_horas} h</Badge>
-        <Badge variant="neutral">Trilha {trilha.nome}</Badge>
+        <Badge variant="contorno">{NIVEL_LABEL[modulo.nivel]}</Badge>
+        <Badge variant="contorno">{modulo.carga_horaria_horas} h</Badge>
+        <Badge variant="contorno">Trilha {trilha.nome}</Badge>
       </div>
       {modulo.descricao && <p className="mt-3 text-body-sm text-text-secondary">{modulo.descricao}</p>}
 
@@ -237,7 +237,7 @@ export function DetalheModulo() {
 
       {preRequisitos.length > 0 && (
         <Card className="mt-4">
-          <p className="mb-3 text-klass-md font-medium text-text-primary">Antes de se inscrever</p>
+          <h2 className="mb-3 text-klass-lg text-text-primary">Antes de se inscrever</h2>
           <div className="flex flex-col gap-2.5">
             {preRequisitos.map((p) => (
               <div key={p.moduloId} className="flex items-center gap-2.5">
@@ -266,7 +266,7 @@ export function DetalheModulo() {
 
       {profile?.papel === "aluno" && matriculaAnterior && (
         <Card className="mt-4 flex flex-col gap-2">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
             <p className="text-body-sm text-text-secondary">
               Sua inscrição anterior, na turma {matriculaAnterior.turmaCodigo}:
             </p>
@@ -282,7 +282,7 @@ export function DetalheModulo() {
       {profile?.papel === "aluno" && !matriculaVigente && (
         <>
           <Card className="mt-4">
-            <p className="mb-3 text-klass-md font-medium text-text-primary">Escolha a turma</p>
+            <h2 className="mb-3 text-klass-lg text-text-primary">Escolha a turma</h2>
             {turmas.length === 0 && (
               <p className="text-body-sm text-text-secondary">
                 Nenhuma turma aberta para este módulo no momento.
@@ -305,7 +305,7 @@ export function DetalheModulo() {
                     <input
                       type="radio"
                       name="turma"
-                      className="h-5 w-5 accent-acento"
+                      className="h-5 w-5 shrink-0 accent-acento"
                       checked={turmaSelecionada === turma.id}
                       onChange={() => setEscolha({ moduloId: moduloId!, turmaId: turma.id })}
                       disabled={turma.vagasRestantes <= 0 || turma.minhaMatricula !== null}
@@ -350,7 +350,7 @@ export function DetalheModulo() {
 
       {matriculaVigente && (
         <Card className="mt-4 flex flex-col gap-2">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
             <p className="text-body-sm font-medium text-text-primary">
               Turma {matriculaVigente.turmaCodigo}
             </p>

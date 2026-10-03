@@ -6,6 +6,7 @@ import {
   Home,
   Layers,
   Search,
+  User,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -41,8 +42,18 @@ const COORDENACAO: ItemNav[] = [
   { para: "/", texto: "Início", Icone: Home },
   { para: "/coordenacao/turmas", texto: "Turmas", Icone: Layers },
   { para: "/coordenacao/trilhas", texto: "Trilhas", Icone: BookOpen },
-  { para: "/coordenacao/certificados", texto: "Certificados", Icone: Award },
+  // Ordem da pág. 7 do UI Kit: Pessoas antes de Certificados.
   { para: "/coordenacao/pessoas", texto: "Pessoas", Icone: Users },
+  { para: "/coordenacao/certificados", texto: "Certificados", Icone: Award },
+];
+
+// Barra inferior do professor (pág. 7 do UI Kit): Hoje · Turmas · Perfil.
+// O Catálogo sai da barra (fica como atalho na tela Perfil) e "Minhas
+// turmas" encurta para caber com o rótulo sempre visível.
+const PROFESSOR_MOBILE: ItemNav[] = [
+  { para: "/", texto: "Hoje", Icone: Calendar },
+  { para: "/professor/turmas", texto: "Turmas", Icone: Layers },
+  { para: "/perfil", texto: "Perfil", Icone: User },
 ];
 
 export function navPorPapel(papel: Papel | undefined): ItemNav[] {
@@ -52,15 +63,12 @@ export function navPorPapel(papel: Papel | undefined): ItemNav[] {
   return [];
 }
 
-// D3 (celular) — barra inferior fixa, subconjunto da navegação de cada
-// papel. Professor troca "Catálogo" aqui por decisão própria (ver
-// BarraLateral/PaginaAutenticada): o wireframe original mostra "Perfil"
-// como terceiro item, mas essa tela não existe em nenhuma parte deste
-// prompt — inventar uma tela de perfil não pedida ficaria fora de escopo.
-// Sair no celular fica na tira superior (todos os papéis), não na barra
-// inferior.
+// D3 (celular) — barra inferior fixa. O aluno usa os mesmos 4 itens do
+// desktop e chega ao Perfil pelo avatar da tira superior (menu do
+// usuário); o professor tem Perfil na própria barra. Sair fica na tira
+// superior e na tela Perfil.
 export function navMobilePorPapel(papel: Papel | undefined): ItemNav[] {
   if (papel === "aluno") return ALUNO;
-  if (papel === "professor") return PROFESSOR;
+  if (papel === "professor") return PROFESSOR_MOBILE;
   return [];
 }

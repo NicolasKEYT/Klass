@@ -203,7 +203,9 @@ export function Boletim() {
               <div className="flex flex-col gap-3">
                 {grupo.linhas.map(({ modulo, matricula, faltantes, progresso, avaliacoes }) => (
                   <Card key={modulo.id} className="flex flex-col gap-2">
-                    <div className="flex items-center justify-between gap-3">
+                    {/* flex-wrap: no celular, sem espaço, o badge desce inteiro
+                        para baixo do título em vez de espremê-lo. */}
+                    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
                       <Titulo nivel="item" as="h3">
                         {modulo.ordem}. {modulo.nome}
                       </Titulo>
@@ -211,7 +213,7 @@ export function Boletim() {
                         <StatusBadge tipo="matricula" status={matricula.status} />
                       ) : faltantes.length === 0 ? (
                         <LinkComPrefetch to={`/catalogo/${grupo.trilha.slug}/modulos/${modulo.id}`}>
-                          <Badge variant="neutral">
+                          <Badge variant="contorno">
                             <Unlock className="h-3.5 w-3.5" aria-hidden />
                             Disponível
                           </Badge>
@@ -326,9 +328,9 @@ export function Boletim() {
                       aria-hidden
                     />
                     <div>
-                      <p className="text-klass-md font-medium text-text-primary">
+                      <h3 className="text-klass-lg text-text-primary">
                         Certificado da trilha
-                      </p>
+                      </h3>
                       <p className="text-label text-text-muted">
                         {trilhaConcluida
                           ? "Liberado — você concluiu todos os módulos."

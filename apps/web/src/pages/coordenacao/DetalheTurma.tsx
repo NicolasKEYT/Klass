@@ -4,6 +4,7 @@ import { Aviso } from "@/components/Aviso";
 import { BotaoVoltar } from "@/components/BotaoVoltar";
 import { Button } from "@/components/Button";
 import { LinkBotao } from "@/components/LinkBotao";
+import { Avatar } from "@/components/Avatar";
 import { Card } from "@/components/Card";
 import { Esqueleto, EsqueletoCards, RegiaoCarregando } from "@/components/Esqueleto";
 import { ErroConsulta } from "@/components/ErroConsulta";
@@ -157,7 +158,7 @@ export function DetalheTurma() {
       // turma": reativar deixa a turma sem encerradas e o bloco some junto
       // com o retorno.
       setMensagem(
-        `${plural(resumo.reativadas, "matrícula reativada", "matrículas reativadas")} — ${flexionar(resumo.reativadas, "voltou", "voltaram")} para "matriculada".`,
+        `${plural(resumo.reativadas, "matrícula reativada", "matrículas reativadas")} — ${flexionar(resumo.reativadas, "voltou", "voltaram")} para "Cursando".`,
       );
       setConfirmandoReativarTurma(false);
     } catch (e) {
@@ -246,8 +247,11 @@ export function DetalheTurma() {
               )}
               {pendentes.map((matricula) => (
                 <Card key={matricula.id} className="flex flex-col gap-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-klass-md text-text-primary">{matricula.alunoNome}</span>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <span className="flex items-center gap-3 text-klass-md text-text-primary">
+                      <Avatar nome={matricula.alunoNome} />
+                      {matricula.alunoNome}
+                    </span>
                     {rejeitandoId !== matricula.id && (
                       <div className="flex gap-2">
                         <Button
@@ -279,7 +283,7 @@ export function DetalheTurma() {
                         <textarea
                           required
                           rows={2}
-                          className="rounded-klass-control border border-border bg-surface px-3.5 py-2 text-body-sm text-text-primary transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                          className="rounded-klass-control border border-controle bg-surface px-3.5 py-2 text-body-sm text-text-primary transition focus:border-primary"
                           value={motivo}
                           onChange={(e) => setMotivo(e.target.value)}
                         />
@@ -311,8 +315,11 @@ export function DetalheTurma() {
               )}
               {matriculados.map((matricula) => (
                 <Card key={matricula.id} className="flex flex-col gap-3">
-                  <div className="flex items-center justify-between gap-4">
-                    <span className="text-body-sm text-text-primary">{matricula.alunoNome}</span>
+                  <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+                    <span className="flex items-center gap-3 text-body-sm text-text-primary">
+                      <Avatar nome={matricula.alunoNome} />
+                      {matricula.alunoNome}
+                    </span>
                     <div className="flex items-center gap-2">
                       <StatusBadge tipo="matricula" status="matriculada" />
                       {removendoId !== matricula.id && (
@@ -338,7 +345,7 @@ export function DetalheTurma() {
                         <textarea
                           required
                           rows={2}
-                          className="rounded-klass-control border border-border bg-surface px-3.5 py-2 text-body-sm text-text-primary transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                          className="rounded-klass-control border border-controle bg-surface px-3.5 py-2 text-body-sm text-text-primary transition focus:border-primary"
                           value={motivoRemocao}
                           onChange={(e) => setMotivoRemocao(e.target.value)}
                         />
@@ -508,7 +515,10 @@ export function DetalheTurma() {
               )}
               {alunosDiario.map((aluno) => (
                 <Card key={aluno.matriculaId} className="flex items-center justify-between gap-3">
-                  <span className="text-body-sm text-text-primary">{aluno.alunoNome}</span>
+                  <span className="flex items-center gap-3 text-body-sm text-text-primary">
+                    <Avatar nome={aluno.alunoNome} />
+                    {aluno.alunoNome}
+                  </span>
                   <div className="flex items-center gap-3">
                     <span className="text-label text-text-muted">
                       Média: {aluno.progresso.media !== null ? aluno.progresso.media.toFixed(1) : "—"}

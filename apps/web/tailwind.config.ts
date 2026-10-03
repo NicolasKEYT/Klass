@@ -28,6 +28,13 @@ export default {
         border: {
           DEFAULT: "#D8D9D3", // borda visível de card/badge — sem sombra de elevação (medido)
         },
+        // Borda de controle de formulário — `border-controle` (input, select, textarea,
+        // checkbox) e de badge de alerta. A borda de card é decorativa e
+        // pode ser sutil; a de um campo identifica o controle, e a WCAG
+        // 1.4.11 pede ≥ 3:1 contra o fundo adjacente: 3,64:1 no branco e
+        // 3,28:1 no fundo da página (cálculo no QA de 2026-10-03). Mesmo
+        // tom quente da paleta, só mais escuro.
+        controle: "#85877F",
         text: {
           // "Preto/quase-preto" quente — não o cinza frio (#191A1C) de
           // antes da reforma. Repontado, não renomeado: todo uso de
@@ -35,7 +42,11 @@ export default {
           // automaticamente (ver `primary` abaixo).
           primary: "#1A1A17",
           secondary: "#6B6D66",
-          muted: "#8B8D86",
+          // Era #8B8D86 (3,4:1 no branco e 3,0:1 no fundo — abaixo do
+          // mínimo de 4,5:1 da WCAG 1.4.3 para texto). Escurecido no mesmo
+          // tom quente: 5,09:1 no branco e 4,58:1 no fundo. Fica muito
+          // perto do secondary; a hierarquia passa a vir de tamanho/peso.
+          muted: "#6D6F68",
         },
         // "primary" deixou de ser a marca azul: no UI Kit de alta-
         // fidelidade, todo botão/badge/estado "principal" (Concluído,
@@ -50,7 +61,7 @@ export default {
         },
         // Único azul do sistema inteiro — usado só no <input type="radio">
         // de "Escolha a turma" (accent-color), nunca em botão, link, badge
-        // ou foco de campo. Valor citado no próprio diagnóstico do PDF.
+        // ou anel de foco (ver :focus-visible em index.css). Valor citado no próprio diagnóstico do PDF.
         acento: {
           DEFAULT: "#0A84FF",
         },
@@ -110,8 +121,13 @@ export default {
         //
         // klass-2xs e text-caption saíam de circulação (9,5px e 11px,
         // nenhum uso no código) — removidos.
-        "text-label": ["14px", { lineHeight: "1.35" }], // D2 — era 12px; metadado/legenda/rótulo (mínimo absoluto)
-        "text-body-sm": ["16px", { lineHeight: "1.5" }], // D2 — era 13px; corpo, célula de tabela
+        //
+        // As chaves NÃO levam o prefixo "text-": o Tailwind já prefixa
+        // fontSize com "text-", então a chave "text-label" gerava
+        // `.text-text-label` e as classes `text-label`/`text-body-sm` usadas
+        // nas telas não produziam CSS nenhum (QA de 2026-10-02).
+        label: ["14px", { lineHeight: "1.35" }], // D2 — metadado/legenda/rótulo (mínimo absoluto)
+        "body-sm": ["16px", { lineHeight: "1.5" }], // D2 — corpo, célula de tabela
 
         "klass-md": ["16px", { lineHeight: "1.4", fontWeight: "500" }], // D2 — era 14px; nav, botão, valores de tabela
         "klass-lg": ["20px", { lineHeight: "1.3", fontWeight: "600" }], // D2 — era 16px; título de card

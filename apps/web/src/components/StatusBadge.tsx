@@ -1,5 +1,5 @@
 import { Award, Check, Clock, Minus, TriangleAlert, X } from "lucide-react";
-import { Badge } from "@/components/Badge";
+import { Badge, type BadgeVariant } from "@/components/Badge";
 import type { StatusMatricula } from "@klass/types";
 
 // D8 (klass-uikit.pdf, Fundamentos) — "todo status no sistema passa a ter
@@ -12,29 +12,32 @@ type StatusAulaAvaliacao = "chamada_feita" | "chamada_pendente" | "abaixo_da_med
 
 const MATRICULA: Record<
   StatusMatricula,
-  { texto: string; variante: "success" | "neutral" | "danger" | "tracejado"; Icone: typeof Check }
+  { texto: string; variante: BadgeVariant; Icone: typeof Check }
 > = {
-  // "Em análise" é o único status de matrícula com borda tracejada no
-  // Fundamentos (estado ainda incerto/em espera) — os demais são contorno
-  // sólido, exceto "Concluído", que é o único preenchido a preto.
+  // "Em análise" é o único status de matrícula tracejado (estado ainda em
+  // espera); "Concluído" o único preenchido a preto; os demais são
+  // contorno, com o ícone dizendo o sentido (✓, ×, −).
+  // `matriculada` aparece como "Cursando" em todo o sistema: é o rótulo do
+  // Boletim e do checklist do UI Kit, e diz o que o aluno está fazendo.
   inscrita: { texto: "Em análise", variante: "tracejado", Icone: Clock },
-  matriculada: { texto: "Matriculado(a)", variante: "neutral", Icone: Check },
-  concluida: { texto: "Concluído", variante: "success", Icone: Award },
-  reprovada: { texto: "Reprovado(a)", variante: "danger", Icone: X },
-  rejeitada: { texto: "Rejeitada", variante: "danger", Icone: X },
-  cancelada: { texto: "Cancelada", variante: "neutral", Icone: Minus },
+  matriculada: { texto: "Cursando", variante: "contorno", Icone: Check },
+  concluida: { texto: "Concluído", variante: "preenchido", Icone: Award },
+  reprovada: { texto: "Reprovado(a)", variante: "contorno", Icone: X },
+  rejeitada: { texto: "Rejeitada", variante: "contorno", Icone: X },
+  cancelada: { texto: "Cancelada", variante: "contorno", Icone: Minus },
 };
 
 const AULA_AVALIACAO: Record<
   StatusAulaAvaliacao,
-  { texto: string; variante: "success" | "neutral" | "danger" | "tracejado"; Icone: typeof Check }
+  { texto: string; variante: BadgeVariant; Icone: typeof Check }
 > = {
-  chamada_feita: { texto: "Chamada feita", variante: "neutral", Icone: Check },
+  chamada_feita: { texto: "Chamada feita", variante: "contorno", Icone: Check },
   // "Chamada pendente" é preenchida a preto no Fundamentos e na tela
-  // Hoje (é a ação mais urgente do dia) — "Abaixo da média" é contorno
-  // (é uma coluna de status numa grade, não uma chamada à ação).
-  chamada_pendente: { texto: "Chamada pendente", variante: "success", Icone: TriangleAlert },
-  abaixo_da_media: { texto: "Abaixo da média", variante: "danger", Icone: TriangleAlert },
+  // Hoje (é a ação mais urgente do dia) — "Abaixo da média" é alerta:
+  // contorno com ícone (é uma coluna de status numa grade, não uma
+  // chamada à ação), nunca vermelho/amarelo.
+  chamada_pendente: { texto: "Chamada pendente", variante: "preenchido", Icone: TriangleAlert },
+  abaixo_da_media: { texto: "Abaixo da média", variante: "alerta", Icone: TriangleAlert },
 };
 
 interface StatusBadgeMatriculaProps {

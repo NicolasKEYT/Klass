@@ -8,4 +8,29 @@
   body {
     @apply bg-background font-sans text-text-primary antialiased;
   }
+
+  /* Foco visível (WCAG 2.4.7) para todo elemento interativo: links,
+     botões, abas, itens de navegação e campos. Sem esta regra o navegador
+     desenhava o anel azul nativo — e o único azul do sistema é o rádio de
+     "Escolha a turma". Anel na cor de destaque (preto do tema, 18:1 no
+     branco e 16:1 no fundo), 2px, afastado 2px do elemento. Nenhum
+     componente deve tirar o outline sem pôr este anel no lugar. */
+  :focus-visible {
+    outline: 2px solid theme("colors.primary.DEFAULT");
+    outline-offset: 2px;
+  }
+
+  /* Texto selecionado (inclusive o conteúdo de um campo ao receber foco
+     por Tab) usava o realce azul do sistema. */
+  ::selection {
+    background-color: theme("colors.primary.DEFAULT");
+    color: theme("colors.surface");
+  }
+
+  /* Checkbox nativo marcado era azul (accent-color: auto). O rádio de
+     turma sobrescreve com `accent-acento`, que é utilitário e vence esta
+     regra de base. */
+  input[type="checkbox"] {
+    accent-color: theme("colors.primary.DEFAULT");
+  }
 }

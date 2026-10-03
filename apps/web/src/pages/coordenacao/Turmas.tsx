@@ -29,9 +29,9 @@ function CartaoTurma({ turma, aguardandoEncerramento }: { turma: TurmaListagem; 
             {turma.moduloNome} · {turma.trilhaNome}
           </span>
           {turma.pendentes > 0 && (
-            <Badge variant="neutral">{plural(turma.pendentes, "pendente", "pendentes")}</Badge>
+            <Badge variant="contorno">{plural(turma.pendentes, "pendente", "pendentes")}</Badge>
           )}
-          {aguardandoEncerramento && <Badge variant="tracejado">Aguardando encerramento</Badge>}
+          {aguardandoEncerramento && <Badge variant="contorno">Aguardando encerramento</Badge>}
         </div>
         <p className="text-label text-text-muted">
           {turma.professorNome} · {turma.periodoInicio} a {turma.periodoFim} · {turma.matriculados}/

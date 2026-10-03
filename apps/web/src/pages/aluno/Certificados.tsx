@@ -54,7 +54,7 @@ export function Certificados() {
             >
               <div className="flex flex-col gap-1">
                 <div className="flex items-center gap-2">
-                  <Badge variant="neutral">
+                  <Badge variant="contorno">
                     {certificado.modulo_id !== null ? "Módulo" : "Trilha"}
                   </Badge>
                   <Titulo nivel="item" as="h2">

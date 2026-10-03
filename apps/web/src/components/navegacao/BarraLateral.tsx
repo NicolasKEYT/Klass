@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from "react-router-dom";
-import { Badge } from "@/components/Badge";
+import { Avatar } from "@/components/Avatar";
 import { useAuth } from "@/auth";
 import { LinkComPrefetch } from "@/components/LinkComPrefetch";
 import { rotuloDoPapel } from "@/lib/identidade";
@@ -77,21 +77,30 @@ export function BarraLateral() {
         })}
       </nav>
 
-      {/* D3 — "rodapé da barra lateral: nome do usuário + papel, seguido de Sair". */}
+      {/* D3 (pág. 7) — rodapé: avatar de iniciais, nome e papel. O bloco é
+          o menu do usuário e leva ao Perfil; Sair fica ao lado. */}
       {profile && (
-        <div className="flex items-center justify-between gap-2 border-t border-border px-4 py-4">
-          <div className="flex min-w-0 flex-col">
-            <span className="truncate text-klass-md font-medium text-text-primary">
-              {profile.nome_completo}
+        <div className="flex items-center justify-between gap-2 border-t border-border px-3 py-3">
+          <LinkComPrefetch
+            to="/perfil"
+            className={`flex min-w-0 flex-1 items-center gap-3 rounded-klass-control px-2 py-1.5 transition ${
+              location.pathname === "/perfil" ? "bg-primary-subtle" : "hover:bg-neutral-subtle"
+            }`}
+          >
+            <Avatar nome={profile.nome_completo} />
+            <span className="flex min-w-0 flex-col">
+              <span className="truncate text-body-sm font-semibold text-text-primary">
+                {profile.nome_completo}
+              </span>
+              <span className="truncate text-label text-text-secondary">
+                {rotuloDoPapel(profile.papel)}
+              </span>
             </span>
-            <Badge variant="neutral" className="mt-1 w-fit">
-              {rotuloDoPapel(profile.papel)}
-            </Badge>
-          </div>
+          </LinkComPrefetch>
           <button
             type="button"
             onClick={() => void aoSair()}
-            className="shrink-0 text-label font-medium text-text-secondary hover:text-text-primary"
+            className="shrink-0 rounded-klass-control px-2 py-1.5 text-label font-medium text-text-secondary hover:text-text-primary"
           >
             Sair
           </button>

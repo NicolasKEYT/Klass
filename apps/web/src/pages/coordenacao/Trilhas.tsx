@@ -105,7 +105,7 @@ export function Trilhas() {
                   <Titulo nivel="item" as="h2">
                     {trilha.nome}
                   </Titulo>
-                  <Badge variant={trilha.publicada ? "success" : "neutral"}>
+                  <Badge variant={trilha.publicada ? "preenchido" : "contorno"}>
                     {trilha.publicada ? "Publicada" : "Rascunho"}
                   </Badge>
                 </div>

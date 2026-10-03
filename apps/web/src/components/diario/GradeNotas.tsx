@@ -3,6 +3,7 @@ import { Pencil, Trash2 } from "lucide-react";
 import { Aviso } from "@/components/Aviso";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
+import { Avatar } from "@/components/Avatar";
 import { Card } from "@/components/Card";
 import { Input } from "@/components/Input";
 import { EsqueletoTabela } from "@/components/Esqueleto";
@@ -297,9 +298,9 @@ export function GradeNotas({
       {/* Toolbar: informação read-only — média/frequência mínima são
           definidas na trilha/turma (outro prompt), não editáveis aqui. */}
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <Badge variant="neutral">Média mínima {turma.trilhaMediaMinima.toFixed(1)}</Badge>
-        <Badge variant="neutral">Frequência mínima {turma.frequenciaMinimaPercentual}%</Badge>
-        <Badge variant="neutral">Cálculo por média ponderada</Badge>
+        <Badge variant="contorno">Média mínima {turma.trilhaMediaMinima.toFixed(1)}</Badge>
+        <Badge variant="contorno">Frequência mínima {turma.frequenciaMinimaPercentual}%</Badge>
+        <Badge variant="contorno">Cálculo por média ponderada</Badge>
       </div>
 
       {erro && (
@@ -466,7 +467,12 @@ export function GradeNotas({
               return (
                 // D2 — linha de tabela no desktop: 52px de altura.
                 <tr key={aluno.matriculaId} className="h-[52px] border-b border-border last:border-b-0">
-                  <td className="px-4 py-3 text-body-sm text-text-primary">{aluno.alunoNome}</td>
+                  <td className="px-4 py-3 text-body-sm text-text-primary">
+                    <span className="flex items-center gap-3">
+                      <Avatar nome={aluno.alunoNome} />
+                      {aluno.alunoNome}
+                    </span>
+                  </td>
                   {avaliacoes.map((avaliacao) => {
                     const k = chave(avaliacao.id, aluno.matriculaId);
                     const podeEditar = aluno.status === "matriculada";
@@ -477,7 +483,7 @@ export function GradeNotas({
                           type="text"
                           inputMode="decimal"
                           disabled={!podeEditar}
-                          className="h-10 w-20 rounded-klass-control border border-border bg-surface px-2 text-center font-mono text-body-sm tabular-nums text-text-primary transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:bg-neutral-subtle disabled:text-text-muted"
+                          className="h-10 w-20 rounded-klass-control border border-controle bg-surface px-2 text-center font-mono text-body-sm tabular-nums text-text-primary transition focus:border-primary disabled:bg-neutral-subtle disabled:text-text-muted"
                           value={rascunhos[k] ?? notasSalvas[k] ?? ""}
                           onChange={(e) => definirRascunho(k, e.target.value)}
                           onBlur={() => void salvarCelula(avaliacao.id, aluno.matriculaId)}

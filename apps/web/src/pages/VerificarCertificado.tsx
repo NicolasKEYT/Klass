@@ -1,4 +1,5 @@
 import { useParams } from "react-router-dom";
+import { Check, X } from "lucide-react";
 import { Badge } from "@/components/Badge";
 import { Card } from "@/components/Card";
 import { useVerificacaoDeCertificado } from "@/lib/consultas/certificacao";
@@ -51,9 +52,12 @@ export function VerificarCertificado() {
 
         {estado.fase === "valido" && (
           <>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <h1 className="font-serif text-klass-lg text-text-primary">Certificado válido</h1>
-              <Badge variant="success">Autêntico</Badge>
+              <Badge variant="preenchido">
+                <Check className="h-3.5 w-3.5" aria-hidden />
+                Autêntico
+              </Badge>
             </div>
             <dl className="flex flex-col gap-3">
               <div>
@@ -82,11 +86,14 @@ export function VerificarCertificado() {
 
         {estado.fase === "nao-encontrado" && (
           <>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <h1 className="font-serif text-klass-lg text-text-primary">
                 Certificado não encontrado
               </h1>
-              <Badge variant="danger">Inválido</Badge>
+              <Badge variant="contorno">
+                <X className="h-3.5 w-3.5" aria-hidden />
+                Inválido
+              </Badge>
             </div>
             <p className="text-body-sm text-text-secondary">
               Nenhum certificado corresponde a este código. Confira se o código foi digitado

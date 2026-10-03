@@ -45,7 +45,7 @@ export function Cadastrar() {
     return (
       <div className="flex min-h-screen items-center justify-center p-6">
         <Card className="flex w-full max-w-sm flex-col items-center gap-4 text-center">
-          <Badge variant="success">verifique seu e-mail</Badge>
+          <Badge variant="preenchido">verifique seu e-mail</Badge>
           <h1 className="font-serif text-klass-xl text-text-primary">Quase lá</h1>
           <p className="text-body-sm text-text-secondary">
             Enviamos um link de confirmação para <strong>{emailParaConfirmar}</strong>. Abra
