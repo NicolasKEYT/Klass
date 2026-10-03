@@ -39,7 +39,7 @@ export function VerificarCertificado() {
   return (
     <div className="flex min-h-screen flex-col items-center bg-background p-6">
       <header className="mb-8 mt-4 text-center">
-        <p className="font-serif text-klass-lg text-text-primary">Klass</p>
+        <p className="text-klass-lg font-semibold text-text-primary">Klass</p>
         <p className="text-label font-medium uppercase tracking-wide text-text-muted">
           Verificação de Certificado
         </p>
@@ -53,7 +53,7 @@ export function VerificarCertificado() {
         {estado.fase === "valido" && (
           <>
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h1 className="font-serif text-klass-lg text-text-primary">Certificado válido</h1>
+              <h1 className="text-klass-lg font-semibold text-text-primary">Certificado válido</h1>
               <Badge variant="preenchido">
                 <Check className="h-3.5 w-3.5" aria-hidden />
                 Autêntico
@@ -87,7 +87,7 @@ export function VerificarCertificado() {
         {estado.fase === "nao-encontrado" && (
           <>
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h1 className="font-serif text-klass-lg text-text-primary">
+              <h1 className="text-klass-lg font-semibold text-text-primary">
                 Certificado não encontrado
               </h1>
               <Badge variant="contorno">

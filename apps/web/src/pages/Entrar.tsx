@@ -31,7 +31,7 @@ export function Entrar() {
     <div className="flex min-h-screen items-center justify-center p-6">
       <Card className="flex w-full max-w-sm flex-col gap-5">
         <div className="flex flex-col gap-1 text-center">
-          <h1 className="font-serif text-klass-xl text-text-primary">Entrar</h1>
+          <h1 className="text-klass-xl text-text-primary">Entrar</h1>
           <p className="text-body-sm text-text-secondary">Acesse sua conta Klass</p>
         </div>
 

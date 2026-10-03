@@ -46,7 +46,7 @@ export function Cadastrar() {
       <div className="flex min-h-screen items-center justify-center p-6">
         <Card className="flex w-full max-w-sm flex-col items-center gap-4 text-center">
           <Badge variant="preenchido">verifique seu e-mail</Badge>
-          <h1 className="font-serif text-klass-xl text-text-primary">Quase lá</h1>
+          <h1 className="text-klass-xl text-text-primary">Quase lá</h1>
           <p className="text-body-sm text-text-secondary">
             Enviamos um link de confirmação para <strong>{emailParaConfirmar}</strong>. Abra
             seu e-mail e confirme para poder entrar.
@@ -63,7 +63,7 @@ export function Cadastrar() {
     <div className="flex min-h-screen items-center justify-center p-6">
       <Card className="flex w-full max-w-sm flex-col gap-5">
         <div className="flex flex-col gap-1 text-center">
-          <h1 className="font-serif text-klass-xl text-text-primary">Criar conta</h1>
+          <h1 className="text-klass-xl text-text-primary">Criar conta</h1>
           <p className="text-body-sm text-text-secondary">Comece sua jornada na Klass</p>
         </div>
 

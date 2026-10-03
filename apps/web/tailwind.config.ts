@@ -106,7 +106,7 @@ export default {
         // As três famílias aparecem em todos os seis SVGs, sempre com a
         // mesma pilha de fallback.
         sans: ["IBM Plex Sans", "Segoe UI", "system-ui", "sans-serif"],
-        serif: ["IBM Plex Serif", "Georgia", "serif"], // títulos de destaque
+        serif: ["IBM Plex Serif", "Georgia", "serif"], // sem uso na interface desde os títulos sans (UI Kit); o certificado em PDF registra a própria fonte
         mono: ["IBM Plex Mono", "ui-monospace", "monospace"], // dados numéricos: notas, contagens, códigos
       },
 

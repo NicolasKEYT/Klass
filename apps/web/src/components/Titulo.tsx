@@ -4,13 +4,16 @@ import type { ReactNode } from "react";
 // título de página 32px, título de seção 24px, título de card 20px,
 // sempre acima do corpo (text-body-sm, 16px) e dos metadados (text-label,
 // 14px, mínimo absoluto do sistema).
+//
+// Títulos em sans-serif (IBM Plex Sans semibold, o peso vem do token),
+// como no UI Kit. O serif fica só no certificado em PDF.
 type Nivel = "pagina" | "secao" | "item";
 
 type Tag = "h1" | "h2" | "h3" | "h4";
 
 const estilos: Record<Nivel, string> = {
-  pagina: "font-serif text-klass-xl text-text-primary", // 32px
-  secao: "font-serif text-klass-2xl text-text-primary", // 24px
+  pagina: "text-klass-xl text-text-primary", // 32px
+  secao: "text-klass-2xl text-text-primary", // 24px
   item: "text-klass-lg font-semibold text-text-primary", // 20px
 };
 

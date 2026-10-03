@@ -26,9 +26,9 @@ export function TiraSuperior() {
           className="flex h-6 w-6 items-center justify-center rounded-klass-badge bg-text-primary text-white"
           aria-hidden
         >
-          <span className="font-serif text-[13px] font-semibold leading-none">K</span>
+          <span className="text-[13px] font-semibold leading-none">K</span>
         </div>
-        <span className="font-serif text-klass-md font-semibold text-text-primary">Klass</span>
+        <span className="text-klass-md font-semibold text-text-primary">Klass</span>
       </div>
 
       <div className="flex items-center gap-3">

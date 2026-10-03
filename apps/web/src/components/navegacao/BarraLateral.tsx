@@ -32,10 +32,10 @@ export function BarraLateral() {
           className="flex h-8 w-8 items-center justify-center rounded-klass-control bg-text-primary text-white"
           aria-hidden
         >
-          <span className="font-serif text-klass-md font-semibold">K</span>
+          <span className="text-klass-md font-semibold">K</span>
         </div>
         <div className="flex min-w-0 flex-col leading-tight">
-          <span className="font-serif text-klass-md font-semibold text-text-primary">Klass</span>
+          <span className="text-klass-md font-semibold text-text-primary">Klass</span>
           {/* Uma linha só: o cabeçalho tem altura fixa e o nome pode ser longo. */}
           <span className="truncate text-label text-text-muted" title={INSTITUICAO.nome}>
             {INSTITUICAO.nome}
