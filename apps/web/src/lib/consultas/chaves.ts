@@ -23,6 +23,7 @@ export const chaves = {
   identidade: {
     tudo: () => ["identidade"] as const,
     professores: () => ["identidade", "professores"] as const,
+    pessoas: () => ["identidade", "pessoas"] as const,
     buscaAlunos: (termo: string) => ["identidade", "busca-alunos", termo] as const,
   },
   selecao: {

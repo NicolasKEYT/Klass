@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
 import { Aviso } from "@/components/Aviso";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
+import { LinkBotao } from "@/components/LinkBotao";
 import { Card } from "@/components/Card";
 import { EsqueletoCards } from "@/components/Esqueleto";
 import { ErroConsulta } from "@/components/ErroConsulta";
@@ -66,9 +66,7 @@ export function Trilhas() {
     <PaginaAutenticada>
         <div className="mb-6 flex items-center justify-between">
           <Titulo>Trilhas</Titulo>
-          <Link to="/coordenacao/trilhas/nova">
-            <Button>Nova trilha</Button>
-          </Link>
+          <LinkBotao to="/coordenacao/trilhas/nova">Nova trilha</LinkBotao>
         </div>
 
         {erro && (

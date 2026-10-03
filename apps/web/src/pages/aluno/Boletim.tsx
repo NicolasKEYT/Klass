@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useQueries, type QueryKey, type UseQueryOptions } from "@tanstack/react-query";
 import { Award, ChevronDown, ChevronUp, Lock, Unlock } from "lucide-react";
 import { useAuth } from "@/auth";
+import { CancelarInscricao } from "@/components/aluno/CancelarInscricao";
 import { Badge } from "@/components/Badge";
 import { BotaoBaixarCertificado } from "@/components/BotaoBaixarCertificado";
 import { Button } from "@/components/Button";
@@ -85,8 +86,10 @@ export function Boletim() {
     trilhaIds,
   );
   const modulos = useLeiturasEmLote(trilhaIds.map((id) => opcoesCatalogo.modulos(id)), trilhaIds);
+  // Ids, não nomes: comparar pré-requisito pelo nome do módulo falharia
+  // com dois módulos de mesmo nome ou com um nome editado.
   const preRequisitos = useLeiturasEmLote(
-    trilhaIds.map((id) => opcoesCatalogo.preRequisitosDaTrilha(id)),
+    trilhaIds.map((id) => opcoesCatalogo.preRequisitosIdsDaTrilha(id)),
     trilhaIds,
   );
   const progressos = useProgressos(exibidas.map((m) => m.id));
@@ -121,14 +124,16 @@ export function Boletim() {
       const trilha = trilhas.porChave.get(trilhaId);
       if (!trilha) return [];
       const concluidos = new Set(
-        matriculas.filter((m) => m.trilhaId === trilhaId && m.status === "concluida").map((m) => m.moduloNome),
+        matriculas.filter((m) => m.trilhaId === trilhaId && m.status === "concluida").map((m) => m.moduloId),
       );
-      const linhas = (modulos.porChave.get(trilhaId) ?? []).map((modulo): LinhaModulo => {
+      const modulosDaTrilha = modulos.porChave.get(trilhaId) ?? [];
+      const nomePorId = new Map(modulosDaTrilha.map((m) => [m.id, m.nome]));
+      const linhas = modulosDaTrilha.map((modulo): LinhaModulo => {
         const matricula = matriculaPorModulo.get(modulo.id);
         if (!matricula) {
-          const faltantes = (preRequisitos.porChave.get(trilhaId)?.get(modulo.id) ?? []).filter(
-            (nome) => !concluidos.has(nome),
-          );
+          const faltantes = [...(preRequisitos.porChave.get(trilhaId)?.get(modulo.id) ?? [])]
+            .filter((id) => !concluidos.has(id))
+            .map((id) => nomePorId.get(id) ?? "—");
           return { modulo, matricula: undefined, faltantes, progresso: null, avaliacoes: [] };
         }
         return {
@@ -218,6 +223,10 @@ export function Boletim() {
                         </Badge>
                       )}
                     </div>
+
+                    {matricula?.status === "inscrita" && (
+                      <CancelarInscricao matriculaId={matricula.id} turmaCodigo={matricula.turmaCodigo} />
+                    )}
 
                     {!matricula && faltantes.length > 0 && (
                       <p className="text-label text-text-muted">

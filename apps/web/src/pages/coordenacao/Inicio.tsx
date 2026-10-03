@@ -2,11 +2,11 @@ import { useEffect, useState } from "react";
 import { Search } from "lucide-react";
 import { Badge } from "@/components/Badge";
 import { BarraDeMeta } from "@/components/BarraDeMeta";
-import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
 import { Esqueleto, RegiaoCarregando } from "@/components/Esqueleto";
 import { ErroConsulta } from "@/components/ErroConsulta";
 import { Input } from "@/components/Input";
+import { LinkBotao } from "@/components/LinkBotao";
 import { LinkComPrefetch } from "@/components/LinkComPrefetch";
 import { Titulo } from "@/components/Titulo";
 import { useTrilhas } from "@/lib/consultas/catalogo";
@@ -22,18 +22,19 @@ import {
   montarTurmasEmAndamento,
   type PendenciaCoordenacao,
 } from "@/lib/painelCoordenacao";
+import { flexionar, plural } from "@/lib/plural";
 
+// Sem o número: ele já aparece em destaque logo acima no cartão.
 const TEXTO_PENDENCIA: Record<PendenciaCoordenacao["tipo"], (q: number) => string> = {
-  inscricoes: (q) => `${q} inscrição(ões) para aprovar`,
-  chamadas_atrasadas: (q) => `${q} chamada(s) atrasada(s)`,
-  turmas_terminando: (q) => `${q} turma(s) terminando`,
+  inscricoes: (q) => flexionar(q, "inscrição para aprovar", "inscrições para aprovar"),
+  chamadas_atrasadas: (q) => flexionar(q, "chamada atrasada", "chamadas atrasadas"),
+  turmas_terminando: (q) => flexionar(q, "turma terminando", "turmas terminando"),
 };
 
-const LINK_PENDENCIA: Record<PendenciaCoordenacao["tipo"], string> = {
-  inscricoes: "/coordenacao/turmas",
-  chamadas_atrasadas: "/coordenacao/turmas",
-  turmas_terminando: "/coordenacao/turmas",
-};
+// Com uma turma só envolvida, vai direto ao detalhe dela.
+function linkDaPendencia(p: PendenciaCoordenacao): string {
+  return p.turmaIds.length === 1 ? `/coordenacao/turmas/${p.turmaIds[0]}` : "/coordenacao/turmas";
+}
 
 // D7 (klass-uikit.pdf) — painel "Início" da coordenação: busca global,
 // "Precisa de você" (pendências acionáveis), três indicadores em barra
@@ -185,11 +186,9 @@ export function Inicio() {
                 </span>
                 <p className="text-body-sm text-text-secondary">{TEXTO_PENDENCIA[p.tipo](p.quantidade)}</p>
                 <p className="text-label text-text-muted">{p.detalhe}</p>
-                <LinkComPrefetch to={LINK_PENDENCIA[p.tipo]}>
-                  <Button variant="secondary" className="mt-1 w-full">
-                    Revisar
-                  </Button>
-                </LinkComPrefetch>
+                <LinkBotao to={linkDaPendencia(p)} variant="secondary" className="mt-1 w-full">
+                  Revisar
+                </LinkBotao>
               </Card>
             ))}
           </div>
@@ -222,7 +221,7 @@ export function Inicio() {
               />
               {indicadores && indicadores.alunosAbaixoDoMinimo > 0 && (
                 <p className="mt-2 text-label text-text-muted">
-                  {indicadores.alunosAbaixoDoMinimo} aluno(s) abaixo do mínimo
+                  {plural(indicadores.alunosAbaixoDoMinimo, "aluno abaixo do mínimo", "alunos abaixo do mínimo")}
                 </p>
               )}
             </Card>
@@ -234,7 +233,11 @@ export function Inicio() {
                   ? `${indicadores.aprovacaoModulosEncerrados.toFixed(0)}%`
                   : "—"}
               </p>
-              <p className="mb-2 text-label text-text-muted">vw_desempenho_por_trilha</p>
+              <p className="mb-2 text-label text-text-muted">
+                {indicadores && indicadores.totalEncerrados > 0
+                  ? `${indicadores.totalAprovados} de ${plural(indicadores.totalEncerrados, "matrícula encerrada", "matrículas encerradas")} · meta 80%`
+                  : "Nenhuma matrícula encerrada ainda"}
+              </p>
               <BarraDeMeta
                 valor={indicadores?.aprovacaoModulosEncerrados ?? 0}
                 meta={80}
@@ -250,7 +253,7 @@ export function Inicio() {
                   ? `${indicadores.evasaoSemestreAtual.toFixed(0)}%`
                   : "—"}
               </p>
-              <p className="mb-2 text-label text-text-muted">vw_taxa_evasao</p>
+              <p className="mb-2 text-label text-text-muted">meta: até 10%</p>
               <BarraDeMeta
                 valor={indicadores?.evasaoSemestreAtual ?? 0}
                 meta={10}
@@ -263,8 +266,10 @@ export function Inicio() {
           <Titulo nivel="secao" className="mb-3">
             Turmas em andamento
           </Titulo>
-          <Card className="overflow-hidden !px-0 !py-0">
-            <table className="w-full text-left">
+          {/* No celular a tabela rola na horizontal dentro do cartão, em vez
+              de espremer as colunas. */}
+          <Card className="overflow-x-auto !px-0 !py-0">
+            <table className="w-full min-w-max text-left">
               <thead>
                 <tr className="border-b border-border text-label text-text-muted">
                   <th className="px-4 py-3 font-medium">Turma</th>
@@ -287,6 +292,13 @@ export function Inicio() {
                       ))}
                     </tr>
                   ))}
+                {turmas?.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-3 text-body-sm text-text-secondary">
+                      Nenhuma turma em andamento.
+                    </td>
+                  </tr>
+                )}
                 {turmas?.map((t) => (
                   <tr key={t.id} className="h-[52px] border-b border-border last:border-b-0">
                     <td className="px-4 py-3">

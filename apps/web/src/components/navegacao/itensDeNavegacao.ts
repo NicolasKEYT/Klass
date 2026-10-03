@@ -18,7 +18,7 @@ export interface ItemNav {
   para: string;
   texto: string;
   Icone: LucideIcon;
-  /** D3 — "Pessoas": reservado no desenho, ainda sem tela no código. */
+  /** Item reservado no desenho, ainda sem tela: borda tracejada, sem link. */
   aindaNaoExiste?: boolean;
 }
 
@@ -42,9 +42,7 @@ const COORDENACAO: ItemNav[] = [
   { para: "/coordenacao/turmas", texto: "Turmas", Icone: Layers },
   { para: "/coordenacao/trilhas", texto: "Trilhas", Icone: BookOpen },
   { para: "/coordenacao/certificados", texto: "Certificados", Icone: Award },
-  // D3 — espaço reservado para a tela "Pessoas" (gestão de usuários), que
-  // ainda não existe no código; fica com borda tracejada, sem link.
-  { para: "", texto: "Pessoas", Icone: Users, aindaNaoExiste: true },
+  { para: "/coordenacao/pessoas", texto: "Pessoas", Icone: Users },
 ];
 
 export function navPorPapel(papel: Papel | undefined): ItemNav[] {

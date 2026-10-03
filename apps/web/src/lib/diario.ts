@@ -97,6 +97,22 @@ export async function criarAvaliacao(input: {
   return data;
 }
 
+// Título e peso editáveis (policy avaliacoes_update). O select confirma
+// que a linha mudou: sob RLS, um update sem permissão não dá erro.
+export async function atualizarAvaliacao(
+  id: string,
+  patch: { titulo: string; peso: number },
+): Promise<Avaliacao> {
+  const { data, error } = await diario()
+    .from("avaliacoes")
+    .update({ titulo: patch.titulo, peso: patch.peso })
+    .eq("id", id)
+    .select("*");
+  if (error) throw new Error(mensagemDeErroBanco(error));
+  if (!data || data.length === 0) throw new Error("A avaliação não foi alterada: ela não existe mais ou você não tem permissão.");
+  return data[0];
+}
+
 export async function listarAulasDaTurma(turmaId: string): Promise<Aula[]> {
   const { data, error } = await diario()
     .from("aulas")
@@ -783,8 +799,13 @@ export async function listarNovidadesDoAluno(
     };
   });
 
+  // deferido_em sozinho não quer dizer "confirmada": o banco também o
+  // preenche ao REJEITAR, e uma matrícula devolvida para "inscrita" (ex.:
+  // reaberta pela coordenação) mantém a data antiga — a Carla via
+  // "Matrícula confirmada" de uma inscrição que o Boletim mostrava "Em
+  // análise". Só conta quem está (ou esteve) de fato matriculado.
   const eventosMatricula: NovidadeAluno[] = matriculas
-    .filter((m) => m.deferidoEm !== null)
+    .filter((m) => m.deferidoEm !== null && m.status !== "inscrita" && m.status !== "rejeitada")
     .map((m) => ({
       texto: `Matrícula confirmada em ${m.turmaCodigo}`,
       detalhe: m.moduloNome,

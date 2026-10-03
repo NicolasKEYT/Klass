@@ -23,6 +23,25 @@ export const invalidar = {
     ]),
 
   /**
+   * Módulo criado, editado, apagado ou reordenado. Mais estreito que
+   * `catalogo`: não toca nas listas de trilhas além da contagem/carga. O
+   * formulário da trilha na edição é estado local da tela (inicializado
+   * uma vez), então reler a trilha em segundo plano não apaga o que o
+   * usuário digitou e ainda não salvou.
+   */
+  modulos: (qc: QueryClient, trilhaId: string) =>
+    invalidarTudo(qc, [
+      chaves.catalogo.modulos(trilhaId),
+      ["catalogo", "pre-requisitos"],
+      // Carga horária total e contagem de módulos (recalculadas por trigger).
+      chaves.catalogo.trilhasComContagem(),
+      ["catalogo", "trilha"],
+      // Turmas, matrículas e certificados mostram o nome do módulo.
+      chaves.selecao.tudo(),
+      chaves.painelCoordenacao.tudo(),
+    ]),
+
+  /**
    * Pré-requisito marcado/desmarcado na edição de trilha. A lista de ids
    * da própria tela já foi atualizada na hora (otimista) e não é relida —
    * reler no meio de cliques seguidos desfazia a marca do clique seguinte.
@@ -33,7 +52,7 @@ export const invalidar = {
       ["catalogo", "pre-requisitos", "modulo"],
     ]),
 
-  /** Avaliação criada ou apagada (apagar leva as notas junto, em cascata). */
+  /** Avaliação criada, editada, apagada ou restaurada (apagar leva as notas junto, em cascata). */
   avaliacoes: (qc: QueryClient, turmaId: string) =>
     invalidarTudo(qc, [
       chaves.diario.turma(turmaId),
@@ -88,6 +107,13 @@ export const invalidar = {
       chaves.diario.paineisDeProfessor(),
       chaves.painelCoordenacao.tudo(),
     ]),
+
+  /**
+   * Papel de uma pessoa trocado na tela Pessoas. Listas de pessoas e de
+   * professores (seleção de professor da turma) e a busca de alunos do
+   * painel dependem do papel.
+   */
+  papel: (qc: QueryClient) => invalidarTudo(qc, [chaves.identidade.tudo()]),
 
   /** Inscrição do próprio aluno numa turma. */
   inscricao: (qc: QueryClient, alunoId: string) =>

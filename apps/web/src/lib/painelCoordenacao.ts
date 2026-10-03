@@ -1,6 +1,7 @@
 import { supabase } from "@/lib/supabase";
 import { mensagemDeErroBanco } from "@/lib/mensagensDeErroBanco";
-import type { TurmaListagem } from "@/lib/selecao";
+import { plural } from "@/lib/plural";
+import { situacaoDaTurma, type TurmaListagem } from "@/lib/selecao";
 
 // D7 (klass-uikit.pdf) — dados do painel "Início" da coordenação. Mistura
 // catalogo (as duas views novas), selecao e diario de propósito: é uma
@@ -116,6 +117,9 @@ export async function calcularFrequencias(): Promise<FrequenciasCoordenacao> {
 }
 
 export interface IndicadoresCoordenacao {
+  /** Aprovados e encerrados que formam a taxa de aprovação (legenda do card). */
+  totalAprovados: number;
+  totalEncerrados: number;
   frequenciaMedia: number | null;
   alunosAbaixoDoMinimo: number;
   aprovacaoModulosEncerrados: number | null;
@@ -168,6 +172,8 @@ export function montarIndicadores(
   views: IndicadoresDasViews,
 ): IndicadoresCoordenacao {
   return {
+    totalAprovados: views.totalAprovados,
+    totalEncerrados: views.totalEncerrados,
     frequenciaMedia: frequencias.mediaGeral,
     alunosAbaixoDoMinimo: frequencias.abaixoDoMinimo,
     aprovacaoModulosEncerrados:
@@ -183,6 +189,8 @@ export interface PendenciaCoordenacao {
   tipo: TipoPendenciaCoordenacao;
   quantidade: number;
   detalhe: string;
+  /** Turmas envolvidas — com uma só, "Revisar" leva direto ao detalhe dela. */
+  turmaIds: string[];
 }
 
 export async function listarPendenciasCoordenacao(): Promise<PendenciaCoordenacao[]> {
@@ -194,7 +202,7 @@ export async function listarPendenciasCoordenacao(): Promise<PendenciaCoordenaca
   const [inscricoesResp, turmasResp, aulasResp, matriculasAtivasResp] = await Promise.all([
     selecao()
       .from("matriculas")
-      .select("criado_em")
+      .select("criado_em, turma_id")
       .eq("status", "inscrita")
       .order("criado_em", { ascending: true }),
     selecao().from("turmas").select("id, codigo, periodo_fim"),
@@ -214,7 +222,9 @@ export async function listarPendenciasCoordenacao(): Promise<PendenciaCoordenaca
     pendencias.push({
       tipo: "inscricoes",
       quantidade: inscricoes.length,
-      detalhe: `A mais antiga espera há ${diasEspera} dia(s)`,
+      detalhe:
+        diasEspera === 0 ? "A mais antiga chegou hoje" : `A mais antiga espera há ${plural(diasEspera, "dia", "dias")}`,
+      turmaIds: [...new Set(inscricoes.map((i) => i.turma_id))],
     });
   }
 
@@ -235,7 +245,12 @@ export async function listarPendenciasCoordenacao(): Promise<PendenciaCoordenaca
       .slice(0, 2)
       .map((a) => `${turmaPorId.get(a.turma_id)?.codigo ?? "—"} (${a.data.split("-").reverse().join("/")})`)
       .join(", ");
-    pendencias.push({ tipo: "chamadas_atrasadas", quantidade: atrasadas.length, detalhe: exemplos });
+    pendencias.push({
+      tipo: "chamadas_atrasadas",
+      quantidade: atrasadas.length,
+      detalhe: exemplos,
+      turmaIds: [...new Set(atrasadas.map((a) => a.turma_id))],
+    });
   }
 
   const turmasComAtivos = new Set((matriculasAtivasResp.data ?? []).map((m) => m.turma_id));
@@ -251,6 +266,7 @@ export async function listarPendenciasCoordenacao(): Promise<PendenciaCoordenaca
       tipo: "turmas_terminando",
       quantidade: terminando.length,
       detalhe: terminando.map((t) => t.codigo).join(", "),
+      turmaIds: terminando.map((t) => t.id),
     });
   }
 
@@ -263,25 +279,23 @@ export interface TurmaEmAndamento extends TurmaListagem {
 }
 
 // Pura: a lista de turmas é a mesma da tela "Turmas" (cache compartilhado)
-// e a frequência por turma vem de calcularFrequencias.
+// e a frequência por turma vem de calcularFrequencias. Turmas encerradas
+// (situacaoDaTurma) ficam fora — a tabela é de turmas em andamento.
 export function montarTurmasEmAndamento(
   turmas: TurmaListagem[],
   porTurma: Record<string, number>,
 ): TurmaEmAndamento[] {
   const hoje = hojeISO();
 
-  return turmas.map((t) => {
+  return turmas.flatMap((t) => {
+    const s = situacaoDaTurma(t, hoje);
+    if (s === "encerrada") return [];
     let situacao: string;
-    if (t.periodoInicio > hoje) {
-      situacao = `Começa ${t.periodoInicio.split("-").reverse().join("/")}`;
-    } else if (t.periodoFim < hoje) {
-      situacao = "Encerrada";
-    } else if (t.pendentes > 0) {
-      situacao = "Inscrições abertas";
-    } else {
-      situacao = "Em andamento";
-    }
-    return { ...t, frequenciaMedia: porTurma[t.id] ?? null, situacao };
+    if (s === "futura") situacao = `Começa ${t.periodoInicio.split("-").reverse().join("/")}`;
+    else if (s === "aguardando_encerramento") situacao = "Aguardando encerramento";
+    else if (t.pendentes > 0) situacao = "Inscrições abertas";
+    else situacao = "Em andamento";
+    return [{ ...t, frequenciaMedia: porTurma[t.id] ?? null, situacao }];
   });
 }
 

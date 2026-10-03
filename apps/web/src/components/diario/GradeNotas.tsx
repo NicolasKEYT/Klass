@@ -1,9 +1,10 @@
 import { useRef, useState, type KeyboardEvent } from "react";
-import { Trash2 } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 import { Aviso } from "@/components/Aviso";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
+import { Input } from "@/components/Input";
 import { EsqueletoTabela } from "@/components/Esqueleto";
 import { ErroConsulta } from "@/components/ErroConsulta";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -13,6 +14,7 @@ import { useGravacao } from "@/lib/consultas/gravacao";
 import { invalidar } from "@/lib/consultas/invalidar";
 import { useMatriculasDaTurma } from "@/lib/consultas/selecao";
 import {
+  atualizarAvaliacao,
   BloqueioAlunoEncerrado,
   filtrarAlunosDoDiario,
   salvarNotasEmLote,
@@ -67,8 +69,12 @@ export function GradeNotas({
   turma: TurmaDetalhada;
   lancadoPor: string;
   avaliacoes: Avaliacao[];
-  /** Apaga a avaliação (cascata de notas já é feita pelo banco — ver lib/diario). */
-  onApagarAvaliacao: (avaliacaoId: string) => Promise<void>;
+  /**
+   * Apaga a avaliação (cascata de notas já é feita pelo banco — ver
+   * lib/diario). `podeDesfazer`: sem notas, a tela oferece "Desfazer"
+   * (recria igual); com notas, não há como devolvê-las.
+   */
+  onApagarAvaliacao: (avaliacao: Avaliacao, podeDesfazer: boolean) => Promise<void>;
 }) {
   const gravar = useGravacao();
   // Alunos, progresso e notas vêm do cache compartilhado com a tela da
@@ -110,6 +116,10 @@ export function GradeNotas({
   const [erro, setErro] = useState<string | null>(null);
   const [confirmandoApagarId, setConfirmandoApagarId] = useState<string | null>(null);
   const [apagando, setApagando] = useState(false);
+  const [editandoId, setEditandoId] = useState<string | null>(null);
+  const [editTitulo, setEditTitulo] = useState("");
+  const [editPeso, setEditPeso] = useState(1);
+  const [salvandoEdicao, setSalvandoEdicao] = useState(false);
   // Valor em gravação por célula, atualizado de forma síncrona: Enter
   // grava e move o foco, o que dispara o blur da mesma célula logo em
   // seguida — sem isso, a segunda chamada regravava. Cada regravação
@@ -138,11 +148,55 @@ export function GradeNotas({
       .map((a) => a.alunoNome);
   }
 
-  async function aoConfirmarApagar(avaliacaoId: string) {
+  // Sem nota lançada, apagar é direto (o checklist pede sem aviso) e a
+  // tela da turma oferece "Desfazer"; com notas, continua a confirmação.
+  async function aoClicarApagar(avaliacao: Avaliacao) {
+    setErro(null);
+    setEditandoId(null);
+    if (avaliacaoTemNotas(avaliacao.id)) {
+      setConfirmandoApagarId(avaliacao.id);
+      return;
+    }
+    if (apagando) return;
+    setApagando(true);
+    try {
+      await onApagarAvaliacao(avaliacao, true);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Não foi possível apagar a avaliação.");
+    } finally {
+      setApagando(false);
+    }
+  }
+
+  function aoClicarEditar(avaliacao: Avaliacao) {
+    setErro(null);
+    setConfirmandoApagarId(null);
+    setEditandoId(avaliacao.id);
+    setEditTitulo(avaliacao.titulo);
+    setEditPeso(avaliacao.peso);
+  }
+
+  async function aoSalvarEdicao(avaliacaoId: string) {
+    setErro(null);
+    setSalvandoEdicao(true);
+    try {
+      await gravar(
+        () => atualizarAvaliacao(avaliacaoId, { titulo: editTitulo.trim(), peso: editPeso }),
+        (qc) => invalidar.avaliacoes(qc, turmaId),
+      );
+      setEditandoId(null);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Não foi possível salvar a avaliação.");
+    } finally {
+      setSalvandoEdicao(false);
+    }
+  }
+
+  async function aoConfirmarApagar(avaliacao: Avaliacao) {
     setApagando(true);
     setErro(null);
     try {
-      await onApagarAvaliacao(avaliacaoId);
+      await onApagarAvaliacao(avaliacao, false);
       setConfirmandoApagarId(null);
     } catch (e) {
       // Bloqueio do banco: fecha o diálogo (ele dizia que as notas "serão
@@ -254,6 +308,61 @@ export function GradeNotas({
         </Aviso>
       )}
 
+      {editandoId &&
+        (() => {
+          const alvo = avaliacoes.find((a) => a.id === editandoId);
+          if (!alvo) return null;
+          const pesoValido = Number.isFinite(editPeso) && editPeso > 0;
+          return (
+            <Card className="mb-3">
+              <form
+                className="flex flex-col gap-3"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void aoSalvarEdicao(alvo.id);
+                }}
+              >
+                <p className="text-body-sm font-medium text-text-primary">Editar avaliação</p>
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  <label className="flex flex-1 flex-col gap-1.5">
+                    <span className="text-label font-medium text-text-secondary">Título</span>
+                    <Input required minLength={2} value={editTitulo} onChange={(e) => setEditTitulo(e.target.value)} />
+                  </label>
+                  <label className="flex flex-col gap-1.5 sm:w-32">
+                    <span className="text-label font-medium text-text-secondary">Peso</span>
+                    <Input
+                      type="number"
+                      min={1}
+                      required
+                      value={editPeso}
+                      onChange={(e) => setEditPeso(Number(e.target.value))}
+                    />
+                  </label>
+                </div>
+                {pesoValido && (
+                  <p className="text-label text-text-muted">
+                    Com este peso, ela passa a valer{" "}
+                    {percentualDoPeso(editPeso, somaPesos - alvo.peso + editPeso)}% da média final.
+                  </p>
+                )}
+                <div className="flex gap-2">
+                  <Button type="submit" disabled={salvandoEdicao || !pesoValido}>
+                    {salvandoEdicao ? "Salvando..." : "Salvar"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={salvandoEdicao}
+                    onClick={() => setEditandoId(null)}
+                  >
+                    Cancelar
+                  </Button>
+                </div>
+              </form>
+            </Card>
+          );
+        })()}
+
       {confirmandoApagarId &&
         (() => {
           const alvo = avaliacoes.find((a) => a.id === confirmandoApagarId);
@@ -290,7 +399,7 @@ export function GradeNotas({
                 )}
               </p>
               <div className="flex gap-2">
-                <Button disabled={apagando} onClick={() => void aoConfirmarApagar(alvo.id)}>
+                <Button disabled={apagando} onClick={() => void aoConfirmarApagar(alvo)}>
                   {apagando ? "Apagando..." : "Apagar avaliação"}
                 </Button>
                 <Button
@@ -316,9 +425,19 @@ export function GradeNotas({
                     {a.titulo}
                     <button
                       type="button"
+                      aria-label={`Editar avaliação ${a.titulo}`}
+                      title="Editar avaliação"
+                      onClick={() => aoClicarEditar(a)}
+                      className="text-text-muted transition hover:text-text-primary"
+                    >
+                      <Pencil className="h-3.5 w-3.5" aria-hidden />
+                    </button>
+                    <button
+                      type="button"
                       aria-label={`Apagar avaliação ${a.titulo}`}
                       title="Apagar avaliação"
-                      onClick={() => setConfirmandoApagarId(a.id)}
+                      disabled={apagando}
+                      onClick={() => void aoClicarApagar(a)}
                       className="text-text-muted transition hover:text-danger"
                     >
                       <Trash2 className="h-3.5 w-3.5" aria-hidden />

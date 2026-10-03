@@ -2,13 +2,13 @@ import { Link } from "react-router-dom";
 import { Award, Bell, CheckCheck, FileText } from "lucide-react";
 import { useAuth } from "@/auth";
 import { BarraDeMeta } from "@/components/BarraDeMeta";
-import { Button } from "@/components/Button";
+import { LinkBotao } from "@/components/LinkBotao";
 import { Card } from "@/components/Card";
 import { EsqueletoLinhas, RegiaoCarregando } from "@/components/Esqueleto";
 import { ErroConsulta } from "@/components/ErroConsulta";
-import { LinkComPrefetch } from "@/components/LinkComPrefetch";
 import { Titulo } from "@/components/Titulo";
 import { useModulosDaTrilha, useTrilhaPorId } from "@/lib/consultas/catalogo";
+import { plural } from "@/lib/plural";
 import { useNovidadesDoAluno, useProgresso } from "@/lib/consultas/diario";
 import { useMatriculasDoAluno } from "@/lib/consultas/selecao";
 import { escolherMatriculaEmAndamento, montarProximoPasso, type ProximoPassoAluno } from "@/lib/diario";
@@ -33,7 +33,7 @@ function tempoRelativo(iso: string): string {
   const horas = Math.round(minutos / 60);
   if (horas < 24) return `há ${horas}h`;
   const dias = Math.round(horas / 24);
-  return `há ${dias} dia(s)`;
+  return `há ${plural(dias, "dia", "dias")}`;
 }
 
 // D4 (klass-uikit.pdf) — "Início" do aluno, mobile-first: "Seu próximo
@@ -151,9 +151,9 @@ export function Inicio() {
               {passo.trilhaNome} · {passo.modulosConcluidos} de {passo.totalModulos} módulos ·
               cursando {passo.moduloAtualNome}
             </p>
-            <LinkComPrefetch to="/aluno/boletim">
-              <Button className="mt-3 w-full">Ver boletim</Button>
-            </LinkComPrefetch>
+            <LinkBotao to="/aluno/boletim" className="mt-3 w-full">
+              Ver boletim
+            </LinkBotao>
           </Card>
 
           <Card className="mt-4">

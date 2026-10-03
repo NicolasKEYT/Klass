@@ -4,6 +4,7 @@ import { Aviso } from "@/components/Aviso";
 import { BotaoVoltar } from "@/components/BotaoVoltar";
 import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
+import { CampoCodigoTurma } from "@/components/turma/CampoCodigoTurma";
 import { Input } from "@/components/Input";
 import { PaginaAutenticada } from "@/components/PaginaAutenticada";
 import { Titulo } from "@/components/Titulo";
@@ -15,6 +16,7 @@ import { invalidar } from "@/lib/consultas/invalidar";
 import { useTurma } from "@/lib/consultas/selecao";
 import {
   atualizarTurma,
+  validarCodigoTurma,
   validarPeriodoTurma,
   PERIODO_TURMA_DATA_MIN,
   PERIODO_TURMA_DATA_MAX,
@@ -99,9 +101,9 @@ function FormularioTurma({
   async function salvar(voltar: boolean) {
     setErro(null);
     setMensagem(null);
-    const erroPeriodo = validarPeriodoTurma(periodoInicio, periodoFim);
-    if (erroPeriodo) {
-      setErro(erroPeriodo);
+    const erroValidacao = validarCodigoTurma(codigo) ?? validarPeriodoTurma(periodoInicio, periodoFim);
+    if (erroValidacao) {
+      setErro(erroValidacao);
       return;
     }
     setSalvando(true);
@@ -131,9 +133,12 @@ function FormularioTurma({
     }
   }
 
-  async function aoSubmeter(evento: FormEvent) {
+  // Os dois botões são submit (o "Salvar" era type="button" e pulava a
+  // validação nativa do formulário); qual foi clicado vem do submitter.
+  async function aoSubmeter(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault();
-    await salvar(true);
+    const submitter = (evento.nativeEvent as SubmitEvent).submitter;
+    await salvar(submitter?.dataset.destino !== "ficar");
   }
 
   return (
@@ -146,18 +151,7 @@ function FormularioTurma({
 
       <Card>
         <form className="flex flex-col gap-4" onSubmit={aoSubmeter}>
-          <label className="flex flex-col gap-1.5">
-            <span className="text-label font-medium text-text-secondary">Código</span>
-            <Input
-              required
-              placeholder="Ex.: CDA-2026-1"
-              value={codigo}
-              onChange={(e) => setCodigo(e.target.value.toUpperCase())}
-            />
-            <span className="text-label text-text-muted">
-              Letras e números separados por hífen, em 2 ou 3 partes. Ex.: CDA-2026-1.
-            </span>
-          </label>
+          <CampoCodigoTurma valor={codigo} aoMudar={setCodigo} />
 
           <label className="flex flex-col gap-1.5">
             <span className="text-label font-medium text-text-secondary">Professor responsável</span>
@@ -234,12 +228,7 @@ function FormularioTurma({
             <Button type="submit" disabled={salvando}>
               {salvando ? "Salvando..." : "Salvar e voltar"}
             </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={salvando}
-              onClick={() => void salvar(false)}
-            >
+            <Button type="submit" data-destino="ficar" variant="secondary" disabled={salvando}>
               Salvar
             </Button>
           </div>

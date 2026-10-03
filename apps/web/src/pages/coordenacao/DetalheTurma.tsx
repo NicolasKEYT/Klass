@@ -3,15 +3,16 @@ import { useParams } from "react-router-dom";
 import { Aviso } from "@/components/Aviso";
 import { BotaoVoltar } from "@/components/BotaoVoltar";
 import { Button } from "@/components/Button";
+import { LinkBotao } from "@/components/LinkBotao";
 import { Card } from "@/components/Card";
 import { Esqueleto, EsqueletoCards, RegiaoCarregando } from "@/components/Esqueleto";
 import { ErroConsulta } from "@/components/ErroConsulta";
-import { LinkComPrefetch } from "@/components/LinkComPrefetch";
 import { PaginaAutenticada } from "@/components/PaginaAutenticada";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Titulo } from "@/components/Titulo";
 import { useAuth } from "@/auth";
 import { useAulasDaTurma, useAvaliacoesDaTurma, useProgressos } from "@/lib/consultas/diario";
+import { flexionar, plural } from "@/lib/plural";
 import { useGravacao } from "@/lib/consultas/gravacao";
 import { invalidar } from "@/lib/consultas/invalidar";
 import { useMatriculasDaTurma, useTurma } from "@/lib/consultas/selecao";
@@ -73,7 +74,6 @@ export function DetalheTurma() {
   const [processando, setProcessando] = useState(false);
   const [confirmandoReativarTurma, setConfirmandoReativarTurma] = useState(false);
   const [reativandoTurma, setReativandoTurma] = useState(false);
-  const [reativadas, setReativadas] = useState<number | null>(null);
 
   async function aoAprovar(matriculaId: string) {
     if (!usuario || !id || processando) return;
@@ -153,7 +153,12 @@ export function DetalheTurma() {
     setReativandoTurma(true);
     try {
       const resumo = await gravar(() => reativarTurma(id), (qc) => invalidar.matriculas(qc, id));
-      setReativadas(resumo.reativadas);
+      // No aviso do topo da tela, não dentro do bloco "Encerramento da
+      // turma": reativar deixa a turma sem encerradas e o bloco some junto
+      // com o retorno.
+      setMensagem(
+        `${plural(resumo.reativadas, "matrícula reativada", "matrículas reativadas")} — ${flexionar(resumo.reativadas, "voltou", "voltaram")} para "matriculada".`,
+      );
       setConfirmandoReativarTurma(false);
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível reativar a turma.");
@@ -227,11 +232,9 @@ export function DetalheTurma() {
                   {turma.vagasTotal} vagas · frequência mínima {turma.frequenciaMinimaPercentual}%
                 </p>
               </div>
-              <LinkComPrefetch to={`/coordenacao/turmas/${turma.id}/editar`}>
-                <Button variant="secondary" className="whitespace-nowrap">
-                  Editar turma
-                </Button>
-              </LinkComPrefetch>
+              <LinkBotao to={`/coordenacao/turmas/${turma.id}/editar`} variant="secondary">
+                Editar turma
+              </LinkBotao>
             </Card>
 
             <Titulo nivel="secao" className="mb-3">
@@ -368,10 +371,7 @@ export function DetalheTurma() {
                   {!confirmandoReativarTurma && (
                     <Button
                       variant="secondary"
-                      onClick={() => {
-                        setConfirmandoReativarTurma(true);
-                        setReativadas(null);
-                      }}
+                      onClick={() => setConfirmandoReativarTurma(true)}
                     >
                       Reativar turma inteira
                     </Button>
@@ -397,11 +397,6 @@ export function DetalheTurma() {
                       </Button>
                     </div>
                   </Card>
-                )}
-                {reativadas !== null && (
-                  <Aviso variant="success">
-                    {reativadas} matrícula(s) reativada(s) — voltaram para "matriculada".
-                  </Aviso>
                 )}
               </div>
             )}

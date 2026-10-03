@@ -23,6 +23,15 @@ const variantClasses: Record<ButtonVariant, string> = {
   tracejado: "border border-dashed border-border bg-neutral-subtle text-text-muted",
 };
 
+// Compartilhado com LinkBotao (link com aparência de botão). whitespace-nowrap:
+// no celular, rótulos como "Salvar e ver detalhes" quebravam em duas linhas
+// dentro da altura fixa do botão.
+export function classesDoBotao(variant: ButtonVariant = "primary", className = ""): string {
+  return `inline-flex h-12 sm:h-10 items-center justify-center gap-2 whitespace-nowrap rounded-klass-control px-4 text-klass-md font-medium transition-[color,background-color,border-color,box-shadow,filter] disabled:cursor-not-allowed disabled:opacity-50 ${variantClasses[variant]} ${className}`;
+}
+
+export type { ButtonVariant };
+
 export function Button({
   variant = "primary",
   className = "",
@@ -36,7 +45,7 @@ export function Button({
       // por exemplo) ele fazia um fade de 50% e voltava — lido como o
       // botão "sumindo e reaparecendo". Sem animar opacidade, o disabled
       // é instantâneo e o clique de reflexo duplicado desaparece.
-      className={`inline-flex h-12 sm:h-10 items-center justify-center gap-2 rounded-klass-control px-4 text-klass-md font-medium transition-[color,background-color,border-color,box-shadow,filter] disabled:cursor-not-allowed disabled:opacity-50 ${variantClasses[variant]} ${className}`}
+      className={classesDoBotao(variant, className)}
       {...props}
     />
   );

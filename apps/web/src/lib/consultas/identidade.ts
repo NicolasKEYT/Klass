@@ -1,4 +1,5 @@
 import { keepPreviousData, queryOptions, useQuery } from "@tanstack/react-query";
+import { listarPessoas } from "@/lib/identidade";
 import { buscarAlunosPorNome } from "@/lib/painelCoordenacao";
 import { listarProfessores } from "@/lib/selecao";
 import { chaves } from "./chaves";
@@ -7,6 +8,7 @@ import { chaves } from "./chaves";
 export const opcoesIdentidade = {
   professores: () =>
     queryOptions({ queryKey: chaves.identidade.professores(), queryFn: listarProfessores }),
+  pessoas: () => queryOptions({ queryKey: chaves.identidade.pessoas(), queryFn: listarPessoas }),
   buscaAlunos: (termo: string) =>
     queryOptions({
       queryKey: chaves.identidade.buscaAlunos(termo),
@@ -22,4 +24,8 @@ export function useProfessores() {
 export function useBuscaDeAlunos(termo: string) {
   const termoLimpo = termo.trim();
   return useQuery({ ...opcoesIdentidade.buscaAlunos(termoLimpo), enabled: termoLimpo.length >= 2 });
+}
+
+export function usePessoas() {
+  return useQuery(opcoesIdentidade.pessoas());
 }

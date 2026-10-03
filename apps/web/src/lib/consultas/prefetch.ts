@@ -151,6 +151,7 @@ export function prefetchCaminho(qc: QueryClient, caminho: string, quem: Quem) {
     return;
   }
   if (rota === "/coordenacao/certificados") return void qc.prefetchQuery(opcoesCertificacao.todos());
+  if (rota === "/coordenacao/pessoas") return void qc.prefetchQuery(opcoesIdentidade.pessoas());
 }
 
 /** Para os links: devolve a função que pré-carrega um caminho. */

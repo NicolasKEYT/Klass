@@ -1,5 +1,5 @@
 import { useAuth } from "@/auth";
-import { Button } from "@/components/Button";
+import { LinkBotao } from "@/components/LinkBotao";
 import { Card } from "@/components/Card";
 import { EsqueletoLinhas } from "@/components/Esqueleto";
 import { ErroConsulta } from "@/components/ErroConsulta";
@@ -83,11 +83,12 @@ export function Hoje() {
                     tipo="aula"
                     status={aula.chamadaFeita ? "chamada_feita" : "chamada_pendente"}
                   />
-                  <LinkComPrefetch to={`/professor/turmas/${aula.turmaId}/aulas/${aula.id}/chamada`}>
-                    <Button variant={aula.chamadaFeita ? "secondary" : "primary"}>
-                      {aula.chamadaFeita ? "Ver" : "Fazer chamada"}
-                    </Button>
-                  </LinkComPrefetch>
+                  <LinkBotao
+                    to={`/professor/turmas/${aula.turmaId}/aulas/${aula.id}/chamada`}
+                    variant={aula.chamadaFeita ? "secondary" : "primary"}
+                  >
+                    {aula.chamadaFeita ? "Ver" : "Fazer chamada"}
+                  </LinkBotao>
                 </div>
               </div>
             ))}
@@ -117,7 +118,8 @@ export function Hoje() {
                     <p className="text-body-sm font-medium text-text-primary">{p.titulo}</p>
                     <p className="text-label text-text-muted">{p.detalhe}</p>
                   </div>
-                  <LinkComPrefetch
+                  <LinkBotao
+                    variant="secondary"
                     to={
                       p.tipo === "chamada_atrasada"
                         ? `/professor/turmas/${p.turmaId}/aulas/${p.aulaId}/chamada`
@@ -127,14 +129,12 @@ export function Hoje() {
                           : `/professor/turmas/${p.turmaId}`
                     }
                   >
-                    <Button variant="secondary">
-                      {p.tipo === "avaliacao_sem_nota"
-                        ? "Lançar notas"
-                        : p.tipo === "chamada_atrasada"
-                          ? "Fazer chamada"
-                          : "Revisar"}
-                    </Button>
-                  </LinkComPrefetch>
+                    {p.tipo === "avaliacao_sem_nota"
+                      ? "Lançar notas"
+                      : p.tipo === "chamada_atrasada"
+                        ? "Fazer chamada"
+                        : "Revisar"}
+                  </LinkBotao>
                 </div>
               ))}
             </div>

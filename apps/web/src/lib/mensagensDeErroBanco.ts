@@ -23,10 +23,10 @@ function pareceErroDoPostgrest(
 // Mapeado pelo nome da constraint, que o Postgres inclui na mensagem de
 // erro — mais estável do que tentar casar o texto inteiro.
 const REGRAS: Array<{ contem: string; mensagem: string }> = [
-  { contem: "trilhas_slug_key", mensagem: "Já existe uma trilha com esse slug." },
+  { contem: "trilhas_slug_key", mensagem: "Já existe uma trilha com esse endereço da página." },
   {
     contem: "trilhas_slug_formato",
-    mensagem: "O slug só pode ter letras minúsculas, números e hífen.",
+    mensagem: "O endereço da página só pode ter letras minúsculas, números e hífen.",
   },
   { contem: "trilhas_nome_minimo", mensagem: "O nome precisa ter pelo menos 3 caracteres." },
   {
@@ -58,9 +58,13 @@ const REGRAS: Array<{ contem: string; mensagem: string }> = [
   {
     contem: "turmas_codigo_formato",
     mensagem:
-      "O código deve ter 2 ou 3 partes de letras/números separadas por hífen, sem espaços. Ex.: CDA-2026-1.",
+      "Código fora do formato: 2 ou 3 partes de letras maiúsculas e números separadas por hífen; a primeira com pelo menos 2 caracteres; até 30 caracteres, sem espaços nem acentos. Ex.: CDA-2026-1.",
   },
   { contem: "turmas_periodo_valido", mensagem: "O período final precisa vir depois do início." },
+  {
+    contem: "turmas_periodo_ano_razoavel",
+    mensagem: "O ano das datas do período precisa estar entre 2000 e 2100.",
+  },
   { contem: "turmas_vagas_positivas", mensagem: "O número de vagas precisa ser maior que zero." },
   {
     contem: "matriculas_aluno_turma_unica",

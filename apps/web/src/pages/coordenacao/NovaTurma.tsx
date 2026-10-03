@@ -8,12 +8,16 @@ import { Input } from "@/components/Input";
 import { PaginaAutenticada } from "@/components/PaginaAutenticada";
 import { Titulo } from "@/components/Titulo";
 import { ErroConsulta } from "@/components/ErroConsulta";
+import { CampoCodigoTurma } from "@/components/turma/CampoCodigoTurma";
 import { useModulosDaTrilha, useTrilhas } from "@/lib/consultas/catalogo";
 import { useGravacao } from "@/lib/consultas/gravacao";
 import { useProfessores } from "@/lib/consultas/identidade";
+import { useTurmasDaCoordenacao } from "@/lib/consultas/selecao";
 import { invalidar } from "@/lib/consultas/invalidar";
 import {
   criarTurma,
+  turmasSobrepostas,
+  validarCodigoTurma,
   validarPeriodoTurma,
   PERIODO_TURMA_DATA_MIN,
   PERIODO_TURMA_DATA_MAX,
@@ -63,9 +67,9 @@ export function NovaTurma() {
   async function salvar(irParaListaAoInves: boolean) {
     setErro(null);
     setMensagem(null);
-    const erroPeriodo = validarPeriodoTurma(periodoInicio, periodoFim);
-    if (erroPeriodo) {
-      setErro(erroPeriodo);
+    const erroValidacao = validarCodigoTurma(codigo) ?? validarPeriodoTurma(periodoInicio, periodoFim);
+    if (erroValidacao) {
+      setErro(erroValidacao);
       return;
     }
     setEnviando(true);
@@ -93,10 +97,19 @@ export function NovaTurma() {
     }
   }
 
-  async function aoSubmeter(evento: FormEvent) {
+  // Os dois botões são submit (o segundo era type="button" e pulava a
+  // validação nativa do formulário — required, min/max); qual foi clicado
+  // vem do submitter.
+  async function aoSubmeter(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault();
-    await salvar(true);
+    const submitter = (evento.nativeEvent as SubmitEvent).submitter;
+    await salvar(submitter?.dataset.destino !== "detalhes");
   }
+
+  // Turmas paralelas do mesmo módulo são legítimas (ex.: noite e sábado);
+  // o aviso só evita criar uma duplicada sem querer.
+  const consultaTurmas = useTurmasDaCoordenacao();
+  const sobrepostas = turmasSobrepostas(consultaTurmas.data ?? [], moduloId, periodoInicio, periodoFim);
 
   return (
     <PaginaAutenticada largura="estreita">
@@ -161,18 +174,7 @@ export function NovaTurma() {
               )}
             </label>
 
-            <label className="flex flex-col gap-1.5">
-              <span className="text-label font-medium text-text-secondary">Código</span>
-              <Input
-                required
-                placeholder="Ex.: CDA-2026-1"
-                value={codigo}
-                onChange={(e) => setCodigo(e.target.value.toUpperCase())}
-              />
-              <span className="text-label text-text-muted">
-                Letras e números separados por hífen, em 2 ou 3 partes. Ex.: CDA-2026-1.
-              </span>
-            </label>
+            <CampoCodigoTurma valor={codigo} aoMudar={setCodigo} />
 
             <label className="flex flex-col gap-1.5">
               <span className="text-label font-medium text-text-secondary">
@@ -256,6 +258,14 @@ export function NovaTurma() {
               </label>
             </div>
 
+            {sobrepostas.length > 0 && (
+              <p className="text-label text-text-secondary">
+                Atenção: {sobrepostas.length === 1 ? "a turma" : "as turmas"}{" "}
+                {sobrepostas.map((t) => t.codigo).join(", ")} deste módulo já{" "}
+                {sobrepostas.length === 1 ? "tem" : "têm"} período que se sobrepõe a este. Turmas
+                paralelas são permitidas; confira se não é uma duplicata.
+              </p>
+            )}
             {erro && <Aviso variant="danger">{erro}</Aviso>}
             {mensagem && <Aviso variant="success">{mensagem}</Aviso>}
 
@@ -263,12 +273,7 @@ export function NovaTurma() {
               <Button type="submit" disabled={enviando}>
                 {enviando ? "Criando..." : "Salvar e voltar"}
               </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={enviando}
-                onClick={() => void salvar(false)}
-              >
+              <Button type="submit" data-destino="detalhes" variant="secondary" disabled={enviando}>
                 Salvar e ver detalhes
               </Button>
             </div>

@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQueries } from "@tanstack/react-query";
 import { Check, Clock, Lock } from "lucide-react";
 import { useAuth } from "@/auth";
+import { CancelarInscricao } from "@/components/aluno/CancelarInscricao";
 import { Aviso } from "@/components/Aviso";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
@@ -20,6 +21,7 @@ import {
   usePreRequisitosDoModulo,
   useTrilhaPorSlug,
 } from "@/lib/consultas/catalogo";
+import { plural } from "@/lib/plural";
 import { useGravacao } from "@/lib/consultas/gravacao";
 import { invalidar } from "@/lib/consultas/invalidar";
 import { useMatriculasDoAluno, useTurmasDaTrilha } from "@/lib/consultas/selecao";
@@ -319,7 +321,7 @@ export function DetalheModulo() {
                     </div>
                   </div>
                   <span className="font-mono text-label tabular-nums text-text-muted">
-                    {turma.vagasRestantes} vaga(s)
+                    {plural(turma.vagasRestantes, "vaga", "vagas")}
                   </span>
                 </label>
               ))}
@@ -364,6 +366,9 @@ export function DetalheModulo() {
             </Link>
             .
           </p>
+          {matriculaVigente.status === "inscrita" && (
+            <CancelarInscricao matriculaId={matriculaVigente.id} turmaCodigo={matriculaVigente.turmaCodigo} />
+          )}
         </Card>
       )}
 

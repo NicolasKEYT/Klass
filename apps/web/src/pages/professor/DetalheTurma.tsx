@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Pencil, Trash2 } from "lucide-react";
@@ -40,6 +40,7 @@ import {
   proximaOrdemAvaliacao,
   type AlunoDoDiario,
   type Aula,
+  type Avaliacao,
   type ProgressoMatricula,
   type ResumoEncerramentoTurma,
 } from "@/lib/diario";
@@ -48,6 +49,8 @@ import { PERIODO_TURMA_DATA_MAX, PERIODO_TURMA_DATA_MIN } from "@/lib/selecao";
 
 type Aba = "avaliacoes" | "aulas" | "alunos";
 type ModoCriacaoAula = "unica" | "recorrencia";
+
+const SEGUNDOS_PARA_DESFAZER = 8;
 
 const DIAS_SEMANA: Array<{ valor: number; label: string }> = [
   { valor: 1, label: "Seg" },
@@ -124,6 +127,10 @@ export function DetalheTurma() {
   const erroDeLeitura = consultasDaTela.find((c) => c.isError)?.error ?? progressos.erro;
   const [erro, setErro] = useState<string | null>(null);
   const [mensagem, setMensagem] = useState<string | null>(null);
+  // Avaliação sem notas recém-apagada: "Desfazer" fica disponível por alguns segundos.
+  const [apagadaRecentemente, setApagadaRecentemente] = useState<Avaliacao | null>(null);
+  const temporizadorDesfazer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(temporizadorDesfazer.current), []);
 
   const [mostrarNovaAvaliacao, setMostrarNovaAvaliacao] = useState(false);
   const [novoTitulo, setNovoTitulo] = useState("");
@@ -357,11 +364,55 @@ export function DetalheTurma() {
     }
   }
 
-  async function aoApagarAvaliacao(avaliacaoId: string) {
+  async function aoApagarAvaliacao(avaliacao: Avaliacao, podeDesfazer: boolean) {
     if (!id) return;
     setMensagem(null);
-    await gravar(() => apagarAvaliacao(avaliacaoId), (qc) => invalidar.avaliacoes(qc, id));
-    setMensagem("Avaliação apagada.");
+    await gravar(() => apagarAvaliacao(avaliacao.id), (qc) => invalidar.avaliacoes(qc, id));
+    if (podeDesfazer) {
+      window.clearTimeout(temporizadorDesfazer.current);
+      setApagadaRecentemente(avaliacao);
+      temporizadorDesfazer.current = window.setTimeout(() => setApagadaRecentemente(null), SEGUNDOS_PARA_DESFAZER * 1000);
+    } else {
+      setApagadaRecentemente(null);
+      setMensagem(`Avaliação ${avaliacao.titulo} apagada.`);
+    }
+  }
+
+  // "Desfazer" recria a avaliação com o mesmo título, descrição, peso e
+  // ordem (só existe para avaliação sem notas — nada mais se perdeu). Se
+  // outra avaliação já ocupou a ordem nesse meio-tempo, vai para o fim.
+  async function aoDesfazerApagar() {
+    const avaliacao = apagadaRecentemente;
+    if (!id || !avaliacao) return;
+    window.clearTimeout(temporizadorDesfazer.current);
+    setApagadaRecentemente(null);
+    setErro(null);
+    const recriar = (ordem: number) =>
+      criarAvaliacao({
+        turmaId: id,
+        titulo: avaliacao.titulo,
+        descricao: avaliacao.descricao ?? "",
+        peso: avaliacao.peso,
+        ordem,
+      });
+    try {
+      await gravar(
+        async () => {
+          try {
+            return await recriar(avaliacao.ordem);
+          } catch (e) {
+            if (e instanceof Error && e.message.includes("nessa posição")) {
+              return recriar(await proximaOrdemAvaliacao(id));
+            }
+            throw e;
+          }
+        },
+        (qc) => invalidar.avaliacoes(qc, id),
+      );
+      setMensagem(`Avaliação ${avaliacao.titulo} restaurada.`);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Não foi possível restaurar a avaliação.");
+    }
   }
 
   async function aoEncerrar(matriculaId: string) {
@@ -430,6 +481,18 @@ export function DetalheTurma() {
         {mensagem && (
           <Aviso variant="success" className="mb-4">
             {mensagem}
+          </Aviso>
+        )}
+        {apagadaRecentemente && (
+          <Aviso variant="success" className="mb-4 flex flex-wrap items-center justify-between gap-3" role="status">
+            <span>Avaliação {apagadaRecentemente.titulo} apagada.</span>
+            <button
+              type="button"
+              onClick={() => void aoDesfazerApagar()}
+              className="font-medium underline hover:no-underline"
+            >
+              Desfazer
+            </button>
           </Aviso>
         )}
 

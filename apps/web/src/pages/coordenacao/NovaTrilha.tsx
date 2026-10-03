@@ -24,6 +24,9 @@ export function NovaTrilha() {
   const [nome, setNome] = useState("");
   const [slug, setSlug] = useState("");
   const [slugEditadoManualmente, setSlugEditadoManualmente] = useState(false);
+  // O endereço é gerado do nome e mostrado como texto; o campo só abre em
+  // "Alterar" ou quando o banco recusa o endereço (conflito ou formato).
+  const [editandoEndereco, setEditandoEndereco] = useState(false);
   const [descricao, setDescricao] = useState("");
   const [descricaoCurta, setDescricaoCurta] = useState("");
   const [icone, setIcone] = useState<string | null>(null);
@@ -72,7 +75,9 @@ export function NovaTrilha() {
         irParaListaAoInves ? "/coordenacao/trilhas" : `/coordenacao/trilhas/${trilha.slug}/editar`,
       );
     } catch (e) {
-      setErro(e instanceof Error ? e.message : "Não foi possível criar a trilha.");
+      const texto = e instanceof Error ? e.message : "Não foi possível criar a trilha.";
+      if (texto.includes("endereço da página")) setEditandoEndereco(true);
+      setErro(texto);
     } finally {
       setEnviando(false);
     }
@@ -100,6 +105,24 @@ export function NovaTrilha() {
               <IconePicker valor={icone} onChange={setIcone} />
             </div>
 
+            {!editandoEndereco ? (
+              <div className="flex flex-col gap-1.5">
+                <span className="text-label font-medium text-text-secondary">Endereço da página</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="break-all font-mono text-body-sm text-text-secondary">
+                    /catalogo/{slug || "..."}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setEditandoEndereco(true)}
+                    className="text-label font-medium text-primary hover:underline"
+                  >
+                    Alterar
+                  </button>
+                </div>
+                <span className="text-label text-text-muted">Gerado a partir do nome.</span>
+              </div>
+            ) : (
             <label className="flex flex-col gap-1.5">
               <div className="flex items-center justify-between">
                 <span className="text-label font-medium text-text-secondary">Endereço da página</span>
@@ -127,6 +150,7 @@ export function NovaTrilha() {
                 acentos. Mudar depois de publicado pode quebrar links já compartilhados.
               </span>
             </label>
+            )}
 
             <label className="flex flex-col gap-1.5">
               <span className="text-label font-medium text-text-secondary">Descrição curta</span>

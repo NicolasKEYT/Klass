@@ -217,7 +217,7 @@ function EditorDeTrilha({ trilha, slugRota }: { trilha: Trilha; slugRota: string
             cargaHorariaHoras: novoModuloCarga,
             icone: novoModuloIcone,
           }),
-        invalidar.catalogo,
+        (qc) => invalidar.modulos(qc, trilha.id),
       );
       setNovoModuloNome("");
       setNovoModuloDescricao("");
@@ -259,7 +259,7 @@ function EditorDeTrilha({ trilha, slugRota }: { trilha: Trilha; slugRota: string
             carga_horaria_horas: edicaoCarga,
             icone: edicaoIcone,
           }),
-        invalidar.catalogo,
+        (qc) => invalidar.modulos(qc, trilha.id),
       );
       setModuloEmEdicaoId(null);
       setMensagem("Módulo atualizado.");
@@ -276,7 +276,7 @@ function EditorDeTrilha({ trilha, slugRota }: { trilha: Trilha; slugRota: string
     setMensagem(null);
     setProcessandoModulo(true);
     try {
-      await gravar(() => apagarModulo(modulo.id), invalidar.catalogo);
+      await gravar(() => apagarModulo(modulo.id), (qc) => invalidar.modulos(qc, trilha.id));
       setMensagem("Módulo apagado.");
       setConfirmandoApagarModuloId(null);
     } catch (e) {
@@ -294,7 +294,7 @@ function EditorDeTrilha({ trilha, slugRota }: { trilha: Trilha; slugRota: string
     setErro(null);
     setReordenando(true);
     try {
-      await gravar(() => trocarOrdemModulos(modulo.id, alvo.id), invalidar.catalogo);
+      await gravar(() => trocarOrdemModulos(modulo.id, alvo.id), (qc) => invalidar.modulos(qc, trilha.id));
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível reordenar.");
     } finally {
@@ -315,7 +315,7 @@ function EditorDeTrilha({ trilha, slugRota }: { trilha: Trilha; slugRota: string
     qc.setQueryData<Modulo[]>(chaves.catalogo.modulos(trilha.id), nova);
     setErro(null);
     try {
-      await gravar(() => reordenarModulos(nova.map((m) => m.id)), invalidar.catalogo);
+      await gravar(() => reordenarModulos(nova.map((m) => m.id)), (qc) => invalidar.modulos(qc, trilha.id));
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível reordenar.");
       await qc.invalidateQueries({ queryKey: chaves.catalogo.modulos(trilha.id) });
@@ -473,7 +473,10 @@ function EditorDeTrilha({ trilha, slugRota }: { trilha: Trilha; slugRota: string
         <div className="mb-4 flex items-center justify-between">
           {consultaModulos.data ? (
             <Titulo nivel="secao">
-              Módulos ({modulos.length}) · {trilha.carga_horaria_total}h
+              Módulos ({modulos.length}) ·{" "}
+              {/* Soma dos módulos da tela, não trilha.carga_horaria_total:
+                  acompanha cada operação sem depender de reler a trilha. */}
+              {modulos.reduce((soma, m) => soma + m.carga_horaria_horas, 0)}h
             </Titulo>
           ) : (
             <RegiaoCarregando>

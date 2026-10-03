@@ -10,6 +10,7 @@ import {
   StyleSheet,
 } from "@react-pdf/renderer";
 import type { Certificado } from "@klass/types";
+import { INSTITUICAO as DADOS_INSTITUICAO } from "@/lib/instituicao";
 
 // Fidelidade ao design 06-certificado.svg. Uma decisão consciente: o SVG
 // usa IBM Plex (Serif/Sans/Mono), mas registrar fontes customizadas no
@@ -36,10 +37,9 @@ const COR = {
   line: "#B7B0A0",
 };
 
-// Não há entidade "instituição" no domínio — o nome vem do design (é o
-// emissor do certificado, fixo no template), não do banco.
-const INSTITUICAO = "Instituto Aberto de Tecnologia";
-const CIDADE = "São Paulo";
+// Nome e cidade do emissor vêm de lib/instituicao (o mesmo da barra lateral).
+const INSTITUICAO = DADOS_INSTITUICAO.nome;
+const CIDADE = DADOS_INSTITUICAO.cidade;
 
 // Ícone de capelo (mesmos paths do SVG) desenhado num viewBox 18x15, para
 // reuso no logo do topo e no selo central.

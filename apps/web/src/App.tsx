@@ -18,6 +18,7 @@ import { DetalheTurma as DetalheTurmaCoordenacao } from "@/pages/coordenacao/Det
 import { EditarTurma } from "@/pages/coordenacao/EditarTurma";
 import { NovaTrilha } from "@/pages/coordenacao/NovaTrilha";
 import { NovaTurma } from "@/pages/coordenacao/NovaTurma";
+import { Pessoas } from "@/pages/coordenacao/Pessoas";
 import { Trilhas } from "@/pages/coordenacao/Trilhas";
 import { Turmas as TurmasDaCoordenacao } from "@/pages/coordenacao/Turmas";
 import { DetalheTurma as DetalheTurmaProfessor } from "@/pages/professor/DetalheTurma";
@@ -67,6 +68,7 @@ export default function App() {
             <Route path="/coordenacao/turmas/:id" element={<DetalheTurmaCoordenacao />} />
             <Route path="/coordenacao/turmas/:id/editar" element={<EditarTurma />} />
             <Route path="/coordenacao/certificados" element={<CertificadosDaCoordenacao />} />
+            <Route path="/coordenacao/pessoas" element={<Pessoas />} />
           </Route>
 
           {/* D3/D8 — "Minhas matrículas" virou "Boletim" (rota e nav). A tela
