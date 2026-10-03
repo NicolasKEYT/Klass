@@ -498,7 +498,12 @@ export interface TurmaDisponivel {
   periodoInicio: string;
   periodoFim: string;
   vagasRestantes: number;
-  /** Situação do aluno atual nesta turma, se houver. */
+  /**
+   * Matrícula do aluno atual nesta turma, em qualquer status — inclusive
+   * rejeitada/cancelada/reprovada. Não significa inscrição vigente: serve
+   * para bloquear só esta turma (unique aluno+turma); se o aluno ainda
+   * pode se inscrever no módulo é decidido pelo status (DetalheModulo).
+   */
   minhaMatricula: { id: string; status: StatusMatricula } | null;
 }
 

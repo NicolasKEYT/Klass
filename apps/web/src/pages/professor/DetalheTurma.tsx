@@ -305,7 +305,7 @@ export function DetalheTurma() {
 
   return (
     <PaginaAutenticada>
-        <BotaoVoltar />
+        <BotaoVoltar seSemHistorico="/professor/turmas" />
 
         {erro && (
           <Aviso variant="danger" className="mb-4">

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { PDFDownloadLink } from "@react-pdf/renderer";
-import { Award, Lock, Unlock } from "lucide-react";
+import { Award, ChevronDown, ChevronUp, Lock, Unlock } from "lucide-react";
 import { useAuth } from "@/auth";
 import { Aviso } from "@/components/Aviso";
 import { Badge } from "@/components/Badge";
@@ -51,6 +51,18 @@ export function Boletim() {
   // Realtime abaixo (uma trilha por seção, mas o Realtime escuta todas de
   // uma vez).
   const [matriculaIds, setMatriculaIds] = useState<string[]>([]);
+  // Módulos encerrados (concluído/reprovado) começam recolhidos — o
+  // aluno expande para ver a nota de cada avaliação.
+  const [expandidos, setExpandidos] = useState<Set<string>>(new Set());
+
+  function alternarExpandido(moduloId: string) {
+    setExpandidos((atual) => {
+      const proximo = new Set(atual);
+      if (proximo.has(moduloId)) proximo.delete(moduloId);
+      else proximo.add(moduloId);
+      return proximo;
+    });
+  }
 
   async function carregar() {
     if (!usuario) return;
@@ -72,8 +84,14 @@ export function Boletim() {
             listarPreRequisitosDaTrilha(trilhaId),
           ]);
 
+          // reverse(): a lista vem da mais recente para a mais antiga, e no
+          // Map a última escrita vence — assim, depois de uma reinscrição,
+          // o card mostra a matrícula nova, não a rejeitada/reprovada.
           const matriculaPorModulo = new Map(
-            matriculas.filter((m) => m.trilhaId === trilhaId).map((m) => [m.moduloId, m]),
+            matriculas
+              .filter((m) => m.trilhaId === trilhaId)
+              .reverse()
+              .map((m) => [m.moduloId, m]),
           );
           const concluidos = new Set(
             matriculas
@@ -91,8 +109,11 @@ export function Boletim() {
                 return { modulo, matricula: undefined, faltantes, progresso: null, avaliacoes: [] };
               }
               const progresso = await buscarProgressoMatricula(matricula.id);
+              // Mesmos status que a RLS de diario.notas libera para o aluno.
               const avaliacoes =
-                matricula.status === "matriculada"
+                matricula.status === "matriculada" ||
+                matricula.status === "concluida" ||
+                matricula.status === "reprovada"
                   ? await listarAvaliacoesComNotaDoAluno(matricula.id, matricula.turmaId)
                   : [];
               return { modulo, matricula, faltantes: [], progresso, avaliacoes };
@@ -232,8 +253,29 @@ export function Boletim() {
                       </p>
                     )}
 
-                    {matricula?.status === "matriculada" && (
-                      <div className="mt-1 flex flex-col gap-1.5 border-t border-border pt-3">
+                    {(matricula?.status === "concluida" || matricula?.status === "reprovada") &&
+                      avaliacoes.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => alternarExpandido(modulo.id)}
+                          aria-expanded={expandidos.has(modulo.id)}
+                          aria-controls={`notas-${modulo.id}`}
+                          className="flex items-center gap-1 self-start text-label font-medium text-primary hover:underline"
+                        >
+                          {expandidos.has(modulo.id) ? "Ocultar notas" : "Ver notas por avaliação"}
+                          {expandidos.has(modulo.id) ? (
+                            <ChevronUp className="h-4 w-4" aria-hidden />
+                          ) : (
+                            <ChevronDown className="h-4 w-4" aria-hidden />
+                          )}
+                        </button>
+                      )}
+
+                    {(matricula?.status === "matriculada" || expandidos.has(modulo.id)) && (
+                      <div
+                        id={`notas-${modulo.id}`}
+                        className="mt-1 flex flex-col gap-1.5 border-t border-border pt-3"
+                      >
                         {avaliacoes.map((a) => (
                           <div key={a.id} className="flex items-center justify-between text-body-sm">
                             <span className="text-text-secondary">
@@ -244,25 +286,27 @@ export function Boletim() {
                             </span>
                           </div>
                         ))}
-                        <p className="mt-1 text-label text-text-muted">
-                          Para ser aprovado: média {matricula.trilhaMediaMinima.toFixed(1)} e
-                          frequência de {matricula.frequenciaMinimaPercentual}%.{" "}
-                          {(() => {
-                            const mediaOk =
-                              progresso?.media !== null &&
-                              progresso?.media !== undefined &&
-                              progresso.media >= matricula.trilhaMediaMinima;
-                            const freqOk =
-                              progresso?.frequencia !== null &&
-                              progresso?.frequencia !== undefined &&
-                              progresso.frequencia >= matricula.frequenciaMinimaPercentual;
-                            if (mediaOk && freqOk) return "Você já atingiu os dois.";
-                            if (!mediaOk && !freqOk) return "Você ainda não atingiu nenhum dos dois.";
-                            return mediaOk
-                              ? "Você já atingiu a média, falta a frequência."
-                              : "Você já atingiu a frequência, falta a média.";
-                          })()}
-                        </p>
+                        {matricula?.status === "matriculada" && (
+                          <p className="mt-1 text-label text-text-muted">
+                            Para ser aprovado: média {matricula.trilhaMediaMinima.toFixed(1)} e
+                            frequência de {matricula.frequenciaMinimaPercentual}%.{" "}
+                            {(() => {
+                              const mediaOk =
+                                progresso?.media !== null &&
+                                progresso?.media !== undefined &&
+                                progresso.media >= matricula.trilhaMediaMinima;
+                              const freqOk =
+                                progresso?.frequencia !== null &&
+                                progresso?.frequencia !== undefined &&
+                                progresso.frequencia >= matricula.frequenciaMinimaPercentual;
+                              if (mediaOk && freqOk) return "Você já atingiu os dois.";
+                              if (!mediaOk && !freqOk) return "Você ainda não atingiu nenhum dos dois.";
+                              return mediaOk
+                                ? "Você já atingiu a média, falta a frequência."
+                                : "Você já atingiu a frequência, falta a média.";
+                            })()}
+                          </p>
+                        )}
                       </div>
                     )}
 

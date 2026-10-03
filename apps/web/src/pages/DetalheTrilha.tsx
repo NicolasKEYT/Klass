@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { useAuth } from "@/auth";
 import { Aviso } from "@/components/Aviso";
 import { Badge } from "@/components/Badge";
 import { BotaoVoltar } from "@/components/BotaoVoltar";
@@ -25,6 +26,7 @@ const NIVEL_LABEL: Record<NivelModulo, string> = {
 // motivo já aparece junto do botão desabilitado).
 export function DetalheTrilha() {
   const { slug } = useParams<{ slug: string }>();
+  const { profile } = useAuth();
   const [trilha, setTrilha] = useState<Trilha | null | undefined>(undefined);
   const [modulos, setModulos] = useState<Modulo[]>([]);
   const [preRequisitos, setPreRequisitos] = useState<Map<string, string[]>>(new Map());
@@ -58,7 +60,9 @@ export function DetalheTrilha() {
 
   return (
     <PaginaAutenticada>
-      <BotaoVoltar />
+      {/* Destino fixo, não navigate(-1): vindo de um módulo, o histórico
+          devolvia ao módulo, que por sua vez volta para cá (loop). */}
+      <BotaoVoltar para="/catalogo" rotulo="Catálogo" />
       {erro && (
         <Aviso variant="danger" className="mb-4">
           {erro}
@@ -100,6 +104,13 @@ export function DetalheTrilha() {
                       Requer: {preRequisitos.get(modulo.id)!.join(", ")}
                     </p>
                   )}
+                  {/* A inscrição continua dentro do módulo; o card só
+                      precisa deixar claro que é por ali que ela acontece. */}
+                  <p className="text-label font-medium text-primary">
+                    {profile?.papel === "aluno"
+                      ? "Ver turmas, condições e inscrição →"
+                      : "Ver turmas e condições →"}
+                  </p>
                 </Card>
               </Link>
             ))}

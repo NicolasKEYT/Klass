@@ -6,14 +6,23 @@ import { Aviso } from "@/components/Aviso";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
+import { BotaoVoltar } from "@/components/BotaoVoltar";
 import { IconeCatalogo } from "@/components/IconeCatalogo";
 import { PaginaAutenticada } from "@/components/PaginaAutenticada";
+import { StatusBadge } from "@/components/StatusBadge";
 import { Titulo } from "@/components/Titulo";
-import { buscarTrilhaPorSlug, listarModulosDaTrilha, listarPreRequisitosIds } from "@/lib/catalogo";
+import {
+  buscarTrilhaPorId,
+  buscarTrilhaPorSlug,
+  listarModulosDaTrilha,
+  listarPreRequisitosDoModulo,
+} from "@/lib/catalogo";
 import {
   inscreverAluno,
   listarMatriculasDoAluno,
   listarModulosComTurmasDaTrilha,
+  type MatriculaDoAluno,
+  type StatusMatricula,
   type TurmaDisponivel,
 } from "@/lib/selecao";
 import type { Modulo, NivelModulo, Trilha } from "@klass/types";
@@ -24,9 +33,17 @@ const NIVEL_LABEL: Record<NivelModulo, string> = {
   avancado: "Avançado",
 };
 
+// Só estes status impedem nova inscrição no módulo (o banco bloqueia
+// inscrita/matriculada em checar_matricula_ativa_no_modulo; concluída
+// não faz sentido refazer). Rejeitada, cancelada (inclui removido pela
+// coordenação) e reprovada liberam escolher outra turma.
+const STATUS_VIGENTES: StatusMatricula[] = ["inscrita", "matriculada", "concluida"];
+
 interface PreRequisitoStatus {
   moduloId: string;
   nome: string;
+  /** Rota da página do módulo pré-requisito, para virar link quando pendente. */
+  rota: string;
   status: "concluido" | "cursando" | "pendente";
   data: string | null;
 }
@@ -43,6 +60,11 @@ export function DetalheModulo() {
 
   const [trilha, setTrilha] = useState<Trilha | null | undefined>(undefined);
   const [modulo, setModulo] = useState<Modulo | null>(null);
+  const [carregando, setCarregando] = useState(true);
+  // Incrementado após uma inscrição bem-sucedida, para recarregar a
+  // matrícula e trocar o botão pelo estado "Em análise".
+  const [recarga, setRecarga] = useState(0);
+  const [matriculasNoModulo, setMatriculasNoModulo] = useState<MatriculaDoAluno[]>([]);
   const [preRequisitos, setPreRequisitos] = useState<PreRequisitoStatus[]>([]);
   const [turmas, setTurmas] = useState<TurmaDisponivel[]>([]);
   const [turmaSelecionada, setTurmaSelecionada] = useState<string | null>(null);
@@ -56,41 +78,71 @@ export function DetalheModulo() {
 
     async function carregar() {
       setErro(null);
+      setCarregando(true);
       try {
+        // A trilha só vai para o estado junto com o módulo, no fim: antes,
+        // ela era definida sozinha e a tela caía em "Módulo não
+        // encontrado" durante toda a busca do módulo.
         const trilhaEncontrada = await buscarTrilhaPorSlug(slug!);
         if (!ativo) return;
-        setTrilha(trilhaEncontrada);
-        if (!trilhaEncontrada) return;
+        if (!trilhaEncontrada) {
+          setTrilha(null);
+          setModulo(null);
+          return;
+        }
 
-        const [modulos, preReqIds, modulosComTurmas, minhasMatriculas] = await Promise.all([
+        const [modulos, preReqs, modulosComTurmas, minhasMatriculas] = await Promise.all([
           listarModulosDaTrilha(trilhaEncontrada.id),
-          listarPreRequisitosIds(moduloId!),
+          listarPreRequisitosDoModulo(moduloId!),
           listarModulosComTurmasDaTrilha(trilhaEncontrada.id, usuario?.id ?? null),
           usuario ? listarMatriculasDoAluno(usuario.id) : Promise.resolve([]),
         ]);
         if (!ativo) return;
 
-        const alvo = modulos.find((m) => m.id === moduloId) ?? null;
-        setModulo(alvo);
+        // Hoje o banco só aceita pré-requisito da mesma trilha, mas o slug
+        // de outra trilha é buscado mesmo assim — o nome e o link vêm do
+        // próprio pré-requisito, nunca mais como "—".
+        const outrasTrilhaIds = [
+          ...new Set(preReqs.map((p) => p.trilha_id).filter((id) => id !== trilhaEncontrada.id)),
+        ];
+        const outrasTrilhas = await Promise.all(outrasTrilhaIds.map((id) => buscarTrilhaPorId(id)));
+        if (!ativo) return;
+        const slugPorTrilha = new Map<string, string>([[trilhaEncontrada.id, trilhaEncontrada.slug]]);
+        for (const t of outrasTrilhas) if (t) slugPorTrilha.set(t.id, t.slug);
 
-        const nomePorId = new Map(modulos.map((m) => [m.id, m.nome]));
-        const statusPreReq: PreRequisitoStatus[] = preReqIds.map((id) => {
-          const matricula = minhasMatriculas.find((m) => m.moduloId === id);
-          if (matricula?.status === "concluida") {
-            return { moduloId: id, nome: nomePorId.get(id) ?? "—", status: "concluido", data: matricula.periodoFim };
-          }
-          if (matricula?.status === "matriculada") {
-            return { moduloId: id, nome: nomePorId.get(id) ?? "—", status: "cursando", data: matricula.periodoFim };
-          }
-          return { moduloId: id, nome: nomePorId.get(id) ?? "—", status: "pendente", data: null };
+        const statusPreReq: PreRequisitoStatus[] = preReqs.map((pr) => {
+          const slugTrilha = slugPorTrilha.get(pr.trilha_id);
+          const base = {
+            moduloId: pr.id,
+            nome: pr.nome,
+            rota: slugTrilha ? `/catalogo/${slugTrilha}/modulos/${pr.id}` : "/catalogo",
+          };
+          // some/find por status, não a primeira matrícula do módulo: depois
+          // de uma reinscrição o aluno pode ter mais de uma ali.
+          const doModulo = minhasMatriculas.filter((m) => m.moduloId === pr.id);
+          const concluida = doModulo.find((m) => m.status === "concluida");
+          if (concluida) return { ...base, status: "concluido", data: concluida.periodoFim };
+          const cursando = doModulo.find((m) => m.status === "matriculada");
+          if (cursando) return { ...base, status: "cursando", data: cursando.periodoFim };
+          return { ...base, status: "pendente", data: null };
         });
-        setPreRequisitos(statusPreReq);
 
         const turmasDoModulo = modulosComTurmas.find((m) => m.moduloId === moduloId)?.turmas ?? [];
+
+        setTrilha(trilhaEncontrada);
+        setModulo(modulos.find((m) => m.id === moduloId) ?? null);
+        setPreRequisitos(statusPreReq);
+        setMatriculasNoModulo(minhasMatriculas.filter((m) => m.moduloId === moduloId));
         setTurmas(turmasDoModulo);
-        setTurmaSelecionada(turmasDoModulo[0]?.id ?? null);
+        // Turma onde o aluno já teve matrícula não pode ser escolhida de
+        // novo (unique aluno+turma no banco) — pré-seleciona a primeira livre.
+        setTurmaSelecionada(
+          turmasDoModulo.find((t) => !t.minhaMatricula && t.vagasRestantes > 0)?.id ?? null,
+        );
       } catch (e) {
         if (ativo) setErro(e instanceof Error ? e.message : "Não foi possível carregar o módulo.");
+      } finally {
+        if (ativo) setCarregando(false);
       }
     }
 
@@ -106,7 +158,7 @@ export function DetalheModulo() {
     // tela ficava com erro=null e módulo=null — "Módulo não encontrado"
     // falso, sem nenhum erro real por trás.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slug, moduloId, usuario?.id]);
+  }, [slug, moduloId, usuario?.id, recarga]);
 
   const preRequisitosPendentes = preRequisitos.filter((p) => p.status !== "concluido");
   const podeInscrever = preRequisitosPendentes.length === 0;
@@ -119,6 +171,7 @@ export function DetalheModulo() {
     try {
       await inscreverAluno(turmaSelecionada);
       setMensagem("Inscrição enviada — a coordenação vai avaliar em breve.");
+      setRecarga((n) => n + 1);
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível se inscrever nesta turma.");
     } finally {
@@ -141,7 +194,9 @@ export function DetalheModulo() {
     );
   }
 
-  if (trilha === undefined) {
+  // Comparar o id evita mostrar o módulo anterior ao trocar de módulo e
+  // evita piscar a tela inteira no recarregamento pós-inscrição.
+  if (carregando && modulo?.id !== moduloId) {
     return (
       <PaginaAutenticada largura="estreita">
         <p className="text-body-sm text-text-secondary">Carregando...</p>
@@ -160,16 +215,15 @@ export function DetalheModulo() {
     );
   }
 
-  const minhaMatricula = turmas.find((t) => t.minhaMatricula)?.minhaMatricula;
+  // listarMatriculasDoAluno vem do mais recente para o mais antigo.
+  const matriculaVigente = matriculasNoModulo.find((m) => STATUS_VIGENTES.includes(m.status));
+  const matriculaAnterior = matriculaVigente ? undefined : matriculasNoModulo[0];
 
   return (
     <PaginaAutenticada largura="estreita">
-      <Link
-        to={`/catalogo/${trilha.slug}`}
-        className="mb-4 flex items-center gap-1.5 text-body-sm font-medium text-text-secondary hover:text-text-primary"
-      >
-        ← Catálogo
-      </Link>
+      {/* Destino fixo na trilha (não navigate(-1)): é ela que, por sua vez,
+          volta fixo ao catálogo — sem loop trilha ↔ módulo. */}
+      <BotaoVoltar para={`/catalogo/${trilha.slug}`} rotulo={trilha.nome} />
 
       <div className="flex items-center gap-2">
         <IconeCatalogo nome={modulo.icone} className="h-6 w-6 text-primary" />
@@ -180,6 +234,7 @@ export function DetalheModulo() {
         <Badge variant="neutral">{modulo.carga_horaria_horas} h</Badge>
         <Badge variant="neutral">Trilha {trilha.nome}</Badge>
       </div>
+      {modulo.descricao && <p className="mt-3 text-body-sm text-text-secondary">{modulo.descricao}</p>}
 
       {erro && (
         <Aviso variant="danger" className="mt-4">
@@ -202,7 +257,13 @@ export function DetalheModulo() {
                 {p.status === "cursando" && <Clock className="h-4 w-4 shrink-0 text-text-secondary" aria-hidden />}
                 {p.status === "pendente" && <Lock className="h-4 w-4 shrink-0 text-text-muted" aria-hidden />}
                 <div>
-                  <p className="text-body-sm font-medium text-text-primary">{p.nome}</p>
+                  {p.status === "concluido" ? (
+                    <p className="text-body-sm font-medium text-text-primary">{p.nome}</p>
+                  ) : (
+                    <Link to={p.rota} className="text-body-sm font-medium text-primary hover:underline">
+                      {p.nome}
+                    </Link>
+                  )}
                   <p className="text-label text-text-muted">
                     {p.status === "concluido" && `Concluído em ${p.data}`}
                     {p.status === "cursando" && `Você está cursando. Conclusão prevista: ${p.data}.`}
@@ -215,7 +276,22 @@ export function DetalheModulo() {
         </Card>
       )}
 
-      {profile?.papel === "aluno" && !minhaMatricula && (
+      {profile?.papel === "aluno" && matriculaAnterior && (
+        <Card className="mt-4 flex flex-col gap-2">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-body-sm text-text-secondary">
+              Sua inscrição anterior, na turma {matriculaAnterior.turmaCodigo}:
+            </p>
+            <StatusBadge tipo="matricula" status={matriculaAnterior.status} />
+          </div>
+          {matriculaAnterior.motivoConclusao && (
+            <p className="text-label text-text-muted">{matriculaAnterior.motivoConclusao}</p>
+          )}
+          <p className="text-label text-text-muted">Você pode se inscrever de novo em outra turma.</p>
+        </Card>
+      )}
+
+      {profile?.papel === "aluno" && !matriculaVigente && (
         <>
           <Card className="mt-4">
             <p className="mb-3 text-klass-md font-medium text-text-primary">Escolha a turma</p>
@@ -244,13 +320,16 @@ export function DetalheModulo() {
                       className="h-5 w-5 accent-acento"
                       checked={turmaSelecionada === turma.id}
                       onChange={() => setTurmaSelecionada(turma.id)}
-                      disabled={turma.vagasRestantes <= 0}
+                      disabled={turma.vagasRestantes <= 0 || turma.minhaMatricula !== null}
                     />
                     <div>
                       <p className="text-body-sm font-medium text-text-primary">{turma.codigo}</p>
                       <p className="text-label text-text-muted">
                         {turma.periodoInicio} a {turma.periodoFim} · Prof. {turma.professorNome}
                       </p>
+                      {turma.minhaMatricula && (
+                        <p className="text-label text-text-muted">Você já se inscreveu nesta turma antes.</p>
+                      )}
                     </div>
                   </div>
                   <span className="font-mono text-label tabular-nums text-text-muted">
@@ -264,7 +343,7 @@ export function DetalheModulo() {
           <Button
             className="mt-4 w-full"
             variant={!podeInscrever ? "tracejado" : "primary"}
-            disabled={!podeInscrever || !turmaSelecionada || inscrevendo || turmas.length === 0}
+            disabled={!podeInscrever || !turmaSelecionada || inscrevendo || carregando || turmas.length === 0}
             title={
               !podeInscrever
                 ? `Conclua ${preRequisitosPendentes.map((p) => p.nome).join(", ")} antes de se inscrever.`
@@ -281,10 +360,19 @@ export function DetalheModulo() {
         </>
       )}
 
-      {minhaMatricula && (
-        <Card className="mt-4">
+      {matriculaVigente && (
+        <Card className="mt-4 flex flex-col gap-2">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-body-sm font-medium text-text-primary">
+              Turma {matriculaVigente.turmaCodigo}
+            </p>
+            <StatusBadge tipo="matricula" status={matriculaVigente.status} />
+          </div>
           <p className="text-body-sm text-text-secondary">
-            Você já tem uma inscrição neste módulo — acompanhe pelo{" "}
+            {matriculaVigente.status === "inscrita" && "Sua inscrição está em análise pela coordenação. "}
+            {matriculaVigente.status === "matriculada" && "Você está cursando este módulo. "}
+            {matriculaVigente.status === "concluida" && "Você já concluiu este módulo. "}
+            Acompanhe pelo{" "}
             <Link to="/aluno/boletim" className="font-medium text-primary hover:underline">
               boletim
             </Link>

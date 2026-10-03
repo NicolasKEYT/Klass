@@ -6,12 +6,25 @@ import { Aviso } from "@/components/Aviso";
 import { BarraDeMeta } from "@/components/BarraDeMeta";
 import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
+import { Titulo } from "@/components/Titulo";
 import {
   buscarProximoPassoDoAluno,
   listarNovidadesDoAluno,
   type NovidadeAluno,
   type ProximoPassoAluno,
 } from "@/lib/diario";
+import { listarMatriculasDoAluno, type MatriculaDoAluno } from "@/lib/selecao";
+
+// Quando não há módulo em curso (passo = null), o motivo muda a mensagem:
+// a mesma frase de "explore o catálogo" aparecia para quem só esperava a
+// análise da inscrição ou já tinha concluído tudo.
+type SituacaoSemCurso = "sem_matricula" | "em_analise" | "tudo_concluido";
+
+function situacaoSemCurso(matriculas: MatriculaDoAluno[]): SituacaoSemCurso {
+  if (matriculas.some((m) => m.status === "inscrita")) return "em_analise";
+  if (matriculas.some((m) => m.status === "concluida")) return "tudo_concluido";
+  return "sem_matricula";
+}
 
 function tempoRelativo(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
@@ -31,16 +44,24 @@ function tempoRelativo(iso: string): string {
 export function Inicio() {
   const { usuario, profile } = useAuth();
   const [passo, setPasso] = useState<ProximoPassoAluno | null | undefined>(undefined);
-  const [novidades, setNovidades] = useState<NovidadeAluno[]>([]);
+  // undefined = ainda carregando; [] = carregou e não há nada — sem essa
+  // distinção, "Nada novo por enquanto." aparecia durante a carga.
+  const [novidades, setNovidades] = useState<NovidadeAluno[] | undefined>(undefined);
+  const [situacao, setSituacao] = useState<SituacaoSemCurso>("sem_matricula");
   const [erro, setErro] = useState<string | null>(null);
 
   useEffect(() => {
     if (!usuario) return;
     let ativo = true;
     setErro(null);
-    Promise.all([buscarProximoPassoDoAluno(usuario.id), listarNovidadesDoAluno(usuario.id)])
-      .then(([p, n]) => {
+    Promise.all([
+      buscarProximoPassoDoAluno(usuario.id),
+      listarNovidadesDoAluno(usuario.id),
+      listarMatriculasDoAluno(usuario.id),
+    ])
+      .then(([p, n, matriculas]) => {
         if (!ativo) return;
+        setSituacao(situacaoSemCurso(matriculas));
         setPasso(p);
         setNovidades(n);
       })
@@ -64,7 +85,7 @@ export function Inicio() {
 
   return (
     <>
-      <p className="text-body-sm text-text-secondary">Olá, {profile?.nome_completo?.split(" ")[0] ?? "..."}</p>
+      <Titulo>Olá, {profile?.nome_completo?.split(" ")[0] ?? "..."}</Titulo>
 
       {erro && (
         <Aviso variant="danger" className="mt-4">
@@ -79,11 +100,33 @@ export function Inicio() {
       {!erro && passo === null && (
         <Card className="mt-4">
           <p className="text-body-sm text-text-secondary">
-            Você ainda não está cursando nenhum módulo. Que tal explorar o{" "}
-            <Link to="/catalogo" className="font-medium text-primary hover:underline">
-              catálogo
-            </Link>
-            ?
+            {situacao === "sem_matricula" && (
+              <>
+                Você ainda não está cursando nenhuma trilha. Que tal explorar o{" "}
+                <Link to="/catalogo" className="font-medium text-primary hover:underline">
+                  catálogo
+                </Link>
+                ?
+              </>
+            )}
+            {situacao === "em_analise" && (
+              <>
+                Sua inscrição está em análise pela coordenação. Acompanhe pelo{" "}
+                <Link to="/aluno/boletim" className="font-medium text-primary hover:underline">
+                  boletim
+                </Link>
+                .
+              </>
+            )}
+            {situacao === "tudo_concluido" && (
+              <>
+                Você concluiu todos os módulos em que se inscreveu. Veja seus{" "}
+                <Link to="/aluno/certificados" className="font-medium text-primary hover:underline">
+                  certificados
+                </Link>
+                .
+              </>
+            )}
           </p>
         </Card>
       )}
@@ -141,11 +184,14 @@ export function Inicio() {
           <Bell className="h-4 w-4" aria-hidden />
           Novidades
         </p>
-        {novidades.length === 0 && (
+        {!erro && novidades === undefined && (
+          <p className="text-body-sm text-text-secondary">Carregando...</p>
+        )}
+        {novidades?.length === 0 && (
           <p className="text-body-sm text-text-secondary">Nada novo por enquanto.</p>
         )}
         <div className="flex flex-col gap-3">
-          {novidades.map((n, i) => (
+          {novidades?.map((n, i) => (
             <div key={i} className="flex items-start gap-2.5">
               {n.texto.startsWith("Nota") ? (
                 <FileText className="mt-0.5 h-4 w-4 shrink-0 text-text-muted" aria-hidden />
@@ -163,7 +209,7 @@ export function Inicio() {
         </div>
       </Card>
 
-      {!erro && !passo && passo !== undefined && (
+      {!erro && passo === null && situacao !== "tudo_concluido" && (
         <div className="mt-4 flex items-center gap-2 text-label text-text-muted">
           <Award className="h-4 w-4" aria-hidden />
           Certificados aparecem aqui assim que você concluir um módulo ou trilha.

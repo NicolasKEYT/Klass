@@ -190,13 +190,13 @@ export async function reordenarModulos(idsNaOrdem: string[]): Promise<void> {
   if (error) throw new Error(mensagemDeErroBanco(error));
 }
 
-export async function listarPreRequisitosIds(moduloId: string): Promise<string[]> {
-  const { data, error } = await catalogo()
-    .from("pre_requisitos_modulo")
-    .select("pre_requisito_id")
-    .eq("modulo_id", moduloId);
+// Devolve o módulo inteiro (com trilha_id), não só o id: a tela de
+// detalhe precisa do nome e da trilha de cada pré-requisito para
+// mostrá-lo e linká-lo sem depender da lista de módulos da trilha atual.
+export async function listarPreRequisitosDoModulo(moduloId: string): Promise<Modulo[]> {
+  const { data, error } = await catalogo().rpc("pre_requisitos_de_modulo", { p_modulo_id: moduloId });
   if (error) throw new Error(mensagemDeErroBanco(error));
-  return (data ?? []).map((linha) => linha.pre_requisito_id);
+  return data ?? [];
 }
 
 export async function definirPreRequisito(

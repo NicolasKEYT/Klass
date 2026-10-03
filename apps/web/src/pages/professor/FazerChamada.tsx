@@ -24,7 +24,7 @@ import {
 // presença" — menos toques no caso comum). O alvo de toque do botão
 // (48px, D2) fica afastado do nome para evitar toque errado.
 export function FazerChamada() {
-  const { aula_id: aulaId } = useParams<{ id: string; aula_id: string }>();
+  const { id: turmaId, aula_id: aulaId } = useParams<{ id: string; aula_id: string }>();
   const { usuario } = useAuth();
   const { notificarSalvando, notificarSalvo, notificarErro } = useSincronizacao();
   const [aula, setAula] = useState<Aula | null | undefined>(undefined);
@@ -80,7 +80,7 @@ export function FazerChamada() {
 
   return (
     <PaginaAutenticada largura="estreita" className="pb-28">
-      <BotaoVoltar />
+      <BotaoVoltar seSemHistorico={`/professor/turmas/${turmaId}?aba=aulas`} />
 
       {erro && (
         <Aviso variant="danger" className="mb-4">
