@@ -1,7 +1,14 @@
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, ChevronLeft } from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 
 const CLASSES = "mb-4 flex items-center gap-1.5 text-body-sm font-medium text-text-secondary hover:text-text-primary";
+// Variantes do cabeçalho de página (pág. 6 e 8 do UI Kit). Só o chevron:
+// alvo de toque de 40px, o rótulo vira nome acessível. Chevron + rótulo:
+// linha acima do título.
+const CLASSES_SO_ICONE =
+  "-ml-2 flex h-10 w-10 shrink-0 items-center justify-center rounded-klass-control text-text-primary hover:bg-neutral-subtle";
+const CLASSES_COM_ROTULO =
+  "-ml-1 mb-2 flex min-h-10 w-fit items-center gap-1 text-body-sm text-text-primary hover:underline";
 
 interface BotaoVoltarProps {
   /**
@@ -19,20 +26,37 @@ interface BotaoVoltarProps {
    */
   seSemHistorico?: string;
   rotulo?: string;
+  /** Variantes do cabeçalho de página: só o chevron, ou chevron + rótulo. */
+  chevron?: "so-icone" | "com-rotulo";
 }
 
 // Sem `para`, navigate(-1): a mesma tela pode ser alcançada por caminhos
 // diferentes, e quem decide pra onde faz sentido voltar é o histórico do
 // navegador, não a tela.
-export function BotaoVoltar({ para, seSemHistorico, rotulo = "Voltar" }: BotaoVoltarProps) {
+export function BotaoVoltar({ para, seSemHistorico, rotulo = "Voltar", chevron }: BotaoVoltarProps) {
   const navigate = useNavigate();
   const location = useLocation();
+  const classes =
+    chevron === "so-icone" ? CLASSES_SO_ICONE : chevron === "com-rotulo" ? CLASSES_COM_ROTULO : CLASSES;
+  const conteudo =
+    chevron === "so-icone" ? (
+      <ChevronLeft className="h-6 w-6" aria-hidden />
+    ) : chevron === "com-rotulo" ? (
+      <>
+        <ChevronLeft className="h-5 w-5" aria-hidden />
+        {rotulo}
+      </>
+    ) : (
+    <>
+      <ArrowLeft className="h-4 w-4" aria-hidden />
+      {rotulo}
+    </>
+  );
 
   if (para) {
     return (
-      <Link to={para} className={CLASSES}>
-        <ArrowLeft className="h-4 w-4" aria-hidden />
-        {rotulo}
+      <Link to={para} className={classes} aria-label={chevron === "so-icone" ? rotulo : undefined}>
+        {conteudo}
       </Link>
     );
   }
@@ -47,10 +71,10 @@ export function BotaoVoltar({ para, seSemHistorico, rotulo = "Voltar" }: BotaoVo
       onClick={() =>
         semHistorico && seSemHistorico ? navigate(seSemHistorico, { replace: true }) : navigate(-1)
       }
-      className={CLASSES}
+      className={classes}
+      aria-label={chevron === "so-icone" ? rotulo : undefined}
     >
-      <ArrowLeft className="h-4 w-4" aria-hidden />
-      {rotulo}
+      {conteudo}
     </button>
   );
 }

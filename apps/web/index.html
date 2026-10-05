@@ -5,6 +5,21 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Klass</title>
+    <script>
+      // D1 — aplica o tema escuro antes da primeira pintura, para a tela
+      // não abrir clara e escurecer em seguida. Mesma regra de
+      // src/lib/tema.ts: "escuro" salvo, ou nada salvo e sistema escuro.
+      (function () {
+        var salva = null;
+        try {
+          salva = localStorage.getItem("klass:tema");
+        } catch (e) {}
+        var sistemaEscuro = !!(window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches);
+        if (salva === "escuro" || (salva !== "claro" && sistemaEscuro)) {
+          document.documentElement.setAttribute("data-tema", "escuro");
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

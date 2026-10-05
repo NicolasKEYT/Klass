@@ -7,6 +7,7 @@ import { PaginaAutenticada } from "@/components/PaginaAutenticada";
 import { Titulo } from "@/components/Titulo";
 import { useTurmasDoProfessor } from "@/lib/consultas/selecao";
 import { plural } from "@/lib/plural";
+import { formatarPeriodo } from "@/lib/formato";
 
 export function Turmas() {
   // Mesma entrada de cache do "Hoje": vindo de lá, a lista já está pronta.
@@ -15,8 +16,7 @@ export function Turmas() {
   const turmas = consulta.data;
 
   return (
-    <PaginaAutenticada>
-        <Titulo className="mb-6">Minhas turmas</Titulo>
+    <PaginaAutenticada titulo="Minhas turmas">
 
         {consulta.isError && !turmas && (
           <ErroConsulta
@@ -41,8 +41,7 @@ export function Turmas() {
                   {turma.codigo}
                 </Titulo>
                 <p className="text-label text-text-muted">
-                  {turma.moduloNome} · {turma.trilhaNome} · {turma.periodoInicio} a{" "}
-                  {turma.periodoFim} · {plural(turma.matriculados, "aluno matriculado", "alunos matriculados")}
+                  {turma.moduloNome} · {turma.trilhaNome} · {formatarPeriodo(turma.periodoInicio, turma.periodoFim)} · {plural(turma.matriculados, "aluno matriculado", "alunos matriculados")}
                 </p>
               </div>
               <LinkComPrefetch

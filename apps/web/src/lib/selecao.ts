@@ -2,6 +2,7 @@ import { supabase } from "@/lib/supabase";
 import { mensagemDeErroBanco } from "@/lib/mensagensDeErroBanco";
 import { listarModulosDaTrilha } from "@/lib/catalogo";
 import type { Matricula, Modulo, StatusMatricula, Turma } from "@klass/types";
+import { formatarMotivoConclusao } from "@/lib/formato";
 
 // Ponto único de acesso a selecao.* — mesmo padrão de apps/web/src/lib/catalogo.ts.
 function selecao() {
@@ -24,11 +25,46 @@ function identidade() {
 // professor da turma e professor precisa ver nome dos alunos matriculados.
 // identidade.nomes_completos() é uma função "diretório" (só id + nome) que
 // contorna essa RLS de propósito, sem expor papel ou outras colunas.
-async function buscarNomesCompletos(ids: string[]): Promise<Map<string, string>> {
+export async function buscarNomesCompletos(ids: string[]): Promise<Map<string, string>> {
   if (ids.length === 0) return new Map();
   const { data, error } = await identidade().rpc("nomes_completos", { p_ids: ids });
   if (error) throw new Error(mensagemDeErroBanco(error));
   return new Map((data ?? []).map((p) => [p.id, p.nome_completo]));
+}
+
+// Ocupação real das turmas (selecao.ocupacao_turmas): conta as matrículas
+// de todos, não só as que a RLS deixa o usuário ver — o aluno via vagas
+// superestimadas —, e evita trazer todas as matrículas para contar no
+// navegador (que truncava em 1000 linhas).
+export interface OcupacaoTurma {
+  vagasTotal: number;
+  inscritas: number;
+  matriculadas: number;
+  concluidas: number;
+  reprovadas: number;
+  vagasRestantes: number;
+  /** Período da turma terminou (fuso da instituição): o banco recusa inscrição. */
+  inscricoesEncerradas: boolean;
+}
+
+export async function buscarOcupacaoTurmas(turmaIds: string[] | null): Promise<Map<string, OcupacaoTurma>> {
+  if (turmaIds && turmaIds.length === 0) return new Map();
+  const { data, error } = await selecao().rpc("ocupacao_turmas", turmaIds ? { p_turma_ids: turmaIds } : {});
+  if (error) throw new Error(mensagemDeErroBanco(error));
+  return new Map(
+    (data ?? []).map((o) => [
+      o.turma_id,
+      {
+        vagasTotal: o.vagas_total,
+        inscritas: o.inscritas,
+        matriculadas: o.matriculadas,
+        concluidas: o.concluidas,
+        reprovadas: o.reprovadas,
+        vagasRestantes: o.vagas_restantes,
+        inscricoesEncerradas: o.inscricoes_encerradas,
+      },
+    ]),
+  );
 }
 
 interface ContextoModulo {
@@ -79,6 +115,8 @@ async function buscarContextoModulos(moduloIds: string[]): Promise<Map<string, C
 export interface TurmaListagem {
   id: string;
   codigo: string;
+  /** Turno opcional (ex.: "Noite"); UI Kit: "AM-2026-2 · Noite". */
+  turno: string | null;
   moduloId: string;
   moduloNome: string;
   trilhaNome: string;
@@ -86,6 +124,8 @@ export interface TurmaListagem {
   periodoInicio: string;
   periodoFim: string;
   vagasTotal: number;
+  /** Mínima da turma — traço de meta no gráfico de frequência (Acompanhamento). */
+  frequenciaMinimaPercentual: number;
   matriculados: number;
   pendentes: number;
 }
@@ -105,19 +145,19 @@ export async function listarTurmasParaCoordenacao(): Promise<TurmaListagem[]> {
   const professorIds = [...new Set(turmas.map((t) => t.professor_id))];
   const turmaIds = turmas.map((t) => t.id);
 
-  const [contextoModulo, nomeProfessor, matriculasResp] = await Promise.all([
+  const [contextoModulo, nomeProfessor, ocupacao] = await Promise.all([
     buscarContextoModulos(moduloIds),
     buscarNomesCompletos(professorIds),
-    selecao().from("matriculas").select("turma_id, status").in("turma_id", turmaIds),
+    buscarOcupacaoTurmas(turmaIds),
   ]);
-  if (matriculasResp.error) throw new Error(mensagemDeErroBanco(matriculasResp.error));
 
   return turmas.map((turma) => {
-    const doTurma = (matriculasResp.data ?? []).filter((m) => m.turma_id === turma.id);
+    const contagem = ocupacao.get(turma.id);
     const contexto = contextoModulo.get(turma.modulo_id);
     return {
       id: turma.id,
       codigo: turma.codigo,
+      turno: turma.turno,
       moduloId: turma.modulo_id,
       moduloNome: contexto?.nome ?? "—",
       trilhaNome: contexto?.trilhaNome ?? "—",
@@ -125,10 +165,16 @@ export async function listarTurmasParaCoordenacao(): Promise<TurmaListagem[]> {
       periodoInicio: turma.periodo_inicio,
       periodoFim: turma.periodo_fim,
       vagasTotal: turma.vagas_total,
-      matriculados: doTurma.filter((m) => m.status === "matriculada").length,
-      pendentes: doTurma.filter((m) => m.status === "inscrita").length,
+      frequenciaMinimaPercentual: turma.frequencia_minima_percentual,
+      matriculados: contagem?.matriculadas ?? 0,
+      pendentes: contagem?.inscritas ?? 0,
     };
   });
+}
+
+/** "AM-2026-2 · Noite" (UI Kit) — sem turno, só o código. */
+export function codigoComTurno(codigo: string, turno: string | null | undefined): string {
+  return turno ? `${codigo} · ${turno}` : codigo;
 }
 
 export type SituacaoTurma = "futura" | "em_andamento" | "aguardando_encerramento" | "encerrada";
@@ -150,6 +196,8 @@ export function situacaoDaTurma(
 export interface TurmaDetalhada {
   id: string;
   codigo: string;
+  /** Turno opcional (ex.: "Noite"); UI Kit: "AM-2026-2 · Noite". */
+  turno: string | null;
   moduloId: string;
   moduloNome: string;
   trilhaId: string;
@@ -182,6 +230,7 @@ export async function buscarTurmaDetalhada(turmaId: string): Promise<TurmaDetalh
   return {
     id: turma.id,
     codigo: turma.codigo,
+    turno: turma.turno,
     moduloId: turma.modulo_id,
     moduloNome: contexto?.nome ?? "—",
     trilhaId: contexto?.trilhaId ?? "",
@@ -198,6 +247,7 @@ export async function buscarTurmaDetalhada(turmaId: string): Promise<TurmaDetalh
 
 export interface MatriculaListagem {
   id: string;
+  alunoId: string;
   alunoNome: string;
   status: StatusMatricula;
   motivoRejeicao: string | null;
@@ -219,10 +269,11 @@ export async function listarMatriculasDaTurma(turmaId: string): Promise<Matricul
 
   return matriculas.map((m) => ({
     id: m.id,
+    alunoId: m.aluno_id,
     alunoNome: nomeAluno.get(m.aluno_id) ?? "—",
     status: m.status,
     motivoRejeicao: m.motivo_rejeicao,
-    motivoConclusao: m.motivo_conclusao,
+    motivoConclusao: m.motivo_conclusao ? formatarMotivoConclusao(m.motivo_conclusao) : null,
     criadoEm: m.criado_em,
   }));
 }
@@ -303,6 +354,8 @@ export async function criarTurma(input: {
   periodoFim: string;
   vagasTotal: number;
   frequenciaMinimaPercentual: number;
+  /** Opcional (ex.: "Noite"); vazio = sem turno. */
+  turno?: string;
 }): Promise<Turma> {
   const { data, error } = await selecao()
     .from("turmas")
@@ -314,6 +367,7 @@ export async function criarTurma(input: {
       periodo_fim: input.periodoFim,
       vagas_total: input.vagasTotal,
       frequencia_minima_percentual: input.frequenciaMinimaPercentual,
+      turno: input.turno?.trim() || null,
     })
     .select("*")
     .single();
@@ -334,6 +388,7 @@ export async function atualizarTurma(
     periodoFim: string;
     vagasTotal: number;
     frequenciaMinimaPercentual: number;
+    turno?: string;
   },
 ): Promise<Turma> {
   const { data, error } = await selecao()
@@ -345,6 +400,7 @@ export async function atualizarTurma(
       periodo_fim: input.periodoFim,
       vagas_total: input.vagasTotal,
       frequencia_minima_percentual: input.frequenciaMinimaPercentual,
+      turno: input.turno?.trim() || null,
     })
     .eq("id", turmaId)
     .select("*")
@@ -392,6 +448,29 @@ export async function buscarMatriculaDetalhada(matriculaId: string): Promise<Mat
   };
 }
 
+export type SituacaoPreRequisitos = { cumpridos: true } | { cumpridos: false; pendentes: string };
+
+/**
+ * Coluna "Pré-requisitos" da aba de inscrições (pág. 11, D10): pergunta
+ * ao motor de seleção (selecao.validar_pre_requisitos_modulo, a mesma
+ * função que o trigger de matrícula usa). Ela não devolve valor: passa em
+ * silêncio quando o aluno cumpre tudo, ou levanta exceção com os nomes dos
+ * módulos que faltam — que é o que a tela mostra.
+ */
+export async function verificarPreRequisitosDoAluno(
+  alunoId: string,
+  moduloId: string,
+): Promise<SituacaoPreRequisitos> {
+  const { error } = await selecao().rpc("validar_pre_requisitos_modulo", {
+    p_aluno_id: alunoId,
+    p_modulo_id: moduloId,
+  });
+  if (!error) return { cumpridos: true };
+  const faltantes = error.message.match(/concluir o módulo (.+) antes de se inscrever/);
+  if (faltantes) return { cumpridos: false, pendentes: faltantes[1] };
+  throw new Error(mensagemDeErroBanco(error));
+}
+
 export async function aprovarMatricula(matriculaId: string, deferidoPor: string): Promise<void> {
   const { error } = await selecao()
     .from("matriculas")
@@ -428,6 +507,7 @@ export interface MatriculaDoAluno {
   status: StatusMatricula;
   turmaId: string;
   turmaCodigo: string;
+  turmaTurno: string | null;
   moduloId: string;
   moduloNome: string;
   trilhaId: string;
@@ -477,6 +557,7 @@ export async function listarMatriculasDoAluno(alunoId: string): Promise<Matricul
       status: m.status,
       turmaId: m.turma_id,
       turmaCodigo: turma?.codigo ?? "—",
+      turmaTurno: turma?.turno ?? null,
       moduloId: turma?.modulo_id ?? "",
       moduloNome: contexto?.nome ?? "—",
       trilhaId: contexto?.trilhaId ?? "",
@@ -486,7 +567,7 @@ export async function listarMatriculasDoAluno(alunoId: string): Promise<Matricul
       periodoInicio: turma?.periodo_inicio ?? "",
       periodoFim: turma?.periodo_fim ?? "",
       frequenciaMinimaPercentual: turma?.frequencia_minima_percentual ?? 75,
-      motivoConclusao: m.motivo_conclusao,
+      motivoConclusao: m.motivo_conclusao ? formatarMotivoConclusao(m.motivo_conclusao) : null,
       deferidoEm: m.deferido_em,
     };
   });
@@ -495,6 +576,8 @@ export async function listarMatriculasDoAluno(alunoId: string): Promise<Matricul
 export interface TurmaDoProfessor {
   id: string;
   codigo: string;
+  /** Turno opcional (ex.: "Noite"); UI Kit: "AM-2026-2 · Noite". */
+  turno: string | null;
   moduloNome: string;
   trilhaNome: string;
   periodoInicio: string;
@@ -517,24 +600,22 @@ export async function listarTurmasDoProfessor(professorId: string): Promise<Turm
   const moduloIds = [...new Set(turmas.map((t) => t.modulo_id))];
   const turmaIds = turmas.map((t) => t.id);
 
-  const [contextoModulo, matriculasResp] = await Promise.all([
+  const [contextoModulo, ocupacao] = await Promise.all([
     buscarContextoModulos(moduloIds),
-    selecao().from("matriculas").select("turma_id, status").in("turma_id", turmaIds),
+    buscarOcupacaoTurmas(turmaIds),
   ]);
-  if (matriculasResp.error) throw new Error(mensagemDeErroBanco(matriculasResp.error));
 
   return turmas.map((turma) => {
     const contexto = contextoModulo.get(turma.modulo_id);
     return {
       id: turma.id,
       codigo: turma.codigo,
+      turno: turma.turno,
       moduloNome: contexto?.nome ?? "—",
       trilhaNome: contexto?.trilhaNome ?? "—",
       periodoInicio: turma.periodo_inicio,
       periodoFim: turma.periodo_fim,
-      matriculados: (matriculasResp.data ?? []).filter(
-        (m) => m.turma_id === turma.id && m.status === "matriculada",
-      ).length,
+      matriculados: ocupacao.get(turma.id)?.matriculadas ?? 0,
       frequenciaMinimaPercentual: turma.frequencia_minima_percentual,
       trilhaMediaMinima: contexto?.trilhaMediaMinima ?? 6,
     };
@@ -544,10 +625,14 @@ export async function listarTurmasDoProfessor(professorId: string): Promise<Turm
 export interface TurmaDisponivel {
   id: string;
   codigo: string;
+  /** Turno opcional (ex.: "Noite"); UI Kit: "AM-2026-2 · Noite". */
+  turno: string | null;
   professorNome: string;
   periodoInicio: string;
   periodoFim: string;
   vagasRestantes: number;
+  /** Período terminou: o banco recusa inscrição; a tela mostra "Inscrições encerradas". */
+  inscricoesEncerradas: boolean;
   /**
    * Matrícula do aluno atual nesta turma, em qualquer status — inclusive
    * rejeitada/cancelada/reprovada. Não significa inscrição vigente: serve
@@ -589,11 +674,9 @@ export async function listarModulosComTurmasDaTrilha(
   const turmaIds = (turmas ?? []).map((t) => t.id);
   const professorIds = [...new Set((turmas ?? []).map((t) => t.professor_id))];
 
-  const [nomeProfessor, matriculasResp, minhasMatriculasResp] = await Promise.all([
+  const [nomeProfessor, ocupacao, minhasMatriculasResp] = await Promise.all([
     buscarNomesCompletos(professorIds),
-    turmaIds.length > 0
-      ? selecao().from("matriculas").select("turma_id, status").in("turma_id", turmaIds)
-      : Promise.resolve({ data: [], error: null }),
+    buscarOcupacaoTurmas(turmaIds),
     alunoId && turmaIds.length > 0
       ? selecao()
           .from("matriculas")
@@ -602,7 +685,6 @@ export async function listarModulosComTurmasDaTrilha(
           .in("turma_id", turmaIds)
       : Promise.resolve({ data: [], error: null }),
   ]);
-  if (matriculasResp.error) throw new Error(mensagemDeErroBanco(matriculasResp.error));
   if (minhasMatriculasResp.error) throw new Error(mensagemDeErroBanco(minhasMatriculasResp.error));
 
   const minhaPorTurma = new Map(
@@ -611,17 +693,17 @@ export async function listarModulosComTurmasDaTrilha(
 
   const turmasPorModulo = new Map<string, TurmaDisponivel[]>();
   for (const turma of turmas ?? []) {
-    const ocupadas = (matriculasResp.data ?? []).filter(
-      (m) => m.turma_id === turma.id && (m.status === "inscrita" || m.status === "matriculada"),
-    ).length;
+    const contagem = ocupacao.get(turma.id);
     const lista = turmasPorModulo.get(turma.modulo_id) ?? [];
     lista.push({
       id: turma.id,
       codigo: turma.codigo,
+      turno: turma.turno,
       professorNome: nomeProfessor.get(turma.professor_id) ?? "—",
       periodoInicio: turma.periodo_inicio,
       periodoFim: turma.periodo_fim,
-      vagasRestantes: turma.vagas_total - ocupadas,
+      vagasRestantes: contagem?.vagasRestantes ?? turma.vagas_total,
+      inscricoesEncerradas: contagem?.inscricoesEncerradas ?? false,
       minhaMatricula: minhaPorTurma.get(turma.id) ?? null,
     });
     turmasPorModulo.set(turma.modulo_id, lista);

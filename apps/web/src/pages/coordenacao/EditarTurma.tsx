@@ -1,13 +1,13 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Aviso } from "@/components/Aviso";
-import { BotaoVoltar } from "@/components/BotaoVoltar";
 import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
 import { CampoCodigoTurma } from "@/components/turma/CampoCodigoTurma";
+import { CampoTurno } from "@/components/turma/CampoTurno";
+import { CampoData } from "@/components/CampoData";
 import { Input } from "@/components/Input";
 import { PaginaAutenticada } from "@/components/PaginaAutenticada";
-import { Titulo } from "@/components/Titulo";
 import { EsqueletoCards } from "@/components/Esqueleto";
 import { ErroConsulta } from "@/components/ErroConsulta";
 import { useGravacao } from "@/lib/consultas/gravacao";
@@ -38,8 +38,7 @@ export function EditarTurma() {
 
   if (erroDeLeitura) {
     return (
-      <PaginaAutenticada largura="estreita">
-        <BotaoVoltar />
+      <PaginaAutenticada largura="estreita" titulo="Editar turma" voltar={{}}>
         <ErroConsulta
           erro={erroDeLeitura}
           padrao="Não foi possível carregar a turma."
@@ -54,7 +53,7 @@ export function EditarTurma() {
 
   if (consultaTurma.isPending || consultaProfessores.isPending) {
     return (
-      <PaginaAutenticada largura="estreita">
+      <PaginaAutenticada largura="estreita" titulo="Editar turma" voltar={{}}>
         <EsqueletoCards quantidade={1} altura="h-96" />
       </PaginaAutenticada>
     );
@@ -62,8 +61,7 @@ export function EditarTurma() {
 
   if (!turma) {
     return (
-      <PaginaAutenticada largura="estreita">
-        <BotaoVoltar />
+      <PaginaAutenticada largura="estreita" titulo="Editar turma" voltar={{}}>
         <Aviso variant="danger">Turma não encontrada.</Aviso>
       </PaginaAutenticada>
     );
@@ -86,6 +84,7 @@ function FormularioTurma({
 
   // O formulário parte da turma como estava ao abrir a tela.
   const [codigo, setCodigo] = useState(turma.codigo);
+  const [turno, setTurno] = useState(turma.turno ?? "");
   const [professorId, setProfessorId] = useState(turma.professorId);
   const [periodoInicio, setPeriodoInicio] = useState(turma.periodoInicio);
   const [periodoFim, setPeriodoFim] = useState(turma.periodoFim);
@@ -117,6 +116,7 @@ function FormularioTurma({
             periodoFim,
             vagasTotal,
             frequenciaMinimaPercentual,
+            turno,
           }),
         (qc) => invalidar.turma(qc, id),
       );
@@ -142,16 +142,17 @@ function FormularioTurma({
   }
 
   return (
-    <PaginaAutenticada largura="estreita">
-      <BotaoVoltar />
-      <Titulo className="mb-1">Editar turma</Titulo>
-      <p className="mb-6 text-body-sm text-text-secondary">
-        {contexto.moduloNome} · {contexto.trilhaNome}
-      </p>
+    <PaginaAutenticada
+      largura="estreita"
+      titulo="Editar turma"
+      sobrelinha={`${contexto.moduloNome} · ${contexto.trilhaNome}`}
+      voltar={{}}
+    >
 
       <Card>
         <form className="flex flex-col gap-4" onSubmit={aoSubmeter}>
           <CampoCodigoTurma valor={codigo} aoMudar={setCodigo} />
+          <CampoTurno valor={turno} aoMudar={setTurno} />
 
           <label className="flex flex-col gap-1.5">
             <span className="text-label font-medium text-text-secondary">Professor responsável</span>
@@ -169,29 +170,25 @@ function FormularioTurma({
             </select>
           </label>
 
-          <div className="flex gap-4">
-            <label className="flex flex-1 flex-col gap-1.5">
-              <span className="text-label font-medium text-text-secondary">Período — início</span>
-              <Input
-                type="date"
-                required
-                min={PERIODO_TURMA_DATA_MIN}
-                max={PERIODO_TURMA_DATA_MAX}
-                value={periodoInicio}
-                onChange={(e) => setPeriodoInicio(e.target.value)}
-              />
-            </label>
-            <label className="flex flex-1 flex-col gap-1.5">
-              <span className="text-label font-medium text-text-secondary">Período — fim</span>
-              <Input
-                type="date"
-                required
-                min={PERIODO_TURMA_DATA_MIN}
-                max={PERIODO_TURMA_DATA_MAX}
-                value={periodoFim}
-                onChange={(e) => setPeriodoFim(e.target.value)}
-              />
-            </label>
+          <div className="flex flex-col gap-4 sm:flex-row">
+            <CampoData
+              className="flex-1"
+              rotulo="Período — início"
+              obrigatorio
+              min={PERIODO_TURMA_DATA_MIN}
+              max={PERIODO_TURMA_DATA_MAX}
+              valor={periodoInicio}
+              aoMudar={setPeriodoInicio}
+            />
+            <CampoData
+              className="flex-1"
+              rotulo="Período — fim"
+              obrigatorio
+              min={PERIODO_TURMA_DATA_MIN}
+              max={PERIODO_TURMA_DATA_MAX}
+              valor={periodoFim}
+              aoMudar={setPeriodoFim}
+            />
           </div>
 
           <div className="flex gap-4">

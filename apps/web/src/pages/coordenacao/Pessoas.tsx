@@ -1,9 +1,11 @@
 import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Search } from "lucide-react";
 import type { Papel } from "@klass/types";
 import { useAuth } from "@/auth";
 import { Aviso } from "@/components/Aviso";
 import { Badge } from "@/components/Badge";
+import { BotaoExportarCsv } from "@/components/BotaoExportarCsv";
 import { Button } from "@/components/Button";
 import { Avatar } from "@/components/Avatar";
 import { Card } from "@/components/Card";
@@ -11,11 +13,11 @@ import { EsqueletoCards } from "@/components/Esqueleto";
 import { ErroConsulta } from "@/components/ErroConsulta";
 import { Input } from "@/components/Input";
 import { PaginaAutenticada } from "@/components/PaginaAutenticada";
-import { Titulo } from "@/components/Titulo";
 import { useGravacao } from "@/lib/consultas/gravacao";
 import { usePessoas } from "@/lib/consultas/identidade";
 import { invalidar } from "@/lib/consultas/invalidar";
 import { alterarPapel, PAPEIS, rotuloDoPapel } from "@/lib/identidade";
+import { formatarData } from "@/lib/formato";
 import { plural } from "@/lib/plural";
 
 const CLASSE_SELECT =
@@ -34,8 +36,13 @@ export function Pessoas() {
 
   const [busca, setBusca] = useState("");
   const [filtroPapel, setFiltroPapel] = useState<Papel | "todos">("todos");
-  const [editandoId, setEditandoId] = useState<string | null>(null);
-  const [novoPapel, setNovoPapel] = useState<Papel>("aluno");
+  // Painel "Alterar papel" aberto e papel escolhido ficam na URL, presos
+  // ao id da pessoa: revalidação da lista, Tempo real ou remontagem da tela
+  // (QA, F2: o painel fechava sozinho no meio da troca) não o fecham.
+  const [params, setParams] = useSearchParams();
+  const editandoId = params.get("editar");
+  const papelEscolhido = params.get("papel");
+  const papelNaUrl = PAPEIS.find((p) => p === papelEscolhido) ?? null;
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [mensagem, setMensagem] = useState<string | null>(null);
@@ -59,13 +66,27 @@ export function Pessoas() {
     }
   }
 
-  async function confirmarTroca(pessoaId: string, nome: string) {
+  function editar(pessoaId: string | null, papel?: Papel) {
+    setParams(
+      (atual) => {
+        const proximo = new URLSearchParams(atual);
+        if (pessoaId) proximo.set("editar", pessoaId);
+        else proximo.delete("editar");
+        if (pessoaId && papel) proximo.set("papel", papel);
+        else proximo.delete("papel");
+        return proximo;
+      },
+      { replace: true },
+    );
+  }
+
+  async function confirmarTroca(pessoaId: string, nome: string, novoPapel: Papel) {
     setErro(null);
     setMensagem(null);
     setSalvando(true);
     try {
       await gravar(() => alterarPapel(pessoaId, novoPapel), (qc) => invalidar.papel(qc));
-      setEditandoId(null);
+      editar(null);
       setMensagem(`${nome} agora é ${rotuloDoPapel(novoPapel)}.`);
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível alterar o papel.");
@@ -75,8 +96,7 @@ export function Pessoas() {
   }
 
   return (
-    <PaginaAutenticada>
-      <Titulo className="mb-2">Pessoas</Titulo>
+    <PaginaAutenticada titulo="Pessoas">
       <p className="mb-4 text-body-sm text-text-secondary">
         Novas pessoas se cadastram pelo link de cadastro e entram como aluno(a). Para tornar alguém
         professor(a) ou coordenação, altere o papel aqui.
@@ -135,9 +155,20 @@ export function Pessoas() {
       )}
       {consulta.isPending && <EsqueletoCards quantidade={4} altura="h-16" />}
       {pessoas && (
-        <p className="mb-2 text-label text-text-muted">
-          {plural(filtradas.length, "pessoa", "pessoas")}
-        </p>
+        // Exporta o que está filtrado na tela (busca e papel).
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <p className="text-label text-text-muted">{plural(filtradas.length, "pessoa", "pessoas")}</p>
+          <BotaoExportarCsv
+            nome={["pessoas", ...(filtroPapel === "todos" ? [] : [rotuloDoPapel(filtroPapel)])]}
+            rotulo="Exportar a lista de pessoas em CSV"
+            linhas={filtradas}
+            colunas={[
+              { titulo: "Nome", valor: (p) => p.nomeCompleto },
+              { titulo: "Papel", valor: (p) => rotuloDoPapel(p.papel) },
+              { titulo: "Cadastrado em", valor: (p) => formatarData(p.criadoEm) },
+            ]}
+          />
+        </div>
       )}
       {pessoas && filtradas.length === 0 && (
         <p className="text-body-sm text-text-secondary">Ninguém encontrado com esses filtros.</p>
@@ -146,6 +177,7 @@ export function Pessoas() {
       <div className="flex flex-col gap-2">
         {filtradas.map((pessoa) => {
           const ehEuMesmo = pessoa.id === usuario?.id;
+          const novoPapel = papelNaUrl ?? pessoa.papel;
           return (
             <Card key={pessoa.id} className="flex flex-col gap-3">
               <div className="flex items-center justify-between gap-3">
@@ -165,8 +197,7 @@ export function Pessoas() {
                     <Button
                       variant="secondary"
                       onClick={() => {
-                        setEditandoId(pessoa.id);
-                        setNovoPapel(pessoa.papel);
+                        editar(pessoa.id, pessoa.papel);
                         setErro(null);
                         setMensagem(null);
                       }}
@@ -177,14 +208,14 @@ export function Pessoas() {
                 )}
               </div>
 
-              {editandoId === pessoa.id && (
+              {editandoId === pessoa.id && !ehEuMesmo && (
                 <div className="flex flex-col gap-3 border-t border-border pt-3">
                   <label className="flex flex-col gap-1.5">
                     <span className="text-label font-medium text-text-secondary">Novo papel</span>
                     <select
                       className={CLASSE_SELECT}
                       value={novoPapel}
-                      onChange={(e) => setNovoPapel(e.target.value as Papel)}
+                      onChange={(e) => editar(pessoa.id, e.target.value as Papel)}
                     >
                       {PAPEIS.map((p) => (
                         <option key={p} value={p}>
@@ -203,11 +234,11 @@ export function Pessoas() {
                   <div className="flex gap-2">
                     <Button
                       disabled={salvando || novoPapel === pessoa.papel}
-                      onClick={() => void confirmarTroca(pessoa.id, pessoa.nomeCompleto)}
+                      onClick={() => void confirmarTroca(pessoa.id, pessoa.nomeCompleto, novoPapel)}
                     >
                       {salvando ? "Salvando..." : "Confirmar troca"}
                     </Button>
-                    <Button variant="secondary" disabled={salvando} onClick={() => setEditandoId(null)}>
+                    <Button variant="secondary" disabled={salvando} onClick={() => editar(null)}>
                       Cancelar
                     </Button>
                   </div>

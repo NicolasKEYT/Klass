@@ -4,13 +4,19 @@ import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 import { LinkBotao } from "@/components/LinkBotao";
 import { Card } from "@/components/Card";
+import { ModalDesvincularPreRequisitos } from "@/components/catalogo/ModalDesvincularPreRequisitos";
 import { EsqueletoCards } from "@/components/Esqueleto";
 import { ErroConsulta } from "@/components/ErroConsulta";
 import { IconeCatalogo } from "@/components/IconeCatalogo";
 import { LinkComPrefetch } from "@/components/LinkComPrefetch";
 import { PaginaAutenticada } from "@/components/PaginaAutenticada";
 import { Titulo } from "@/components/Titulo";
-import { apagarTrilha, definirPublicacaoTrilha } from "@/lib/catalogo";
+import {
+  apagarTrilha,
+  definirPublicacaoTrilha,
+  listarDependentesEmOutrasTrilhas,
+  type DependenteEmOutraTrilha,
+} from "@/lib/catalogo";
 import { useTrilhasComContagem } from "@/lib/consultas/catalogo";
 import { useGravacao } from "@/lib/consultas/gravacao";
 import { invalidar } from "@/lib/consultas/invalidar";
@@ -30,32 +36,56 @@ export function Trilhas() {
   // Trava enquanto publicar/apagar está no ar, para o clique de reflexo
   // não disparar a mesma ação duas vezes.
   const [processando, setProcessando] = useState(false);
+  // Módulos de outras trilhas que exigem um módulo desta: despublicar ou
+  // apagar desfaz o vínculo no banco, então a coordenação confirma antes.
+  const [aviso, setAviso] = useState<{
+    trilha: TrilhaComContagem;
+    acao: "despublicar" | "apagar";
+    dependentes: DependenteEmOutraTrilha[];
+  } | null>(null);
 
-  async function alternarPublicacao(trilha: TrilhaComContagem) {
+  // true = pode seguir; false = abriu o aviso e espera a confirmação.
+  async function semDependentesOuAvisou(trilha: TrilhaComContagem, acao: "despublicar" | "apagar") {
+    const dependentes = await listarDependentesEmOutrasTrilhas({ trilhaId: trilha.id });
+    if (dependentes.length === 0) return true;
+    setAviso({ trilha, acao, dependentes });
+    return false;
+  }
+
+  async function alternarPublicacao(trilha: TrilhaComContagem, confirmado = false) {
     if (processando) return;
     setErro(null);
     setMensagem(null);
     setProcessando(true);
     try {
+      if (trilha.publicada && !confirmado && !(await semDependentesOuAvisou(trilha, "despublicar"))) return;
       await gravar(() => definirPublicacaoTrilha(trilha.id, !trilha.publicada), invalidar.catalogo);
+      setAviso(null);
       setMensagem(trilha.publicada ? "Trilha voltou para rascunho." : "Trilha publicada.");
     } catch (e) {
+      setAviso(null);
       setErro(e instanceof Error ? e.message : "Não foi possível atualizar a trilha.");
     } finally {
       setProcessando(false);
     }
   }
 
-  async function apagar(trilha: TrilhaComContagem) {
+  async function apagar(trilha: TrilhaComContagem, confirmado = false) {
     if (processando) return;
     setErro(null);
     setMensagem(null);
     setProcessando(true);
     try {
+      if (!confirmado && !(await semDependentesOuAvisou(trilha, "apagar"))) {
+        setConfirmandoApagarId(null);
+        return;
+      }
       await gravar(() => apagarTrilha(trilha.id), invalidar.catalogo);
+      setAviso(null);
       setMensagem("Trilha apagada.");
       setConfirmandoApagarId(null);
     } catch (e) {
+      setAviso(null);
       setErro(e instanceof Error ? e.message : "Não foi possível apagar a trilha.");
     } finally {
       setProcessando(false);
@@ -63,11 +93,10 @@ export function Trilhas() {
   }
 
   return (
-    <PaginaAutenticada>
-        <div className="mb-6 flex items-center justify-between">
-          <Titulo>Trilhas</Titulo>
-          <LinkBotao to="/coordenacao/trilhas/nova">Nova trilha</LinkBotao>
-        </div>
+    <PaginaAutenticada
+      titulo="Trilhas"
+      acoes={<LinkBotao to="/coordenacao/trilhas/nova">Nova trilha</LinkBotao>}
+    >
 
         {erro && (
           <Aviso variant="danger" className="mb-4">
@@ -157,6 +186,19 @@ export function Trilhas() {
             </Card>
           ))}
         </div>
+
+        <ModalDesvincularPreRequisitos
+          aberto={aviso !== null}
+          acao={aviso?.acao === "apagar" ? "Apagar" : "Voltar para rascunho"}
+          dependentes={aviso?.dependentes ?? []}
+          processando={processando}
+          onCancelar={() => setAviso(null)}
+          onConfirmar={() => {
+            if (!aviso) return;
+            if (aviso.acao === "apagar") void apagar(aviso.trilha, true);
+            else void alternarPublicacao(aviso.trilha, true);
+          }}
+        />
     </PaginaAutenticada>
   );
 }

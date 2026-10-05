@@ -1,4 +1,4 @@
-import { keepPreviousData, queryOptions, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, queryOptions, useQueries, useQuery } from "@tanstack/react-query";
 import {
   buscarTurmaDetalhada,
   listarMatriculasDaTurma,
@@ -6,6 +6,7 @@ import {
   listarModulosComTurmasDaTrilha,
   listarTurmasDoProfessor,
   listarTurmasParaCoordenacao,
+  verificarPreRequisitosDoAluno,
 } from "@/lib/selecao";
 import { chaves } from "./chaves";
 import { queryClient } from "./cliente";
@@ -52,7 +53,23 @@ export const opcoesSelecao = {
       queryKey: chaves.selecao.matriculasDoAluno(alunoId),
       queryFn: () => listarMatriculasDoAluno(alunoId),
     }),
+  preRequisitosDoAluno: (alunoId: string, moduloId: string) =>
+    queryOptions({
+      queryKey: chaves.selecao.preRequisitosDoAluno(alunoId, moduloId),
+      queryFn: () => verificarPreRequisitosDoAluno(alunoId, moduloId),
+    }),
 };
+
+/** Situação de pré-requisitos de várias inscrições do mesmo módulo, em paralelo. */
+export function usePreRequisitosDasInscricoes(alunoIds: string[], moduloId: string | undefined) {
+  return useQueries({
+    queries: alunoIds.map((alunoId) => ({
+      ...opcoesSelecao.preRequisitosDoAluno(alunoId, moduloId ?? ""),
+      enabled: !!moduloId,
+    })),
+    combine: (resultados) => new Map(alunoIds.map((id, i) => [id, resultados[i]] as const)),
+  });
+}
 
 export function useTurmasDaCoordenacao() {
   return useQuery(opcoesSelecao.turmasDaCoordenacao());

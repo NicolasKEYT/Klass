@@ -8,6 +8,11 @@ import type { Config } from "tailwindcss";
 // explícita (sem divergência intencional confirmada ainda).
 //
 // Nenhum gradiente foi encontrado em nenhum dos seis SVGs.
+// D1 — cores do tema vêm das variáveis --cor-* de index.css (claro e
+// escuro), em canais RGB para o Tailwind aplicar opacidade (`bg-primary/10`).
+// O hex ao lado de cada token é o valor do tema claro.
+const cor = (nome: string) => `rgb(var(--cor-${nome}) / <alpha-value>)`;
+
 export default {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
   theme: {
@@ -22,11 +27,11 @@ export default {
         // fundo quente muito claro, cards brancos com borda visível (sem
         // sombra), texto quase-preto, e UM único acento azul reservado
         // para o rádio de seleção de turma — em nenhum outro lugar.
-        background: "#F3F3F1", // fundo de página — cinza claro e quente (medido)
-        surface: "#FFFFFF", // cards, sidebar, inputs
-        "surface-subtle": "#E3E4DE", // item ativo do menu, trilha de barra, avatar placeholder (medido)
+        background: cor("background"), // #F3F3F1 — fundo de página — cinza claro e quente (medido)
+        surface: cor("surface"), // #FFFFFF — cards, sidebar, inputs
+        "surface-subtle": cor("surface-subtle"), // #E3E4DE — item ativo do menu, trilha de barra, avatar placeholder (medido)
         border: {
-          DEFAULT: "#D8D9D3", // borda visível de card/badge — sem sombra de elevação (medido)
+          DEFAULT: cor("border"), // #D8D9D3 — borda visível de card/badge — sem sombra de elevação (medido)
         },
         // Borda de controle de formulário — `border-controle` (input, select, textarea,
         // checkbox) e de badge de alerta. A borda de card é decorativa e
@@ -34,19 +39,19 @@ export default {
         // 1.4.11 pede ≥ 3:1 contra o fundo adjacente: 3,64:1 no branco e
         // 3,28:1 no fundo da página (cálculo no QA de 2026-10-03). Mesmo
         // tom quente da paleta, só mais escuro.
-        controle: "#85877F",
+        controle: cor("controle"), // #85877F
         text: {
           // "Preto/quase-preto" quente — não o cinza frio (#191A1C) de
           // antes da reforma. Repontado, não renomeado: todo uso de
           // text-primary/bg-primary já espalhado pelo código vira preto
           // automaticamente (ver `primary` abaixo).
-          primary: "#1A1A17",
-          secondary: "#6B6D66",
+          primary: cor("text-primary"), // #1A1A17
+          secondary: cor("text-secondary"), // #61635C
           // Era #8B8D86 (3,4:1 no branco e 3,0:1 no fundo — abaixo do
           // mínimo de 4,5:1 da WCAG 1.4.3 para texto). Escurecido no mesmo
           // tom quente: 5,09:1 no branco e 4,58:1 no fundo. Fica muito
           // perto do secondary; a hierarquia passa a vir de tamanho/peso.
-          muted: "#6D6F68",
+          muted: cor("text-muted"), // #6D6F68
         },
         // "primary" deixou de ser a marca azul: no UI Kit de alta-
         // fidelidade, todo botão/badge/estado "principal" (Concluído,
@@ -56,36 +61,43 @@ export default {
         // primary`/`ring-primary` do código (o mesmo método já usado nos
         // tokens de tipografia no Prompt 16).
         primary: {
-          DEFAULT: "#1A1A17",
-          subtle: "#E3E4DE", // fundo de item ativo/selecionado (era azul clarinho)
+          DEFAULT: cor("primary"), // #1A1A17
+          subtle: cor("primary-subtle"), // #E3E4DE — fundo de item ativo/selecionado (era azul clarinho)
+          // Texto/ícone sobre o destaque preenchido (botão primário, badge
+          // preenchido, barra de ações em lote). Era `text-white` fixo; no
+          // tema escuro o destaque vira tinta clara e o texto, escuro.
+          contraste: cor("primary-contraste"), // #FFFFFF
         },
         // Único azul do sistema inteiro — usado só no <input type="radio">
         // de "Escolha a turma" (accent-color), nunca em botão, link, badge
         // ou anel de foco (ver :focus-visible em index.css). Valor citado no próprio diagnóstico do PDF.
         acento: {
-          DEFAULT: "#0A84FF",
+          DEFAULT: cor("acento"), // #0A84FF
         },
         // Traço de meta/mínimo nas barras contra meta (BarraDeMeta) — o
         // único lugar do sistema com um segundo acento colorido (não é
         // azul, então não conflita com a regra acima). Medido no traço de
         // "mínimo 75%" da tela Início do aluno.
         meta: {
-          DEFAULT: "#C2410C",
+          DEFAULT: cor("meta"), // #C2410C
         },
+        // Véu atrás do modal. Era `bg-text-primary/40`; no escuro a tinta
+        // do texto é clara e o véu clarearia a tela em vez de escurecê-la.
+        veu: cor("veu"), // #1A1A17
         neutral: {
-          subtle: "#E3E4DE", // trilha de progress bar, badge neutro
+          subtle: cor("neutral-subtle"), // #E3E4DE — trilha de progress bar, badge neutro
         },
         // Mantidos só para feedback transitório (banners de sucesso/erro
         // do componente Aviso) — não aparecem em nenhuma das 7 telas de
         // alta-fidelidade revisadas neste prompt, então ficam fora do
         // escopo da correção visual (ver relatório do Prompt 17).
         success: {
-          DEFAULT: "#15803D",
-          subtle: "#ECFDF3",
+          DEFAULT: cor("success"), // #15803D
+          subtle: cor("success-subtle"), // #ECFDF3
         },
         danger: {
-          DEFAULT: "#DC2626",
-          subtle: "#FEE2E2",
+          DEFAULT: cor("danger"), // #B91C1C
+          subtle: cor("danger-subtle"), // #FEE2E2
         },
 
         // Paleta do certificado (tela 06 — template de PDF, não é uma
@@ -162,6 +174,14 @@ export default {
 
       width: {
         "klass-sidebar": "260px", // largura fixa da sidebar — idêntica nas 5 telas de app
+        "klass-painel": "380px", // painel lateral de detalhe (inscrição na turma da coordenação, pág. 11)
+      },
+      maxWidth: {
+        // Teto da área de conteúdo ao lado da barra lateral (telas das pág.
+        // 3, 9, 10 e 11 do UI Kit ocupam toda a largura útil). Antes o
+        // conteúdo parava em 1024px e, em monitor grande, ficava numa
+        // faixa estreita no meio da tela.
+        "klass-conteudo": "1200px",
       },
       height: {
         "klass-header": "64px", // altura fixa do header — idêntica nas 5 telas de app
@@ -172,16 +192,19 @@ export default {
         "klass-card-x-dense": "24px", // variante densa, uso pontual (ex.: card com headline maior) — 03
         "klass-card-y": "34px", // topo do card até o primeiro texto — 01, 02, 04, 05 (stat cards usam ~30px, a confirmar)
         "klass-gutter": "16px", // espaço entre cards do dashboard
+        "klass-painel": "380px", // recuo do conteúdo quando o painel lateral está aberto (= largura do painel)
       },
 
       // Escala de sombra própria, calibrada para o visual flat/moderno
       // (referência: Linear/Stripe/Vercel). Blur maior + opacidade baixa,
       // na cor da tinta do texto (#191A1C) para não puxar cinza. Substitui
-      // os shadow-md/lg genéricos do Tailwind — só três níveis:
+      // os shadow-md/lg genéricos do Tailwind — só três níveis. A tinta
+      // vem de --cor-sombra: no escuro é preto puro, o único tom que ainda
+      // se distingue de um fundo já escuro.
       boxShadow: {
-        "klass-card": "0 1px 2px rgba(25,26,28,0.05), 0 4px 10px rgba(25,26,28,0.05)", // repouso dos cards
-        "klass-hover": "0 2px 6px rgba(25,26,28,0.06), 0 8px 20px rgba(25,26,28,0.10)", // hover de superfície interativa
-        "klass-elevated": "0 10px 32px rgba(25,26,28,0.16), 0 2px 8px rgba(25,26,28,0.07)", // modal / dropdown
+        "klass-card": "0 1px 2px rgb(var(--cor-sombra) / 0.05), 0 4px 10px rgb(var(--cor-sombra) / 0.05)", // repouso dos cards
+        "klass-hover": "0 2px 6px rgb(var(--cor-sombra) / 0.06), 0 8px 20px rgb(var(--cor-sombra) / 0.10)", // hover de superfície interativa
+        "klass-elevated": "0 10px 32px rgb(var(--cor-sombra) / 0.16), 0 2px 8px rgb(var(--cor-sombra) / 0.07)", // modal / dropdown
       },
     },
   },

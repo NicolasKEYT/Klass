@@ -3,7 +3,6 @@ import { matchPath } from "react-router-dom";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import type { Papel } from "@klass/types";
 import { useAuth } from "@/auth";
-import { filtrarAlunosDoDiario } from "@/lib/diario";
 import { opcoesCatalogo } from "./catalogo";
 import { opcoesCertificacao } from "./certificacao";
 import { opcoesDiario } from "./diario";
@@ -37,16 +36,11 @@ function prefetchDiarioDaTurma(qc: QueryClient, turmaId: string) {
       qc.prefetchQuery(opcoesDiario.notas(turmaId, avaliacoes.map((a) => a.id))),
     )
     .catch(ignorar);
-  void qc
-    .fetchQuery(opcoesSelecao.matriculasDaTurma(turmaId))
-    .then((matriculas) =>
-      Promise.all(
-        filtrarAlunosDoDiario(matriculas).map((a) =>
-          qc.prefetchQuery(opcoesDiario.progresso(a.matriculaId)),
-        ),
-      ),
-    )
-    .catch(ignorar);
+  // Alunos e progresso da turma inteira (uma RPC em lote, não três por
+  // aluno) e as chamadas pendentes: o que a aba Resumo, padrão, mostra.
+  void qc.prefetchQuery(opcoesSelecao.matriculasDaTurma(turmaId));
+  void qc.prefetchQuery(opcoesDiario.progressoDaTurma(turmaId));
+  void qc.prefetchQuery(opcoesDiario.chamadasPendentesDaTurma(turmaId));
 }
 
 function prefetchBoletim(qc: QueryClient, alunoId: string) {
@@ -73,14 +67,17 @@ function prefetchInicio(qc: QueryClient, { usuarioId, papel }: Quem) {
     void qc.prefetchQuery(opcoesDiario.aulasDeHoje(usuarioId));
     void qc.prefetchQuery(opcoesDiario.pendenciasDoProfessor(usuarioId));
     void qc.prefetchQuery(opcoesDiario.alunosQuePedemAtencao(usuarioId));
+    void qc.prefetchQuery(opcoesDiario.aulasDaSemana(usuarioId));
   } else if (papel === "coordenacao") {
     void qc.prefetchQuery(opcoesPainelCoordenacao.frequencias());
     void qc.prefetchQuery(opcoesPainelCoordenacao.indicadoresDasViews());
     void qc.prefetchQuery(opcoesPainelCoordenacao.pendencias());
+    void qc.prefetchQuery(opcoesPainelCoordenacao.inscricoesRecentes());
     void qc.prefetchQuery(opcoesSelecao.turmasDaCoordenacao());
     void qc.prefetchQuery(opcoesCatalogo.trilhas());
   } else {
     void qc.prefetchQuery(opcoesDiario.novidades(usuarioId));
+    void qc.prefetchQuery(opcoesDiario.notasDaSemana(usuarioId));
     prefetchBoletim(qc, usuarioId);
   }
 }
@@ -152,6 +149,12 @@ export function prefetchCaminho(qc: QueryClient, caminho: string, quem: Quem) {
   }
   if (rota === "/coordenacao/certificados") return void qc.prefetchQuery(opcoesCertificacao.todos());
   if (rota === "/coordenacao/pessoas") return void qc.prefetchQuery(opcoesIdentidade.pessoas());
+  if (rota === "/coordenacao/acompanhamento") {
+    void qc.prefetchQuery(opcoesPainelCoordenacao.linhasDasViews());
+    void qc.prefetchQuery(opcoesPainelCoordenacao.frequencias());
+    void qc.prefetchQuery(opcoesSelecao.turmasDaCoordenacao());
+    return;
+  }
 }
 
 /** Para os links: devolve a função que pré-carrega um caminho. */

@@ -1,15 +1,16 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { Aviso } from "@/components/Aviso";
-import { BotaoVoltar } from "@/components/BotaoVoltar";
 import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
+import { CampoData } from "@/components/CampoData";
 import { Input } from "@/components/Input";
 import { PaginaAutenticada } from "@/components/PaginaAutenticada";
-import { Titulo } from "@/components/Titulo";
 import { ErroConsulta } from "@/components/ErroConsulta";
 import { CampoCodigoTurma } from "@/components/turma/CampoCodigoTurma";
-import { useModulosDaTrilha, useTrilhas } from "@/lib/consultas/catalogo";
+import { CampoTurno } from "@/components/turma/CampoTurno";
+import { plural } from "@/lib/plural";
+import { useAvaliacoesModelo, useModulosDaTrilha, useTrilhas } from "@/lib/consultas/catalogo";
 import { useGravacao } from "@/lib/consultas/gravacao";
 import { useProfessores } from "@/lib/consultas/identidade";
 import { useTurmasDaCoordenacao } from "@/lib/consultas/selecao";
@@ -46,16 +47,23 @@ export function NovaTurma() {
   const moduloId =
     moduloEscolhido && moduloEscolhido.trilhaId === trilhaId ? moduloEscolhido.moduloId : (modulos[0]?.id ?? "");
   const setModuloId = (id: string) => setModuloEscolhido({ trilhaId, moduloId: id });
+  const modeloDoModulo = useAvaliacoesModelo(moduloId || undefined);
   const [codigo, setCodigo] = useState("");
+  const [turno, setTurno] = useState("");
   const [professorEscolhido, setProfessorId] = useState("");
   const professorId = professorEscolhido || professores[0]?.id || "";
   const erroDeLeitura = consultaTrilhas.error ?? consultaProfessores.error ?? consultaModulos.error;
   const [periodoInicio, setPeriodoInicio] = useState("");
   const [periodoFim, setPeriodoFim] = useState("");
   const [vagasTotal, setVagasTotal] = useState(30);
-  const [frequenciaMinimaPercentual, setFrequenciaMinimaPercentual] = useState(
-    FREQUENCIA_MINIMA_PADRAO,
-  );
+  // A frequência nasce com o padrão da trilha escolhida (C9) e pode ser
+  // ajustada só para esta turma; trocar de trilha volta ao padrão dela.
+  const trilhaSelecionada = trilhas.find((t) => t.id === trilhaId);
+  const frequenciaDaTrilha = trilhaSelecionada?.frequencia_minima_percentual ?? FREQUENCIA_MINIMA_PADRAO;
+  const [frequenciaEditada, setFrequenciaEditada] = useState<{ trilhaId: string; valor: number } | null>(null);
+  const frequenciaMinimaPercentual =
+    frequenciaEditada && frequenciaEditada.trilhaId === trilhaId ? frequenciaEditada.valor : frequenciaDaTrilha;
+  const setFrequenciaMinimaPercentual = (valor: number) => setFrequenciaEditada({ trilhaId, valor });
 
   const [erro, setErro] = useState<string | null>(null);
   const [mensagem, setMensagem] = useState<string | null>(null);
@@ -84,6 +92,7 @@ export function NovaTurma() {
             periodoFim,
             vagasTotal,
             frequenciaMinimaPercentual,
+            turno,
           }),
         (qc) => invalidar.turma(qc),
       );
@@ -112,9 +121,7 @@ export function NovaTurma() {
   const sobrepostas = turmasSobrepostas(consultaTurmas.data ?? [], moduloId, periodoInicio, periodoFim);
 
   return (
-    <PaginaAutenticada largura="estreita">
-        <BotaoVoltar />
-        <Titulo className="mb-6">Nova turma</Titulo>
+    <PaginaAutenticada largura="estreita" titulo="Nova turma" voltar={{}}>
         {erroDeLeitura && (
           <ErroConsulta
             className="mb-4"
@@ -172,9 +179,19 @@ export function NovaTurma() {
                   Essa trilha ainda não tem módulos cadastrados.
                 </span>
               )}
+              {/* Modelo de avaliações do módulo: a turma nasce com ele (o
+                  diário copia no banco ao criar a turma). */}
+              {moduloId && modeloDoModulo.data && (
+                <span className="text-label text-text-secondary" role="status">
+                  {modeloDoModulo.data.length > 0
+                    ? `Esta turma vai nascer com ${plural(modeloDoModulo.data.length, "avaliação", "avaliações")} do modelo do módulo (${modeloDoModulo.data.map((a) => a.titulo).join(", ")}); o professor pode ajustar depois.`
+                    : "Este módulo não tem avaliações padrão: a turma nasce sem avaliações, e o professor as cria."}
+                </span>
+              )}
             </label>
 
             <CampoCodigoTurma valor={codigo} aoMudar={setCodigo} />
+            <CampoTurno valor={turno} aoMudar={setTurno} />
 
             <label className="flex flex-col gap-1.5">
               <span className="text-label font-medium text-text-secondary">
@@ -199,37 +216,28 @@ export function NovaTurma() {
               )}
             </label>
 
-            {/* Data: mantemos o input nativo do navegador (type=date), não
-                uma máscara própria de dia/mês/ano. É o mais simples de
-                manter e não tem a classe de bug de foco/auto-avanço entre
-                segmentos que uma máscara manual teria. Os únicos ajustes
-                são min/max (limita o ano a 4 dígitos numa faixa sã) e a
-                validação de período antes de salvar. */}
-            <div className="flex gap-4">
-              <label className="flex flex-1 flex-col gap-1.5">
-                <span className="text-label font-medium text-text-secondary">
-                  Período — início
-                </span>
-                <Input
-                  type="date"
-                  required
-                  min={PERIODO_TURMA_DATA_MIN}
-                  max={PERIODO_TURMA_DATA_MAX}
-                  value={periodoInicio}
-                  onChange={(e) => setPeriodoInicio(e.target.value)}
-                />
-              </label>
-              <label className="flex flex-1 flex-col gap-1.5">
-                <span className="text-label font-medium text-text-secondary">Período — fim</span>
-                <Input
-                  type="date"
-                  required
-                  min={PERIODO_TURMA_DATA_MIN}
-                  max={PERIODO_TURMA_DATA_MAX}
-                  value={periodoFim}
-                  onChange={(e) => setPeriodoFim(e.target.value)}
-                />
-              </label>
+            {/* Datas em DD/MM/AAAA com máscara própria (CampoData): o input
+                nativo segmentado pulava do dia para o mês ao digitar "1"
+                de "12". O valor trocado com o resto continua AAAA-MM-DD. */}
+            <div className="flex flex-col gap-4 sm:flex-row">
+              <CampoData
+                className="flex-1"
+                rotulo="Período — início"
+                obrigatorio
+                min={PERIODO_TURMA_DATA_MIN}
+                max={PERIODO_TURMA_DATA_MAX}
+                valor={periodoInicio}
+                aoMudar={setPeriodoInicio}
+              />
+              <CampoData
+                className="flex-1"
+                rotulo="Período — fim"
+                obrigatorio
+                min={PERIODO_TURMA_DATA_MIN}
+                max={PERIODO_TURMA_DATA_MAX}
+                valor={periodoFim}
+                aoMudar={setPeriodoFim}
+              />
             </div>
 
             <div className="flex gap-4">
@@ -255,6 +263,9 @@ export function NovaTurma() {
                   value={frequenciaMinimaPercentual}
                   onChange={(e) => setFrequenciaMinimaPercentual(Number(e.target.value))}
                 />
+                <span className="text-label text-text-muted">
+                  Padrão da trilha: {frequenciaDaTrilha}%. Ajuste só se esta turma for diferente.
+                </span>
               </label>
             </div>
 

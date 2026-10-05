@@ -1,4 +1,4 @@
-import type { InputHTMLAttributes } from "react";
+import { forwardRef, type InputHTMLAttributes } from "react";
 
 // Campo de texto: borda, raio e padding horizontal (14px) extraídos dos
 // seletores de turma/disciplina em 05-professor-diario.svg e dos campos
@@ -7,14 +7,16 @@ import type { InputHTMLAttributes } from "react";
 // No foco a borda escurece e o anel vem da regra base de :focus-visible
 // (index.css), o mesmo de todo elemento interativo.
 // D2 — alvo de toque 48px no celular, 40px no desktop (mesmo padrão do Button).
-export function Input({
-  className = "",
-  ...props
-}: InputHTMLAttributes<HTMLInputElement>) {
+// forwardRef: o CampoData precisa do elemento para a validade nativa.
+export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(function Input(
+  { className = "", ...props },
+  ref,
+) {
   return (
     <input
+      ref={ref}
       className={`h-12 sm:h-10 rounded-klass-control border border-controle bg-surface px-3.5 text-body-sm text-text-primary placeholder:text-text-muted transition focus:border-primary ${className}`}
       {...props}
     />
   );
-}
+});

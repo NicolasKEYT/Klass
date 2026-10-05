@@ -2,14 +2,16 @@ import type { ReactNode } from "react";
 import { Input } from "@/components/Input";
 import type { TipoCertificacao } from "@klass/types";
 
-// Bloco compartilhado por NovaTrilha e EditarTrilha: tipo de certificação
-// + média mínima de aprovação. Centralizado para as duas telas não
+// Bloco compartilhado por NovaTrilha e EditarTrilha: tipo de certificação,
+// média mínima de aprovação e frequência mínima padrão das turmas. Centralizado para as duas telas não
 // divergirem no texto de ajuda nem nas opções.
 export function CamposCertificacao({
   tipoCertificacao,
   onTipoChange,
   mediaMinima,
   onMediaChange,
+  frequenciaMinima,
+  onFrequenciaChange,
   aviso,
 }: {
   tipoCertificacao: TipoCertificacao;
@@ -18,6 +20,9 @@ export function CamposCertificacao({
   // conforto; a página converte com Number() ao salvar.
   mediaMinima: string;
   onMediaChange: (valor: string) => void;
+  // Também string, pelo mesmo motivo; inteiro de 0 a 100.
+  frequenciaMinima: string;
+  onFrequenciaChange: (valor: string) => void;
   // Slot opcional (usado na edição para avisar sobre certificados já emitidos).
   aviso?: ReactNode;
 }) {
@@ -32,11 +37,13 @@ export function CamposCertificacao({
         >
           <option value="trilha">Só ao concluir a trilha inteira</option>
           <option value="modulo">Por módulo concluído</option>
+          <option value="modulo_e_trilha">Por módulo e da trilha completa</option>
         </select>
         <span className="text-label text-text-muted">
           "Por módulo concluído": cada módulo que o aluno termina já gera um certificado próprio.
           "Só ao concluir a trilha inteira": um único certificado, emitido quando o aluno conclui
-          todos os módulos.
+          todos os módulos. "Por módulo e da trilha completa": os dois — um certificado a cada
+          módulo concluído e, ao concluir o último, também o certificado da trilha.
         </span>
         {aviso}
       </div>
@@ -55,6 +62,23 @@ export function CamposCertificacao({
         <span className="text-label text-text-muted">
           Nota de 0 a 10 que o aluno precisa atingir para ser aprovado nos módulos desta trilha
           (padrão 6,0).
+        </span>
+      </label>
+
+      <label className="flex flex-col gap-1.5">
+        <span className="text-label font-medium text-text-secondary">Frequência mínima padrão (%)</span>
+        <Input
+          type="number"
+          min={0}
+          max={100}
+          step={1}
+          required
+          value={frequenciaMinima}
+          onChange={(e) => onFrequenciaChange(e.target.value)}
+        />
+        <span className="text-label text-text-muted">
+          Padrão para as turmas novas dos módulos desta trilha (75% é o mínimo da LDB); cada turma
+          pode ajustar a sua. Mudar este valor não altera as turmas já criadas.
         </span>
       </label>
     </>

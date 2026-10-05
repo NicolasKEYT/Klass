@@ -3,7 +3,6 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Aviso } from "@/components/Aviso";
 import { Badge } from "@/components/Badge";
-import { BotaoVoltar } from "@/components/BotaoVoltar";
 import { Button } from "@/components/Button";
 import {
   DndContext,
@@ -22,9 +21,11 @@ import {
 } from "@dnd-kit/sortable";
 import { Card } from "@/components/Card";
 import { Arrastavel } from "@/components/Arrastavel";
+import { AvaliacoesPadraoDoModulo } from "@/components/catalogo/AvaliacoesPadraoDoModulo";
 import { Esqueleto, EsqueletoCards, EsqueletoPagina, RegiaoCarregando } from "@/components/Esqueleto";
 import { ErroConsulta } from "@/components/ErroConsulta";
 import { CamposCertificacao } from "@/components/CamposCertificacao";
+import { ModalDesvincularPreRequisitos } from "@/components/catalogo/ModalDesvincularPreRequisitos";
 import { IconeCatalogo, IconePicker } from "@/components/IconeCatalogo";
 import { Input } from "@/components/Input";
 import { PaginaAutenticada } from "@/components/PaginaAutenticada";
@@ -36,12 +37,15 @@ import {
   criarModulo,
   definirPreRequisito,
   gerarSlug,
+  listarDependentesEmOutrasTrilhas,
   proximaOrdemDisponivel,
   reordenarModulos,
   trocarOrdemModulos,
 } from "@/lib/catalogo";
 import {
   useModulosDaTrilha,
+  useOpcoesDePreRequisito,
+  usePreRequisitosDaTrilha,
   usePreRequisitosIdsDaTrilha,
   useTrilhaPorSlug,
 } from "@/lib/consultas/catalogo";
@@ -49,6 +53,7 @@ import { useTrilhaTemCertificados } from "@/lib/consultas/certificacao";
 import { chaves } from "@/lib/consultas/chaves";
 import { useGravacao } from "@/lib/consultas/gravacao";
 import { invalidar } from "@/lib/consultas/invalidar";
+import type { DependenteEmOutraTrilha } from "@/lib/catalogo";
 import type { Modulo, NivelModulo, TipoCertificacao, Trilha } from "@klass/types";
 
 const NIVEIS: NivelModulo[] = ["iniciante", "intermediario", "avancado"];
@@ -67,15 +72,14 @@ export function EditarTrilha() {
 
   if (consulta.isPending) {
     return (
-      <PaginaAutenticada>
+      <PaginaAutenticada titulo="Editar trilha" voltar={{}}>
         <EsqueletoPagina />
       </PaginaAutenticada>
     );
   }
   if (!trilha) {
     return (
-      <PaginaAutenticada>
-        <BotaoVoltar />
+      <PaginaAutenticada titulo="Editar trilha" voltar={{}}>
         {consulta.isError ? (
           <ErroConsulta
             erro={consulta.error}
@@ -103,6 +107,18 @@ function EditorDeTrilha({ trilha, slugRota }: { trilha: Trilha; slugRota: string
   const temCertificados = useTrilhaTemCertificados(trilha.id).data ?? false;
   const modulos = consultaModulos.data ?? [];
   const preRequisitos = consultaPreRequisitos.data ?? new Map<string, Set<string>>();
+  // A15: pré-requisito pode ser módulo de outra trilha publicada. As opções
+  // nomeiam o que acabou de ser marcado; os detalhados cobrem o já gravado
+  // cuja trilha deixou de ser publicada.
+  const opcoesDeFora = (useOpcoesDePreRequisito().data ?? []).filter((m) => m.trilhaId !== trilha.id);
+  const detalhados = usePreRequisitosDaTrilha(trilha.id).data;
+  const rotuloDeFora = (moduloId: string, preRequisitoId: string) => {
+    const opcao = opcoesDeFora.find((m) => m.id === preRequisitoId);
+    if (opcao) return `${opcao.trilhaNome} · ${opcao.nome}`;
+    const p = detalhados?.get(moduloId)?.find((d) => d.pre_requisito_id === preRequisitoId);
+    return p ? `${p.trilha_nome} · ${p.nome}` : "Módulo de outra trilha";
+  };
+  const trilhasDeFora = [...new Set(opcoesDeFora.map((m) => m.trilhaNome))];
   const erroDeLeitura = consultaModulos.error ?? consultaPreRequisitos.error;
   const [erro, setErro] = useState<string | null>(null);
   const [mensagem, setMensagem] = useState<string | null>(null);
@@ -115,6 +131,7 @@ function EditorDeTrilha({ trilha, slugRota }: { trilha: Trilha; slugRota: string
   const [icone, setIcone] = useState<string | null>(trilha.icone);
   const [tipoCertificacao, setTipoCertificacao] = useState<TipoCertificacao>(trilha.tipo_certificacao);
   const [mediaMinima, setMediaMinima] = useState(String(trilha.media_minima));
+  const [frequenciaMinima, setFrequenciaMinima] = useState(String(trilha.frequencia_minima_percentual));
   const [salvandoTrilha, setSalvandoTrilha] = useState(false);
 
   const [mostrarNovoModulo, setMostrarNovoModulo] = useState(false);
@@ -149,6 +166,12 @@ function EditorDeTrilha({ trilha, slugRota }: { trilha: Trilha; slugRota: string
   // Mesma proteção para salvar edição de módulo / apagar módulo: sem ela,
   // um segundo clique durante o round-trip refazia a ação.
   const [processandoModulo, setProcessandoModulo] = useState(false);
+  // Módulos de outras trilhas que exigem o que vai ser apagado: o vínculo
+  // sai junto (cascade no banco), então a coordenação confirma antes.
+  const [avisoModulo, setAvisoModulo] = useState<{
+    modulo: Modulo;
+    dependentes: DependenteEmOutraTrilha[];
+  } | null>(null);
 
   async function salvarTrilha(voltarParaLista: boolean) {
     setErro(null);
@@ -156,6 +179,11 @@ function EditorDeTrilha({ trilha, slugRota }: { trilha: Trilha; slugRota: string
     const media = Number(mediaMinima);
     if (Number.isNaN(media) || media < 0 || media > 10) {
       setErro("A média mínima precisa ser um número entre 0 e 10.");
+      return;
+    }
+    const frequencia = Number(frequenciaMinima);
+    if (!Number.isInteger(frequencia) || frequencia < 0 || frequencia > 100) {
+      setErro("A frequência mínima precisa ser um número inteiro entre 0 e 100.");
       return;
     }
     setSalvandoTrilha(true);
@@ -169,6 +197,7 @@ function EditorDeTrilha({ trilha, slugRota }: { trilha: Trilha; slugRota: string
           icone,
           tipo_certificacao: tipoCertificacao,
           media_minima: media,
+          frequencia_minima_percentual: frequencia,
         }),
       );
       // A trilha salva vai direto para o cache do endereço (novo ou não)
@@ -270,16 +299,26 @@ function EditorDeTrilha({ trilha, slugRota }: { trilha: Trilha; slugRota: string
     }
   }
 
-  async function aoApagarModulo(modulo: Modulo) {
+  async function aoApagarModulo(modulo: Modulo, confirmado = false) {
     if (processandoModulo) return;
     setErro(null);
     setMensagem(null);
     setProcessandoModulo(true);
     try {
+      if (!confirmado) {
+        const dependentes = await listarDependentesEmOutrasTrilhas({ moduloId: modulo.id });
+        if (dependentes.length > 0) {
+          setConfirmandoApagarModuloId(null);
+          setAvisoModulo({ modulo, dependentes });
+          return;
+        }
+      }
       await gravar(() => apagarModulo(modulo.id), (qc) => invalidar.modulos(qc, trilha.id));
+      setAvisoModulo(null);
       setMensagem("Módulo apagado.");
       setConfirmandoApagarModuloId(null);
     } catch (e) {
+      setAvisoModulo(null);
       setErro(e instanceof Error ? e.message : "Não foi possível apagar o módulo.");
     } finally {
       setProcessandoModulo(false);
@@ -349,9 +388,7 @@ function EditorDeTrilha({ trilha, slugRota }: { trilha: Trilha; slugRota: string
   }
 
   return (
-    <PaginaAutenticada>
-        <BotaoVoltar />
-        <Titulo className="mb-6">Editar trilha</Titulo>
+    <PaginaAutenticada titulo="Editar trilha" sobrelinha={trilha.nome} voltar={{}}>
 
         {erro && (
           <Aviso variant="danger" className="mb-4">
@@ -443,6 +480,8 @@ function EditorDeTrilha({ trilha, slugRota }: { trilha: Trilha; slugRota: string
               tipoCertificacao={tipoCertificacao}
               onTipoChange={setTipoCertificacao}
               mediaMinima={mediaMinima}
+              frequenciaMinima={frequenciaMinima}
+              onFrequenciaChange={setFrequenciaMinima}
               onMediaChange={setMediaMinima}
               aviso={
                 temCertificados && tipoCertificacao !== trilha.tipo_certificacao ? (
@@ -664,9 +703,9 @@ function EditorDeTrilha({ trilha, slugRota }: { trilha: Trilha; slugRota: string
                       Este módulo requer:
                     </p>
                     <div className="flex flex-wrap gap-3">
-                      {modulos.length === 1 && (
+                      {modulos.length === 1 && opcoesDeFora.length === 0 && (
                         <span className="text-label text-text-muted">
-                          Nenhum outro módulo nesta trilha ainda.
+                          Nenhum outro módulo disponível ainda.
                         </span>
                       )}
                       {modulos
@@ -686,8 +725,51 @@ function EditorDeTrilha({ trilha, slugRota }: { trilha: Trilha; slugRota: string
                             {outro.nome}
                           </label>
                         ))}
+                      {[...(preRequisitos.get(modulo.id) ?? [])]
+                        .filter((id) => !modulos.some((m) => m.id === id))
+                        .map((id) => (
+                          <label
+                            key={id}
+                            className="flex items-center gap-1.5 text-body-sm text-text-secondary"
+                          >
+                            <input
+                              type="checkbox"
+                              checked
+                              onChange={() => void aoAlternarPreRequisito(modulo, id, false)}
+                            />
+                            {rotuloDeFora(modulo.id, id)}
+                          </label>
+                        ))}
                     </div>
+                    {opcoesDeFora.length > 0 && (
+                      <select
+                        aria-label={`Adicionar pré-requisito de outra trilha para ${modulo.nome}`}
+                        value=""
+                        onChange={(e) => {
+                          if (e.target.value) void aoAlternarPreRequisito(modulo, e.target.value, true);
+                        }}
+                        className="mt-2 h-12 sm:h-10 w-full sm:w-auto rounded-klass-control border border-controle bg-surface px-3.5 text-body-sm text-text-primary transition focus:border-primary"
+                      >
+                        <option value="">Adicionar módulo de outra trilha…</option>
+                        {trilhasDeFora.map((nomeTrilha) => (
+                          <optgroup key={nomeTrilha} label={nomeTrilha}>
+                            {opcoesDeFora
+                              .filter(
+                                (m) =>
+                                  m.trilhaNome === nomeTrilha && !preRequisitos.get(modulo.id)?.has(m.id),
+                              )
+                              .map((m) => (
+                                <option key={m.id} value={m.id}>
+                                  {nomeTrilha} · {m.nome}
+                                </option>
+                              ))}
+                          </optgroup>
+                        ))}
+                      </select>
+                    )}
                   </div>
+
+                  <AvaliacoesPadraoDoModulo moduloId={modulo.id} />
                 </>
               )}
                   </Card>
@@ -697,6 +779,15 @@ function EditorDeTrilha({ trilha, slugRota }: { trilha: Trilha; slugRota: string
           </SortableContext>
         </DndContext>
         )}
+
+        <ModalDesvincularPreRequisitos
+          aberto={avisoModulo !== null}
+          acao="Apagar"
+          dependentes={avisoModulo?.dependentes ?? []}
+          processando={processandoModulo}
+          onCancelar={() => setAvisoModulo(null)}
+          onConfirmar={() => avisoModulo && void aoApagarModulo(avisoModulo.modulo, true)}
+        />
     </PaginaAutenticada>
   );
 }

@@ -1,6 +1,13 @@
 import { supabase } from "@/lib/supabase";
 import { mensagemDeErroBanco } from "@/lib/mensagensDeErroBanco";
-import type { Modulo, NivelModulo, TipoCertificacao, Trilha } from "@klass/types";
+import type {
+  AvaliacaoModelo,
+  Modulo,
+  NivelModulo,
+  PreRequisitoDetalhado,
+  TipoCertificacao,
+  Trilha,
+} from "@klass/types";
 
 // Ponto único de acesso a catalogo.* — cada chamada já traduz erro do
 // Postgres para mensagem em português (ver mensagensDeErroBanco).
@@ -19,6 +26,48 @@ export function gerarSlug(nome: string): string {
     .replace(/\s+/g, "-")
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "");
+}
+
+// ---------------------------------------------------------------------
+// Avaliações padrão do módulo (modelo). A coordenação escreve (RLS); toda
+// turma nova do módulo nasce com elas (trigger no diário). Turmas já
+// criadas não mudam.
+// ---------------------------------------------------------------------
+
+export async function listarAvaliacoesModelo(moduloId: string): Promise<AvaliacaoModelo[]> {
+  const { data, error } = await catalogo()
+    .from("avaliacoes_modelo")
+    .select("*")
+    .eq("modulo_id", moduloId)
+    .order("ordem");
+  if (error) throw new Error(mensagemDeErroBanco(error));
+  return data;
+}
+
+export async function criarAvaliacaoModelo(input: { moduloId: string; titulo: string; peso: number; ordem: number }): Promise<void> {
+  const { error } = await catalogo()
+    .from("avaliacoes_modelo")
+    .insert({ modulo_id: input.moduloId, titulo: input.titulo.trim(), peso: input.peso, ordem: input.ordem });
+  if (error) throw new Error(mensagemDeErroBanco(error));
+}
+
+export async function atualizarAvaliacaoModelo(id: string, patch: { titulo: string; peso: number }): Promise<void> {
+  const { error } = await catalogo()
+    .from("avaliacoes_modelo")
+    .update({ titulo: patch.titulo.trim(), peso: patch.peso })
+    .eq("id", id);
+  if (error) throw new Error(mensagemDeErroBanco(error));
+}
+
+export async function apagarAvaliacaoModelo(id: string): Promise<void> {
+  const { error } = await catalogo().from("avaliacoes_modelo").delete().eq("id", id);
+  if (error) throw new Error(mensagemDeErroBanco(error));
+}
+
+/** Nova ordem (ids na ordem desejada) — catalogo.reordenar_avaliacoes_modelo. */
+export async function reordenarAvaliacoesModelo(ids: string[]): Promise<void> {
+  const { error } = await catalogo().rpc("reordenar_avaliacoes_modelo", { p_ids: ids });
+  if (error) throw new Error(mensagemDeErroBanco(error));
 }
 
 export async function listarTrilhas(): Promise<Trilha[]> {
@@ -66,6 +115,7 @@ export async function criarTrilha(input: {
   icone: string | null;
   tipoCertificacao: TipoCertificacao;
   mediaMinima: number;
+  frequenciaMinima: number;
 }): Promise<Trilha> {
   const { data, error } = await catalogo()
     .from("trilhas")
@@ -77,6 +127,7 @@ export async function criarTrilha(input: {
       icone: input.icone,
       tipo_certificacao: input.tipoCertificacao,
       media_minima: input.mediaMinima,
+      frequencia_minima_percentual: input.frequenciaMinima,
     })
     .select("*")
     .single();
@@ -96,6 +147,7 @@ export async function atualizarTrilha(
       | "icone"
       | "tipo_certificacao"
       | "media_minima"
+      | "frequencia_minima_percentual"
     >
   >,
 ): Promise<Trilha> {
@@ -112,6 +164,36 @@ export async function definirPublicacaoTrilha(id: string, publicada: boolean): P
 export async function apagarTrilha(id: string): Promise<void> {
   const { error } = await catalogo().from("trilhas").delete().eq("id", id);
   if (error) throw new Error(mensagemDeErroBanco(error));
+}
+
+export interface DependenteEmOutraTrilha {
+  moduloId: string;
+  moduloExigidoId: string;
+  trilhaNome: string;
+  moduloNome: string;
+  moduloExigidoNome: string;
+}
+
+/**
+ * Módulos de OUTRAS trilhas que exigem um módulo desta trilha (ou deste
+ * módulo). Despublicar ou apagar desfaz esses vínculos no banco; a tela
+ * mostra a lista antes, para a coordenação confirmar.
+ */
+export async function listarDependentesEmOutrasTrilhas(
+  alvo: { trilhaId: string } | { moduloId: string },
+): Promise<DependenteEmOutraTrilha[]> {
+  const { data, error } = await catalogo().rpc(
+    "dependentes_em_outras_trilhas",
+    "trilhaId" in alvo ? { p_trilha_id: alvo.trilhaId } : { p_modulo_id: alvo.moduloId },
+  );
+  if (error) throw new Error(mensagemDeErroBanco(error));
+  return (data ?? []).map((d) => ({
+    moduloId: d.modulo_dependente_id,
+    moduloExigidoId: d.modulo_exigido_id,
+    trilhaNome: d.trilha_dependente_nome,
+    moduloNome: d.modulo_dependente_nome,
+    moduloExigidoNome: d.modulo_exigido_nome,
+  }));
 }
 
 export async function listarModulosDaTrilha(trilhaId: string): Promise<Modulo[]> {
@@ -190,13 +272,50 @@ export async function reordenarModulos(idsNaOrdem: string[]): Promise<void> {
   if (error) throw new Error(mensagemDeErroBanco(error));
 }
 
-// Devolve o módulo inteiro (com trilha_id), não só o id: a tela de
-// detalhe precisa do nome e da trilha de cada pré-requisito para
-// mostrá-lo e linká-lo sem depender da lista de módulos da trilha atual.
-export async function listarPreRequisitosDoModulo(moduloId: string): Promise<Modulo[]> {
-  const { data, error } = await catalogo().rpc("pre_requisitos_de_modulo", { p_modulo_id: moduloId });
+// Nome, trilha e slug de cada pré-requisito, que pode ser de outra trilha
+// (A15). A função do banco devolve o nome mesmo se a trilha do módulo
+// exigido não estiver visível ao aluno — nunca mais "—".
+async function listarPreRequisitosDetalhados(moduloIds: string[]): Promise<PreRequisitoDetalhado[]> {
+  if (moduloIds.length === 0) return [];
+  const { data, error } = await catalogo().rpc("pre_requisitos_detalhados", { p_modulo_ids: moduloIds });
   if (error) throw new Error(mensagemDeErroBanco(error));
   return data ?? [];
+}
+
+/** "Módulo" se for da trilha em questão; "Trilha · Módulo" se vier de outra. */
+export function rotuloPreRequisito(p: PreRequisitoDetalhado, trilhaId: string | undefined): string {
+  return p.trilha_id === trilhaId ? p.nome : `${p.trilha_nome} · ${p.nome}`;
+}
+
+export function rotaDoPreRequisito(p: PreRequisitoDetalhado): string {
+  return `/catalogo/${p.trilha_slug}/modulos/${p.pre_requisito_id}`;
+}
+
+export async function listarPreRequisitosDoModulo(moduloId: string): Promise<PreRequisitoDetalhado[]> {
+  return listarPreRequisitosDetalhados([moduloId]);
+}
+
+export interface ModuloDeOutraTrilha {
+  id: string;
+  nome: string;
+  trilhaId: string;
+  trilhaNome: string;
+}
+
+/**
+ * Módulos que podem ser pré-requisito vindo de outra trilha: os de trilhas
+ * publicadas (o banco recusa os de rascunho), em ordem de trilha e módulo.
+ */
+export async function listarModulosDeTrilhasPublicadas(): Promise<ModuloDeOutraTrilha[]> {
+  const { data, error } = await catalogo()
+    .from("modulos")
+    .select("id, nome, ordem, trilha_id, trilhas!inner(nome, publicada)")
+    .eq("trilhas.publicada", true)
+    .order("ordem");
+  if (error) throw new Error(mensagemDeErroBanco(error));
+  return (data ?? [])
+    .map((m) => ({ id: m.id, nome: m.nome, trilhaId: m.trilha_id, trilhaNome: m.trilhas.nome }))
+    .sort((a, b) => a.trilhaNome.localeCompare(b.trilhaNome, "pt-BR"));
 }
 
 export async function definirPreRequisito(
@@ -220,32 +339,20 @@ export async function definirPreRequisito(
 }
 
 /**
- * modulo_id -> nomes dos módulos que são pré-requisito dele, para exibição.
+ * modulo_id -> pré-requisitos dele (com nome e trilha), para exibição.
  * `modulos` opcional: quem já tem a lista em cache passa adiante e evita
  * buscá-la de novo antes dos pré-requisitos (uma ida ao banco a menos).
  */
 export async function listarPreRequisitosDaTrilha(
   trilhaId: string,
   modulosConhecidos?: Modulo[],
-): Promise<Map<string, string[]>> {
+): Promise<Map<string, PreRequisitoDetalhado[]>> {
   const modulos = modulosConhecidos ?? (await listarModulosDaTrilha(trilhaId));
-  const idParaNome = new Map(modulos.map((m) => [m.id, m.nome]));
-  const moduloIds = modulos.map((m) => m.id);
-  if (moduloIds.length === 0) return new Map();
-
-  const { data, error } = await catalogo()
-    .from("pre_requisitos_modulo")
-    .select("modulo_id, pre_requisito_id")
-    .in("modulo_id", moduloIds);
-  if (error) throw new Error(mensagemDeErroBanco(error));
-
-  const resultado = new Map<string, string[]>();
-  for (const linha of data ?? []) {
-    const nome = idParaNome.get(linha.pre_requisito_id);
-    if (!nome) continue;
-    const lista = resultado.get(linha.modulo_id) ?? [];
-    lista.push(nome);
-    resultado.set(linha.modulo_id, lista);
+  const resultado = new Map<string, PreRequisitoDetalhado[]>();
+  for (const p of await listarPreRequisitosDetalhados(modulos.map((m) => m.id))) {
+    const lista = resultado.get(p.modulo_id) ?? [];
+    lista.push(p);
+    resultado.set(p.modulo_id, lista);
   }
   return resultado;
 }

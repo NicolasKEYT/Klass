@@ -15,8 +15,7 @@ export function Catalogo() {
   const trilhas = consulta.data?.filter((t) => t.publicada);
 
   return (
-    <PaginaAutenticada>
-      <Titulo className="mb-6">Catálogo de trilhas</Titulo>
+    <PaginaAutenticada titulo="Catálogo de trilhas">
 
       {consulta.isError && !trilhas && (
         <ErroConsulta

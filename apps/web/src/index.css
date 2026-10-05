@@ -4,7 +4,78 @@
 @tailwind components;
 @tailwind utilities;
 
+/* D1 (klass-uikit.pdf, pág. 1) — "Tema claro como padrão. O escuro fica
+   como opção e segue o prefers-color-scheme do sistema" (Piepenbrock et
+   al., 2013; Budiu/NN/g, 2020). As cores do tema são variáveis em canais
+   RGB ("R G B"), consumidas pelo tailwind.config.ts como
+   rgb(var(--cor-x) / <alpha-value>) — assim `bg-primary/10` continua
+   funcionando e nenhuma tela troca de classe. O valor claro é exatamente o
+   hex de antes (o tema claro não muda); o escuro entra quando o <html>
+   recebe data-tema="escuro", decidido antes da primeira pintura pelo
+   script em index.html e depois por lib/tema.ts. O certificado (cert-*)
+   fica fora: é papel, igual nos dois temas. */
 @layer base {
+  :root {
+    color-scheme: light;
+    --cor-background: 243 243 241; /* #F3F3F1 */
+    --cor-surface: 255 255 255; /* #FFFFFF */
+    --cor-surface-subtle: 227 228 222; /* #E3E4DE */
+    --cor-border: 216 217 211; /* #D8D9D3 */
+    --cor-controle: 133 135 127; /* #85877F */
+    --cor-text-primary: 26 26 23; /* #1A1A17 */
+    --cor-text-secondary: 97 99 92; /* #61635C — 4,76:1 sobre surface-subtle (antes #6B6D66, 4,10:1) */
+    --cor-text-muted: 109 111 104; /* #6D6F68 */
+    --cor-primary: 26 26 23; /* #1A1A17 */
+    --cor-primary-subtle: 227 228 222; /* #E3E4DE */
+    --cor-primary-contraste: 255 255 255; /* texto sobre o destaque */
+    --cor-neutral-subtle: 227 228 222; /* #E3E4DE */
+    --cor-acento: 10 132 255; /* #0A84FF */
+    --cor-meta: 194 65 12; /* #C2410C */
+    --cor-success: 21 128 61; /* #15803D */
+    --cor-success-subtle: 236 253 243; /* #ECFDF3 */
+    --cor-danger: 185 28 28; /* #B91C1C — ≥ 5,3:1 sobre danger-subtle, background e surface (antes #DC2626) */
+    --cor-danger-subtle: 254 226 226; /* #FEE2E2 */
+    --cor-sombra: 25 26 28; /* tinta das sombras */
+    --cor-veu: 26 26 23; /* véu atrás do modal (= tinta do texto) */
+  }
+
+  /* Paleta escura derivada da clara: os mesmos neutros quentes (verde-
+     -oliva bem dessaturado), invertidos. A superfície fica um degrau acima
+     do fundo (o card se destaca por luz, já que sombra não aparece no
+     escuro), a borda continua visível e o destaque vira tinta clara com
+     texto escuro sobre ele. O azul segue exclusivo do rádio de turma e o
+     laranja só no traço de meta, clareado para manter 3:1. Contraste de
+     cada par calculado no QA de 2026-10-03 (melhorias/09-tema-escuro.md). */
+  :root[data-tema="escuro"] {
+    color-scheme: dark;
+    --cor-background: 20 20 18; /* #141412 */
+    --cor-surface: 30 30 27; /* #1E1E1B */
+    --cor-surface-subtle: 44 45 40; /* #2C2D28 */
+    --cor-border: 60 61 55; /* #3C3D37 */
+    --cor-controle: 128 130 121; /* #808279 */
+    --cor-text-primary: 237 237 233; /* #EDEDE9 */
+    --cor-text-secondary: 176 178 169; /* #B0B2A9 */
+    --cor-text-muted: 168 170 161; /* #A8AAA1 */
+    --cor-primary: 237 237 233; /* #EDEDE9 */
+    --cor-primary-subtle: 44 45 40; /* #2C2D28 */
+    --cor-primary-contraste: 26 26 23; /* #1A1A17 */
+    --cor-neutral-subtle: 44 45 40; /* #2C2D28 */
+    --cor-acento: 10 132 255; /* #0A84FF */
+    --cor-meta: 234 88 12; /* #EA580C */
+    --cor-success: 74 222 128; /* #4ADE80 */
+    --cor-success-subtle: 16 40 26; /* #10281A */
+    --cor-danger: 248 113 113; /* #F87171 */
+    --cor-danger-subtle: 58 22 22; /* #3A1616 */
+    --cor-sombra: 0 0 0;
+    --cor-veu: 0 0 0; /* o véu escurece; na tinta do texto ele clarearia */
+  }
+
+  /* Troca de tema instantânea (ver lib/tema.ts). */
+  .trocando-tema,
+  .trocando-tema * {
+    transition: none !important;
+  }
+
   body {
     @apply bg-background font-sans text-text-primary antialiased;
   }
@@ -16,21 +87,21 @@
      branco e 16:1 no fundo), 2px, afastado 2px do elemento. Nenhum
      componente deve tirar o outline sem pôr este anel no lugar. */
   :focus-visible {
-    outline: 2px solid theme("colors.primary.DEFAULT");
+    outline: 2px solid rgb(var(--cor-primary));
     outline-offset: 2px;
   }
 
   /* Texto selecionado (inclusive o conteúdo de um campo ao receber foco
      por Tab) usava o realce azul do sistema. */
   ::selection {
-    background-color: theme("colors.primary.DEFAULT");
-    color: theme("colors.surface");
+    background-color: rgb(var(--cor-primary));
+    color: rgb(var(--cor-primary-contraste));
   }
 
   /* Checkbox nativo marcado era azul (accent-color: auto). O rádio de
      turma sobrescreve com `accent-acento`, que é utilitário e vence esta
      regra de base. */
   input[type="checkbox"] {
-    accent-color: theme("colors.primary.DEFAULT");
+    accent-color: rgb(var(--cor-primary));
   }
 }

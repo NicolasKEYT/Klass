@@ -13,6 +13,7 @@ import { Home } from "@/pages/Home";
 import { Perfil } from "@/pages/Perfil";
 import { VerificarCertificado } from "@/pages/VerificarCertificado";
 import { Boletim } from "@/pages/aluno/Boletim";
+import { Acompanhamento } from "@/pages/coordenacao/Acompanhamento";
 import { Certificados as CertificadosDoAluno } from "@/pages/aluno/Certificados";
 import { Certificados as CertificadosDaCoordenacao } from "@/pages/coordenacao/Certificados";
 import { DetalheTurma as DetalheTurmaCoordenacao } from "@/pages/coordenacao/DetalheTurma";
@@ -39,7 +40,9 @@ export default function App() {
         <Route path="/entrar" element={<Entrar />} />
         <Route path="/cadastrar" element={<Cadastrar />} />
         <Route path="/acesso-negado" element={<AcessoNegado />} />
-        {/* Pública, sem <Autenticado>: verificação de certificado por hash. */}
+        {/* Públicas, sem <Autenticado>: verificação de certificado por hash
+            (destino do QR do PDF) e o campo para digitar um código. */}
+        <Route path="/verificar" element={<VerificarCertificado />} />
         <Route path="/verificar/:hash" element={<VerificarCertificado />} />
 
         {/* Rota de layout: a guarda de autenticação roda uma vez e a casca
@@ -73,6 +76,8 @@ export default function App() {
             <Route path="/coordenacao/turmas/:id/editar" element={<EditarTurma />} />
             <Route path="/coordenacao/certificados" element={<CertificadosDaCoordenacao />} />
             <Route path="/coordenacao/pessoas" element={<Pessoas />} />
+            {/* D11 — gráficos de acompanhamento; entrada pelo Início. */}
+            <Route path="/coordenacao/acompanhamento" element={<Acompanhamento />} />
           </Route>
 
           {/* D3/D8 — "Minhas matrículas" virou "Boletim" (rota e nav). A tela

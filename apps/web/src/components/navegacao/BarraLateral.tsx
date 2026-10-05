@@ -29,7 +29,7 @@ export function BarraLateral() {
     <aside className="hidden shrink-0 flex-col border-r border-border bg-surface md:sticky md:top-0 md:flex md:h-screen md:w-klass-sidebar">
       <div className="flex h-klass-header items-center gap-2.5 border-b border-border px-5">
         <div
-          className="flex h-8 w-8 items-center justify-center rounded-klass-control bg-text-primary text-white"
+          className="flex h-8 w-8 items-center justify-center rounded-klass-control bg-text-primary text-primary-contraste"
           aria-hidden
         >
           <span className="text-klass-md font-semibold">K</span>

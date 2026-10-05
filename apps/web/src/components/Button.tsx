@@ -17,7 +17,7 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 // "Inscrever-se" bloqueado por pré-requisito — mesma forma de botão, só
 // com borda tracejada e tom apagado, sem fingir que a ação está disponível.
 const variantClasses: Record<ButtonVariant, string> = {
-  primary: "bg-primary text-white hover:brightness-95 active:brightness-90",
+  primary: "bg-primary text-primary-contraste hover:brightness-95 active:brightness-90",
   secondary:
     "bg-surface text-text-primary border border-border hover:bg-neutral-subtle active:bg-neutral-subtle",
   tracejado: "border border-dashed border-border bg-neutral-subtle text-text-muted",

@@ -39,7 +39,7 @@ export function BotaoBaixarCertificado({
       type="button"
       disabled={gerando}
       onClick={() => void baixar()}
-      className={`inline-flex h-12 items-center justify-center rounded-klass-control bg-primary px-4 text-klass-md font-medium text-white hover:brightness-95 disabled:cursor-wait sm:h-10 ${className}`}
+      className={`inline-flex h-12 items-center justify-center rounded-klass-control bg-primary px-4 text-klass-md font-medium text-primary-contraste hover:brightness-95 disabled:cursor-wait sm:h-10 ${className}`}
     >
       {gerando ? "Gerando..." : falhou ? "Tentar de novo" : "Baixar PDF"}
     </button>

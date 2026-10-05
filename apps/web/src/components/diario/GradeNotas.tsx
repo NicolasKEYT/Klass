@@ -1,7 +1,8 @@
-import { useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Pencil, Trash2 } from "lucide-react";
 import { Aviso } from "@/components/Aviso";
 import { Badge } from "@/components/Badge";
+import { BotaoExportarCsv } from "@/components/BotaoExportarCsv";
 import { Button } from "@/components/Button";
 import { Avatar } from "@/components/Avatar";
 import { Card } from "@/components/Card";
@@ -10,7 +11,7 @@ import { EsqueletoTabela } from "@/components/Esqueleto";
 import { ErroConsulta } from "@/components/ErroConsulta";
 import { StatusBadge } from "@/components/StatusBadge";
 import { chaves } from "@/lib/consultas/chaves";
-import { useNotasDaTurma, useProgressos } from "@/lib/consultas/diario";
+import { useNotasDaTurma, useProgressoDaTurma } from "@/lib/consultas/diario";
 import { useGravacao } from "@/lib/consultas/gravacao";
 import { invalidar } from "@/lib/consultas/invalidar";
 import { useMatriculasDaTurma } from "@/lib/consultas/selecao";
@@ -18,12 +19,14 @@ import {
   atualizarAvaliacao,
   BloqueioAlunoEncerrado,
   filtrarAlunosDoDiario,
+  removerNota,
   salvarNotasEmLote,
   type AlunoDoDiario,
   type Avaliacao,
   type NotaLancada,
 } from "@/lib/diario";
 import type { TurmaDetalhada } from "@/lib/selecao";
+import { formatarDecimal, formatarMedia, formatarNota, formatarPercentual } from "@/lib/formato";
 
 interface LinhaAluno extends AlunoDoDiario {
   media: number | null;
@@ -33,6 +36,11 @@ interface LinhaAluno extends AlunoDoDiario {
 function chave(avaliacaoId: string, matriculaId: string): string {
   return `${avaliacaoId}:${matriculaId}`;
 }
+
+// Célula de aluno já aprovado ou reprovado: o trigger do banco não deixa a
+// nota mudar; a dica diz por quê e o caminho (QA, P5).
+const DICA_NOTA_BLOQUEADA =
+  "Aluno já encerrado (aprovado ou reprovado): a nota não pode mudar. Para corrigir, peça à coordenação para desfazer o encerramento.";
 
 const MENSAGEM_NOTA_INVALIDA =
   "A nota precisa ser um número entre 0 e 10, com no máximo uma vírgula ou ponto decimal (ex.: 7,5).";
@@ -65,6 +73,7 @@ export function GradeNotas({
   lancadoPor,
   avaliacoes,
   onApagarAvaliacao,
+  acoes,
 }: {
   turmaId: string;
   turma: TurmaDetalhada;
@@ -76,13 +85,15 @@ export function GradeNotas({
    * (recria igual); com notas, não há como devolvê-las.
    */
   onApagarAvaliacao: (avaliacao: Avaliacao, podeDesfazer: boolean) => Promise<void>;
+  /** Botões à direita dos chips, na mesma linha (pág. 9: "Nova avaliação"). */
+  acoes?: ReactNode;
 }) {
   const gravar = useGravacao();
   // Alunos, progresso e notas vêm do cache compartilhado com a tela da
   // turma (já lidos ao abrir a turma): voltar para esta aba não busca nada.
   const consultaMatriculas = useMatriculasDaTurma(turmaId);
   const alunosDoDiario = consultaMatriculas.data ? filtrarAlunosDoDiario(consultaMatriculas.data) : undefined;
-  const progressos = useProgressos((alunosDoDiario ?? []).map((a) => a.matriculaId));
+  const progressos = useProgressoDaTurma(turmaId);
   const avaliacaoIds = avaliacoes.map((a) => a.id);
   const consultaNotas = useNotasDaTurma(turmaId, avaliacaoIds);
 
@@ -94,7 +105,9 @@ export function GradeNotas({
   const notasSalvas: Record<string, string> = {};
   const valorSalvo: Record<string, number> = {};
   for (const n of consultaNotas.data ?? []) {
-    notasSalvas[chave(n.avaliacaoId, n.matriculaId)] = String(n.valor);
+    // Mostrada como no UI Kit ("6,5", "8,0"), sem arredondar quem tem duas
+    // casas ("7,25"); lerNota aceita a vírgula de volta.
+    notasSalvas[chave(n.avaliacaoId, n.matriculaId)] = formatarNota(n.valor);
     valorSalvo[chave(n.avaliacaoId, n.matriculaId)] = n.valor;
   }
 
@@ -114,6 +127,12 @@ export function GradeNotas({
     setRascunhos(resto);
   }
 
+  // Célula com foco: mostra o valor de quando o foco entrou, mesmo que uma
+  // nota de outra sessão chegue pelo Realtime nesse meio-tempo — o valor
+  // não muda debaixo do cursor do professor. Ao sair, a célula mostra o
+  // que estiver no cache (o rascunho, se houver, é gravado e prevalece).
+  const [celulaEmFoco, setCelulaEmFoco] = useState<{ k: string; texto: string } | null>(null);
+
   const [erro, setErro] = useState<string | null>(null);
   const [confirmandoApagarId, setConfirmandoApagarId] = useState<string | null>(null);
   const [apagando, setApagando] = useState(false);
@@ -127,6 +146,14 @@ export function GradeNotas({
   // reescreve lancada_em, dispara o Realtime e gera "Nota publicada"
   // falsa nas Novidades do aluno. Sai daqui quando o cache já tem o valor.
   const valoresGravados = useRef<Record<string, number>>({});
+  // Célula esvaziada à espera da confirmação "Remover a nota?" (QA, P5).
+  // O ref responde na hora ao blur que segue o Enter; o estado desenha.
+  const remocaoRef = useRef<{ k: string; avaliacaoId: string; matriculaId: string } | null>(null);
+  const [remocao, setRemocao] = useState<{ k: string; avaliacaoId: string; matriculaId: string } | null>(null);
+  const [removendo, setRemovendo] = useState(false);
+  useEffect(() => {
+    if (remocao) document.getElementById("botao-remover-nota")?.focus();
+  }, [remocao]);
   const somaPesos = avaliacoes.reduce((soma, a) => soma + a.peso, 0);
 
   // Já tem nota lançada pra algum aluno? Decide o texto de aviso na
@@ -213,7 +240,17 @@ export function GradeNotas({
     const k = chave(avaliacaoId, matriculaId);
     if (!(k in rascunhosRef.current)) return;
     const texto = rascunhosRef.current[k].trim();
-    if (texto === "") return;
+    if (texto === "") {
+      // Célula esvaziada com nota gravada: pergunta antes de remover (Enter
+      // e o blur que ele provoca chegam aqui juntos — a pergunta abre uma vez).
+      if (valorSalvo[k] !== undefined && remocaoRef.current?.k !== k) {
+        remocaoRef.current = { k, avaliacaoId, matriculaId };
+        setRemocao(remocaoRef.current);
+      } else if (valorSalvo[k] === undefined) {
+        descartarRascunho(k);
+      }
+      return;
+    }
     const valor = lerNota(texto);
     if (valor === null) {
       setErro(MENSAGEM_NOTA_INVALIDA);
@@ -240,6 +277,7 @@ export function GradeNotas({
             { avaliacaoId, matriculaId, valor },
           ]);
           descartarRascunho(k);
+          setCelulaEmFoco((atual) => (atual?.k === k ? { k, texto: formatarNota(valor) } : atual));
           await invalidar.nota(qc, matriculaId);
         },
       );
@@ -249,6 +287,43 @@ export function GradeNotas({
       // Gravou (o cache já tem o valor) ou falhou (a próxima tentativa
       // compara de novo com o banco).
       delete valoresGravados.current[k];
+    }
+  }
+
+  function fecharRemocao(manterNota: boolean) {
+    const atual = remocaoRef.current;
+    remocaoRef.current = null;
+    setRemocao(null);
+    if (!atual) return;
+    if (manterNota) {
+      descartarRascunho(atual.k);
+      document.getElementById(`nota-${atual.avaliacaoId}-${atual.matriculaId}`)?.focus();
+    }
+  }
+
+  async function aoConfirmarRemocao() {
+    const alvo = remocaoRef.current;
+    if (!alvo) return;
+    setErro(null);
+    setRemovendo(true);
+    try {
+      await gravar(
+        () => removerNota(alvo.avaliacaoId, alvo.matriculaId),
+        async (qc) => {
+          qc.setQueryData<NotaLancada[]>(chaves.diario.notas(turmaId, avaliacaoIds), (atual) =>
+            (atual ?? []).filter((n) => !(n.avaliacaoId === alvo.avaliacaoId && n.matriculaId === alvo.matriculaId)),
+          );
+          descartarRascunho(alvo.k);
+          await invalidar.nota(qc, alvo.matriculaId);
+        },
+      );
+      fecharRemocao(false);
+    } catch (e) {
+      // Falhou: a nota continua no banco, a célula volta a mostrá-la.
+      fecharRemocao(true);
+      setErro(e instanceof Error ? e.message : "Não foi possível remover a nota.");
+    } finally {
+      setRemovendo(false);
     }
   }
 
@@ -275,6 +350,13 @@ export function GradeNotas({
     return mediaBaixa || freqBaixa ? "abaixo_da_media" : null;
   }
 
+  // A mesma situação da coluna "Situação", em texto, para o CSV.
+  function situacaoEmTexto(aluno: LinhaAluno): string {
+    if (aluno.status === "concluida") return "Concluído";
+    if (aluno.status === "reprovada") return "Reprovado(a)";
+    return situacaoDaLinha(aluno) === "abaixo_da_media" ? "Abaixo da média" : "Em curso";
+  }
+
   const erroDeLeitura = consultaMatriculas.error ?? progressos.erro ?? consultaNotas.error;
   if (erroDeLeitura && (!alunosDoDiario || !consultaNotas.data)) {
     return (
@@ -298,9 +380,35 @@ export function GradeNotas({
       {/* Toolbar: informação read-only — média/frequência mínima são
           definidas na trilha/turma (outro prompt), não editáveis aqui. */}
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <Badge variant="contorno">Média mínima {turma.trilhaMediaMinima.toFixed(1)}</Badge>
-        <Badge variant="contorno">Frequência mínima {turma.frequenciaMinimaPercentual}%</Badge>
-        <Badge variant="contorno">Cálculo por média ponderada</Badge>
+        <div className="order-last ml-auto flex flex-wrap items-center gap-2">
+          <BotaoExportarCsv
+            nome={["notas", turma.codigo]}
+            rotulo={`Exportar notas da turma ${turma.codigo} em CSV`}
+            linhas={alunos}
+            colunas={[
+              { titulo: "Aluno", valor: (a) => a.alunoNome },
+              ...avaliacoes.map((av) => ({
+                titulo: `${av.titulo} (peso ${formatarDecimal(av.peso)})`,
+                valor: (a: LinhaAluno) => {
+                  const v = valorSalvo[chave(av.id, a.matriculaId)];
+                  return v === undefined ? null : formatarNota(v);
+                },
+              })),
+              { titulo: "Média", valor: (a) => (a.media !== null ? formatarMedia(a.media) : null) },
+              // Inteiro truncado, como na tela (69,6% não vira 70%).
+              { titulo: "Frequência (%)", valor: (a) => (a.frequencia !== null ? Math.trunc(a.frequencia) : null) },
+              { titulo: "Situação", valor: (a) => situacaoEmTexto(a) },
+            ]}
+          />
+          {acoes}
+        </div>
+        <Badge variant="contorno">
+          Média mínima <span className="font-mono tabular-nums">{formatarMedia(turma.trilhaMediaMinima)}</span>
+        </Badge>
+        <Badge variant="contorno">
+          Frequência mínima <span className="font-mono tabular-nums">{formatarPercentual(turma.frequenciaMinimaPercentual)}</span>
+        </Badge>
+        <Badge variant="contorno">Média ponderada</Badge>
       </div>
 
       {erro && (
@@ -308,6 +416,38 @@ export function GradeNotas({
           {erro}
         </Aviso>
       )}
+
+      {remocao &&
+        (() => {
+          const aluno = alunos.find((a) => a.matriculaId === remocao.matriculaId);
+          const avaliacao = avaliacoes.find((a) => a.id === remocao.avaliacaoId);
+          return (
+            <Card
+              role="alertdialog"
+              aria-labelledby="pergunta-remover-nota"
+              className="mb-3 flex flex-col gap-3"
+              onKeyDown={(e) => {
+                if (e.key === "Escape" && !removendo) {
+                  e.preventDefault();
+                  fecharRemocao(true);
+                }
+              }}
+            >
+              <p id="pergunta-remover-nota" className="text-body-sm text-text-primary">
+                Remover a nota de <strong>{aluno?.alunoNome ?? "este aluno"}</strong> em{" "}
+                <strong>{avaliacao?.titulo ?? "esta avaliação"}</strong>?
+              </p>
+              <div className="flex gap-2">
+                <Button id="botao-remover-nota" disabled={removendo} onClick={() => void aoConfirmarRemocao()}>
+                  {removendo ? "Removendo..." : "Remover nota"}
+                </Button>
+                <Button variant="secondary" disabled={removendo} onClick={() => fecharRemocao(true)}>
+                  Manter nota
+                </Button>
+              </div>
+            </Card>
+          );
+        })()}
 
       {editandoId &&
         (() => {
@@ -445,7 +585,7 @@ export function GradeNotas({
                     </button>
                   </div>
                   <span className="block font-normal">
-                    peso {a.peso} · {percentualDoPeso(a.peso, somaPesos)}%
+                    peso {formatarDecimal(a.peso)} · {percentualDoPeso(a.peso, somaPesos)}%
                   </span>
                 </th>
               ))}
@@ -472,31 +612,42 @@ export function GradeNotas({
                       <Avatar nome={aluno.alunoNome} />
                       {aluno.alunoNome}
                     </span>
+                    {aluno.status !== "matriculada" && (
+                      <span id={`bloqueio-notas-${aluno.matriculaId}`} className="sr-only">
+                        {DICA_NOTA_BLOQUEADA}
+                      </span>
+                    )}
                   </td>
                   {avaliacoes.map((avaliacao) => {
                     const k = chave(avaliacao.id, aluno.matriculaId);
                     const podeEditar = aluno.status === "matriculada";
                     return (
-                      <td key={avaliacao.id} className="px-2 py-2">
+                      <td key={avaliacao.id} className="px-2 py-2" title={podeEditar ? undefined : DICA_NOTA_BLOQUEADA}>
                         <input
                           id={`nota-${avaliacao.id}-${aluno.matriculaId}`}
                           type="text"
                           inputMode="decimal"
                           disabled={!podeEditar}
+                          aria-label={`Nota de ${aluno.alunoNome} em ${avaliacao.titulo}`}
+                          aria-describedby={podeEditar ? undefined : `bloqueio-notas-${aluno.matriculaId}`}
                           className="h-10 w-20 rounded-klass-control border border-controle bg-surface px-2 text-center font-mono text-body-sm tabular-nums text-text-primary transition focus:border-primary disabled:bg-neutral-subtle disabled:text-text-muted"
-                          value={rascunhos[k] ?? notasSalvas[k] ?? ""}
+                          value={rascunhos[k] ?? (celulaEmFoco?.k === k ? celulaEmFoco.texto : notasSalvas[k]) ?? ""}
                           onChange={(e) => definirRascunho(k, e.target.value)}
-                          onBlur={() => void salvarCelula(avaliacao.id, aluno.matriculaId)}
+                          onFocus={() => setCelulaEmFoco({ k, texto: notasSalvas[k] ?? "" })}
+                          onBlur={() => {
+                            setCelulaEmFoco((atual) => (atual?.k === k ? null : atual));
+                            void salvarCelula(avaliacao.id, aluno.matriculaId);
+                          }}
                           onKeyDown={(e) => aoTeclar(e, avaliacao.id, aluno.matriculaId, indiceLinha)}
                         />
                       </td>
                     );
                   })}
                   <td className="px-4 py-3 font-mono text-body-sm font-medium tabular-nums text-text-primary">
-                    {aluno.media !== null ? aluno.media.toFixed(1) : "—"}
+                    {aluno.media !== null ? formatarMedia(aluno.media) : "—"}
                   </td>
                   <td className="px-4 py-3 font-mono text-body-sm tabular-nums text-text-secondary">
-                    {aluno.frequencia !== null ? `${aluno.frequencia.toFixed(0)}%` : "—"}
+                    {aluno.frequencia !== null ? formatarPercentual(aluno.frequencia) : "—"}
                   </td>
                   <td className="px-4 py-3">
                     {aluno.status === "concluida" || aluno.status === "reprovada" ? (
@@ -516,9 +667,21 @@ export function GradeNotas({
           </tbody>
         </table>
       </div>
-      <p className="mt-2 text-label text-text-muted">
-        Enter salva e desce · Esc desfaz a edição da célula · Tab vai para a próxima avaliação
-      </p>
+      {/* pág. 9 — legenda das teclas e a fórmula da média desta turma.
+          A média do banco (diario.media_ponderada) só considera as
+          avaliações com nota lançada para o aluno. */}
+      <div className="mt-3 grid gap-2 text-label text-text-secondary md:grid-cols-2">
+        <p>
+          <kbd className="font-mono font-semibold text-text-primary">Enter</kbd> salva e desce ·{" "}
+          <kbd className="font-mono font-semibold text-text-primary">Tab</kbd> vai para a próxima avaliação ·{" "}
+          <kbd className="font-mono font-semibold text-text-primary">Esc</kbd> desfaz a célula · apagar
+          o valor remove a nota (com confirmação)
+        </p>
+        <p>
+          Média = ({avaliacoes.map((a) => `${a.titulo} × ${formatarDecimal(a.peso)}`).join(" + ")}) ÷ soma dos pesos, só com as
+          avaliações já lançadas
+        </p>
+      </div>
     </div>
   );
 }

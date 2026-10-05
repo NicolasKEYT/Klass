@@ -5,6 +5,7 @@ import { Award, ChevronDown, ChevronUp, Lock, Unlock } from "lucide-react";
 import { useAuth } from "@/auth";
 import { CancelarInscricao } from "@/components/aluno/CancelarInscricao";
 import { Badge } from "@/components/Badge";
+import { MateriaisDaTurma } from "@/components/diario/MateriaisDaTurma";
 import { BotaoBaixarCertificado } from "@/components/BotaoBaixarCertificado";
 import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
@@ -18,9 +19,12 @@ import { opcoesCatalogo } from "@/lib/consultas/catalogo";
 import { useCertificadosDoAluno } from "@/lib/consultas/certificacao";
 import { opcoesDiario, useProgressos } from "@/lib/consultas/diario";
 import { useMatriculasDoAluno } from "@/lib/consultas/selecao";
+import { formatarDecimal, formatarMedia, formatarNota, formatarPercentual } from "@/lib/formato";
 import type { AvaliacaoComNota, ProgressoMatricula } from "@/lib/diario";
 import type { MatriculaDoAluno } from "@/lib/selecao";
 import type { Certificado, Modulo, Trilha } from "@klass/types";
+import { certificadoRevogado } from "@/lib/certificacao";
+import { rotuloPreRequisito } from "@/lib/catalogo";
 
 // D8 (klass-uikit.pdf) — "Boletim" (era "Minhas matrículas"): em vez de
 // listar matrículas soltas, agrupa por trilha e mostra cada módulo como
@@ -86,10 +90,10 @@ export function Boletim() {
     trilhaIds,
   );
   const modulos = useLeiturasEmLote(trilhaIds.map((id) => opcoesCatalogo.modulos(id)), trilhaIds);
-  // Ids, não nomes: comparar pré-requisito pelo nome do módulo falharia
-  // com dois módulos de mesmo nome ou com um nome editado.
+  // Compara pelo id do módulo exigido (dois módulos podem ter o mesmo
+  // nome); o nome e a trilha vêm junto, já que pode ser de outra trilha.
   const preRequisitos = useLeiturasEmLote(
-    trilhaIds.map((id) => opcoesCatalogo.preRequisitosIdsDaTrilha(id)),
+    trilhaIds.map((id) => opcoesCatalogo.preRequisitosDaTrilha(id)),
     trilhaIds,
   );
   const progressos = useProgressos(exibidas.map((m) => m.id));
@@ -120,20 +124,18 @@ export function Boletim() {
   let grupos: GrupoTrilha[] | null = null;
   if (matriculas && consultaCertificados.data && !carregando) {
     const certificados = consultaCertificados.data;
+    // De qualquer trilha: o pré-requisito pode ser módulo de outra (A15).
+    const concluidos = new Set(matriculas.filter((m) => m.status === "concluida").map((m) => m.moduloId));
     grupos = trilhaIds.flatMap((trilhaId): GrupoTrilha[] => {
       const trilha = trilhas.porChave.get(trilhaId);
       if (!trilha) return [];
-      const concluidos = new Set(
-        matriculas.filter((m) => m.trilhaId === trilhaId && m.status === "concluida").map((m) => m.moduloId),
-      );
       const modulosDaTrilha = modulos.porChave.get(trilhaId) ?? [];
-      const nomePorId = new Map(modulosDaTrilha.map((m) => [m.id, m.nome]));
       const linhas = modulosDaTrilha.map((modulo): LinhaModulo => {
         const matricula = matriculaPorModulo.get(modulo.id);
         if (!matricula) {
-          const faltantes = [...(preRequisitos.porChave.get(trilhaId)?.get(modulo.id) ?? [])]
-            .filter((id) => !concluidos.has(id))
-            .map((id) => nomePorId.get(id) ?? "—");
+          const faltantes = (preRequisitos.porChave.get(trilhaId)?.get(modulo.id) ?? [])
+            .filter((p) => !concluidos.has(p.pre_requisito_id))
+            .map((p) => rotuloPreRequisito(p, trilhaId));
           return { modulo, matricula: undefined, faltantes, progresso: null, avaliacoes: [] };
         }
         return {
@@ -144,7 +146,11 @@ export function Boletim() {
           avaliacoes: notas.porChave.get(matricula.id) ?? [],
         };
       });
-      const certificadosDaTrilha = certificados.filter((c) => c.trilha_id === trilhaId);
+      // Revogados (encerramento desfeito) não valem mais: não liberam o
+      // download aqui; continuam listados, marcados, em "Meus certificados".
+      const certificadosDaTrilha = certificados.filter(
+        (c) => c.trilha_id === trilhaId && !certificadoRevogado(c),
+      );
       return [
         {
           trilha,
@@ -156,10 +162,26 @@ export function Boletim() {
     });
   }
 
-  return (
-    <PaginaAutenticada largura="estreita">
-      <Titulo className="mb-6">Boletim</Titulo>
+  // Com uma trilha só (o caso comum), o nome dela vira a sobrelinha do
+  // cabeçalho, como na pág. 5; com mais de uma, cada grupo tem seu título.
+  const umaTrilhaSo = grupos?.length === 1;
+  // pág. 5: "Trilha · CÓDIGO" — o código da turma em curso (matrícula
+  // ativa) entra depois do nome da trilha; sem turma em curso, só a trilha.
+  const turmasEmCurso =
+    umaTrilhaSo && grupos
+      ? grupos[0].linhas.flatMap((l) => (l.matricula?.status === "matriculada" ? [l.matricula.turmaCodigo] : []))
+      : [];
+  const sobrelinha =
+    umaTrilhaSo && grupos
+      ? [grupos[0].trilha.nome, ...(turmasEmCurso.length ? [turmasEmCurso.join(", ")] : [])].join(" · ")
+      : undefined;
 
+  return (
+    <PaginaAutenticada
+      largura="media"
+      titulo="Boletim"
+      sobrelinha={sobrelinha}
+    >
       {erro && !grupos && (
         <ErroConsulta
           className="mb-4"
@@ -195,57 +217,68 @@ export function Boletim() {
           const trilhaConcluida = totalModulos > 0 && concluidos === totalModulos;
 
           return (
-            <div key={grupo.trilha.id}>
-              <Titulo nivel="secao" className="mb-3">
-                {grupo.trilha.nome}
-              </Titulo>
+            <section key={grupo.trilha.id} aria-label={grupo.trilha.nome}>
+              {!umaTrilhaSo && (
+                <Titulo nivel="secao" className="mb-3">
+                  {grupo.trilha.nome}
+                </Titulo>
+              )}
 
-              <div className="flex flex-col gap-3">
-                {grupo.linhas.map(({ modulo, matricula, faltantes, progresso, avaliacoes }) => (
-                  <Card key={modulo.id} className="flex flex-col gap-2">
-                    {/* flex-wrap: no celular, sem espaço, o badge desce inteiro
-                        para baixo do título em vez de espremê-lo. */}
-                    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-                      <Titulo nivel="item" as="h3">
-                        {modulo.ordem}. {modulo.nome}
-                      </Titulo>
-                      {matricula ? (
-                        <StatusBadge tipo="matricula" status={matricula.status} />
-                      ) : faltantes.length === 0 ? (
-                        <LinkComPrefetch to={`/catalogo/${grupo.trilha.slug}/modulos/${modulo.id}`}>
-                          <Badge variant="contorno">
-                            <Unlock className="h-3.5 w-3.5" aria-hidden />
-                            Disponível
+              {/* pág. 5 — um cartão por trilha, módulos separados por
+                  divisória (antes: um cartão por módulo). */}
+              <Card className="flex flex-col divide-y divide-border !py-0">
+                {grupo.linhas.map(({ modulo, matricula, faltantes, progresso, avaliacoes }) => {
+                  const emCurso = matricula?.status === "matriculada";
+                  const encerrado = matricula?.status === "concluida" || matricula?.status === "reprovada";
+                  return (
+                    <div key={modulo.id} className="flex flex-col gap-2 py-4">
+                      {/* flex-wrap: no celular, sem espaço, o badge desce
+                          inteiro para baixo do título em vez de espremê-lo. */}
+                      <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
+                        <div className="min-w-0 flex-1 basis-40">
+                          <Titulo nivel="item" as="h3" className="!text-klass-md">
+                            {modulo.nome}
+                          </Titulo>
+                          {matricula && progresso && (
+                            <p className="text-body-sm text-text-secondary">
+                              {emCurso ? "Média parcial " : "Média "}
+                              <span className="font-mono font-medium tabular-nums text-text-primary">
+                                {progresso.media !== null ? formatarMedia(progresso.media) : "—"}
+                              </span>
+                              {" · Freq. "}
+                              <span className="font-mono font-medium tabular-nums text-text-primary">
+                                {progresso.frequencia !== null ? formatarPercentual(progresso.frequencia) : "—"}
+                              </span>
+                            </p>
+                          )}
+                          {!matricula && faltantes.length > 0 && (
+                            <p className="text-body-sm text-text-secondary">
+                              Libera depois de {faltantes.join(", ")}
+                            </p>
+                          )}
+                        </div>
+                        {matricula ? (
+                          <StatusBadge tipo="matricula" status={matricula.status} />
+                        ) : faltantes.length === 0 ? (
+                          <LinkComPrefetch to={`/catalogo/${grupo.trilha.slug}/modulos/${modulo.id}`}>
+                            <Badge variant="contorno">
+                              <Unlock className="h-3.5 w-3.5" aria-hidden />
+                              Disponível
+                            </Badge>
+                          </LinkComPrefetch>
+                        ) : (
+                          <Badge variant="tracejado">
+                            <Lock className="h-3.5 w-3.5" aria-hidden />
+                            Bloqueado
                           </Badge>
-                        </LinkComPrefetch>
-                      ) : (
-                        <Badge variant="tracejado">
-                          <Lock className="h-3.5 w-3.5" aria-hidden />
-                          Bloqueado
-                        </Badge>
+                        )}
+                      </div>
+
+                      {matricula?.status === "inscrita" && (
+                        <CancelarInscricao matriculaId={matricula.id} turmaCodigo={matricula.turmaCodigo} />
                       )}
-                    </div>
 
-                    {matricula?.status === "inscrita" && (
-                      <CancelarInscricao matriculaId={matricula.id} turmaCodigo={matricula.turmaCodigo} />
-                    )}
-
-                    {!matricula && faltantes.length > 0 && (
-                      <p className="text-label text-text-muted">
-                        Requer: {faltantes.join(", ")}
-                      </p>
-                    )}
-
-                    {matricula && progresso && (
-                      <p className="text-body-sm text-text-secondary">
-                        Média: {progresso.media !== null ? progresso.media.toFixed(1) : "—"} ·
-                        Frequência:{" "}
-                        {progresso.frequencia !== null ? `${progresso.frequencia.toFixed(0)}%` : "—"}
-                      </p>
-                    )}
-
-                    {(matricula?.status === "concluida" || matricula?.status === "reprovada") &&
-                      avaliacoes.length > 0 && (
+                      {encerrado && avaliacoes.length > 0 && (
                         <button
                           type="button"
                           onClick={() => alternarExpandido(modulo.id)}
@@ -262,76 +295,84 @@ export function Boletim() {
                         </button>
                       )}
 
-                    {(matricula?.status === "matriculada" || expandidos.has(modulo.id)) && (
-                      <div
-                        id={`notas-${modulo.id}`}
-                        className="mt-1 flex flex-col gap-1.5 border-t border-border pt-3"
-                      >
-                        {avaliacoes.map((a) => (
-                          <div key={a.id} className="flex items-center justify-between text-body-sm">
-                            <span className="text-text-secondary">
-                              {a.titulo} · peso {a.peso}
-                            </span>
-                            <span className="font-mono font-medium tabular-nums text-text-primary">
-                              {a.nota !== null ? a.nota.toFixed(1) : "—"}
-                            </span>
+                      {(emCurso || expandidos.has(modulo.id)) && (
+                        <div id={`notas-${modulo.id}`} className="flex flex-col">
+                          <div className="flex flex-col divide-y divide-border">
+                            {avaliacoes.map((a) => (
+                              <div key={a.id} className="flex items-center justify-between py-2.5 text-body-sm">
+                                <span className="text-text-primary">
+                                  {a.titulo} <span className="text-text-secondary">· peso {formatarDecimal(a.peso)}</span>
+                                </span>
+                                <span
+                                  className={`font-mono tabular-nums ${a.nota !== null ? "font-semibold text-text-primary" : "text-text-secondary"}`}
+                                >
+                                  {a.nota !== null ? formatarNota(a.nota) : "—"}
+                                </span>
+                              </div>
+                            ))}
                           </div>
-                        ))}
-                        {matricula?.status === "matriculada" && (
-                          <p className="mt-1 text-label text-text-muted">
-                            Para ser aprovado: média {matricula.trilhaMediaMinima.toFixed(1)} e
-                            frequência de {matricula.frequenciaMinimaPercentual}%.{" "}
-                            {(() => {
-                              const mediaOk =
-                                progresso?.media !== null &&
-                                progresso?.media !== undefined &&
-                                progresso.media >= matricula.trilhaMediaMinima;
-                              const freqOk =
-                                progresso?.frequencia !== null &&
-                                progresso?.frequencia !== undefined &&
-                                progresso.frequencia >= matricula.frequenciaMinimaPercentual;
-                              if (mediaOk && freqOk) return "Você já atingiu os dois.";
-                              if (!mediaOk && !freqOk) return "Você ainda não atingiu nenhum dos dois.";
-                              return mediaOk
-                                ? "Você já atingiu a média, falta a frequência."
-                                : "Você já atingiu a frequência, falta a média.";
-                            })()}
-                          </p>
-                        )}
-                      </div>
-                    )}
-
-                    {matricula?.motivoConclusao && (
-                      <p className="text-label text-text-muted">{matricula.motivoConclusao}</p>
-                    )}
-
-                    {matricula?.status === "concluida" &&
-                      grupo.certificadosModulo.some((c) => c.modulo_id === modulo.id) && (
-                        <Link
-                          to="/aluno/certificados"
-                          className="text-label font-medium text-primary hover:underline"
-                        >
-                          Ver certificado deste módulo →
-                        </Link>
+                          {emCurso && (
+                            <p className="mt-2 text-body-sm text-text-secondary">
+                              Para ser aprovado: média {formatarMedia(matricula.trilhaMediaMinima)} e frequência de{" "}
+                              {formatarPercentual(matricula.frequenciaMinimaPercentual)}.{" "}
+                              {(() => {
+                                const mediaOk =
+                                  progresso?.media !== null &&
+                                  progresso?.media !== undefined &&
+                                  progresso.media >= matricula.trilhaMediaMinima;
+                                const freqOk =
+                                  progresso?.frequencia !== null &&
+                                  progresso?.frequencia !== undefined &&
+                                  progresso.frequencia >= matricula.frequenciaMinimaPercentual;
+                                if (mediaOk && freqOk) return "Você já atingiu os dois.";
+                                if (!mediaOk && !freqOk) return "Você ainda não atingiu nenhum dos dois.";
+                                return mediaOk
+                                  ? "Você já atingiu a média, falta a frequência."
+                                  : "Você já atingiu a frequência, falta a média.";
+                              })()}
+                            </p>
+                          )}
+                        </div>
                       )}
-                  </Card>
-                ))}
-              </div>
 
-              {/* Card de certificado só para trilhas no modo "trilha inteira"
-                  (certificado por módulo já aparece em cada card acima). */}
-              {grupo.trilha.tipo_certificacao === "trilha" && (
+                      {matricula?.motivoConclusao && (
+                        <p className="text-label text-text-secondary">{matricula.motivoConclusao}</p>
+                      )}
+
+                      {matricula?.status === "concluida" &&
+                        grupo.certificadosModulo.some((c) => c.modulo_id === modulo.id) && (
+                          <Link
+                            to="/aluno/certificados"
+                            className="text-label font-medium text-primary hover:underline"
+                          >
+                            Ver certificado deste módulo →
+                          </Link>
+                        )}
+
+                      {/* Materiais da turma (aluno cursando ou já encerrado):
+                          recolhido, para a linha do módulo continuar curta;
+                          a lista só é lida ao abrir. */}
+                      {matricula && ["matriculada", "concluida", "reprovada"].includes(matricula.status) && (
+                        <MateriaisRecolhidos turmaId={matricula.turmaId} turmaCodigo={matricula.turmaCodigo} />
+                      )}
+                    </div>
+                  );
+                })}
+              </Card>
+
+              {/* Card do certificado da trilha nos modos "trilha inteira" e
+                  "módulo e trilha" (o de cada módulo já aparece nas linhas
+                  acima). */}
+              {grupo.trilha.tipo_certificacao !== "modulo" && (
                 <Card className="mt-3 flex items-center justify-between gap-4">
                   <div className="flex items-center gap-3">
                     <Award
-                      className={`h-6 w-6 ${trilhaConcluida ? "text-primary" : "text-text-muted"}`}
+                      className={`h-6 w-6 shrink-0 ${trilhaConcluida ? "text-primary" : "text-text-secondary"}`}
                       aria-hidden
                     />
                     <div>
-                      <h3 className="text-klass-lg text-text-primary">
-                        Certificado da trilha
-                      </h3>
-                      <p className="text-label text-text-muted">
+                      <h3 className="text-klass-md font-semibold text-text-primary">Certificado da trilha</h3>
+                      <p className="text-body-sm text-text-secondary">
                         {trilhaConcluida
                           ? "Liberado — você concluiu todos os módulos."
                           : `Libera ao concluir os ${totalModulos} módulos (${concluidos} de ${totalModulos})`}
@@ -341,19 +382,32 @@ export function Boletim() {
                   {trilhaConcluida && grupo.certificadoTrilha ? (
                     <BotaoBaixarCertificado certificado={grupo.certificadoTrilha} />
                   ) : (
-                    // Mesmo botão "Baixar PDF" da tela de referência, só que
-                    // no estilo tracejado/desabilitado enquanto bloqueado —
-                    // não vira um badge diferente (Prompt 17).
+                    // Mesmo botão "Baixar PDF" da tela de referência, no
+                    // estilo tracejado/desabilitado enquanto bloqueado.
                     <Button variant="tracejado" disabled>
                       Baixar PDF
                     </Button>
                   )}
                 </Card>
               )}
-            </div>
+            </section>
           );
         })}
       </div>
     </PaginaAutenticada>
+  );
+}
+
+// "Materiais da turma" recolhido: a lista (e a leitura no banco) só existe
+// depois que o aluno abre.
+function MateriaisRecolhidos({ turmaId, turmaCodigo }: { turmaId: string; turmaCodigo: string }) {
+  const [aberto, setAberto] = useState(false);
+  return (
+    <details className="text-body-sm" onToggle={(e) => setAberto(e.currentTarget.open)}>
+      <summary className="w-fit cursor-pointer text-label font-medium text-text-secondary hover:text-text-primary">
+        Materiais da turma {turmaCodigo}
+      </summary>
+      <div className="mt-2">{aberto && <MateriaisDaTurma turmaId={turmaId} modo="leitura" />}</div>
+    </details>
   );
 }

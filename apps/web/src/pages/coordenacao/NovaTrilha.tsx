@@ -1,14 +1,12 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { Aviso } from "@/components/Aviso";
-import { BotaoVoltar } from "@/components/BotaoVoltar";
 import { Button } from "@/components/Button";
 import { CamposCertificacao } from "@/components/CamposCertificacao";
 import { Card } from "@/components/Card";
 import { IconePicker } from "@/components/IconeCatalogo";
 import { Input } from "@/components/Input";
 import { PaginaAutenticada } from "@/components/PaginaAutenticada";
-import { Titulo } from "@/components/Titulo";
 import { criarTrilha, gerarSlug } from "@/lib/catalogo";
 import { useGravacao } from "@/lib/consultas/gravacao";
 import { invalidar } from "@/lib/consultas/invalidar";
@@ -32,6 +30,7 @@ export function NovaTrilha() {
   const [icone, setIcone] = useState<string | null>(null);
   const [tipoCertificacao, setTipoCertificacao] = useState<TipoCertificacao>("trilha");
   const [mediaMinima, setMediaMinima] = useState("6");
+  const [frequenciaMinima, setFrequenciaMinima] = useState("75");
   const [erro, setErro] = useState<string | null>(null);
   const [mensagem, setMensagem] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
@@ -54,6 +53,11 @@ export function NovaTrilha() {
       setErro("A média mínima precisa ser um número entre 0 e 10.");
       return;
     }
+    const frequencia = Number(frequenciaMinima);
+    if (!Number.isInteger(frequencia) || frequencia < 0 || frequencia > 100) {
+      setErro("A frequência mínima precisa ser um número inteiro entre 0 e 100.");
+      return;
+    }
     setEnviando(true);
     try {
       const trilha = await gravar(
@@ -66,6 +70,7 @@ export function NovaTrilha() {
             icone,
             tipoCertificacao,
             mediaMinima: media,
+            frequenciaMinima: frequencia,
           }),
         invalidar.catalogo,
       );
@@ -89,9 +94,7 @@ export function NovaTrilha() {
   }
 
   return (
-    <PaginaAutenticada largura="estreita">
-        <BotaoVoltar />
-        <Titulo className="mb-6">Nova trilha</Titulo>
+    <PaginaAutenticada largura="estreita" titulo="Nova trilha" voltar={{}}>
 
         <Card>
           <form className="flex flex-col gap-4" onSubmit={aoSubmeter}>
@@ -184,6 +187,8 @@ export function NovaTrilha() {
               tipoCertificacao={tipoCertificacao}
               onTipoChange={setTipoCertificacao}
               mediaMinima={mediaMinima}
+              frequenciaMinima={frequenciaMinima}
+              onFrequenciaChange={setFrequenciaMinima}
               onMediaChange={setMediaMinima}
             />
 

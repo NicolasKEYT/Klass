@@ -1,7 +1,9 @@
 import { supabase } from "@/lib/supabase";
 import { mensagemDeErroBanco } from "@/lib/mensagensDeErroBanco";
 import { plural } from "@/lib/plural";
+import { formatarData, formatarMedia, formatarNota, formatarPercentual } from "@/lib/formato";
 import {
+  buscarNomesCompletos,
   listarMatriculasDaTurma,
   listarMatriculasDoAluno,
   listarTurmasDoProfessor,
@@ -9,7 +11,17 @@ import {
   type MatriculaListagem,
   type TurmaDoProfessor,
 } from "@/lib/selecao";
-import type { Aula, Avaliacao, Modulo, StatusMatricula, Trilha } from "@klass/types";
+import type {
+  Aula,
+  AulaComPrazo,
+  Avaliacao,
+  HistoricoEncerramento,
+  Modulo,
+  SituacaoChamada,
+  StatusMatricula,
+  TipoCertificacao,
+  Trilha,
+} from "@klass/types";
 
 function diario() {
   if (!supabase) throw new Error("Supabase não configurado.");
@@ -113,19 +125,55 @@ export async function atualizarAvaliacao(
   return data[0];
 }
 
-export async function listarAulasDaTurma(turmaId: string): Promise<Aula[]> {
+// Aulas vêm com a situação do prazo da chamada já decidida pelo banco
+// (campos calculados diario.situacao_chamada / chamada_aberta_ate): a tela
+// não repete a regra dos 7 dias nem o fuso da instituição.
+const COLUNAS_AULA = "*, situacao_chamada, chamada_aberta_ate";
+
+export async function listarAulasDaTurma(turmaId: string): Promise<AulaComPrazo[]> {
   const { data, error } = await diario()
     .from("aulas")
-    .select("*")
+    .select(COLUNAS_AULA)
     .eq("turma_id", turmaId)
     .order("data")
     .order("horario");
   if (error) throw new Error(mensagemDeErroBanco(error));
-  return data;
+  return data as AulaComPrazo[];
 }
 
-export async function buscarAula(aulaId: string): Promise<Aula | null> {
-  const { data, error } = await diario().from("aulas").select("*").eq("id", aulaId).maybeSingle();
+export async function buscarAula(aulaId: string): Promise<AulaComPrazo | null> {
+  const { data, error } = await diario().from("aulas").select(COLUNAS_AULA).eq("id", aulaId).maybeSingle();
+  if (error) throw new Error(mensagemDeErroBanco(error));
+  return data as AulaComPrazo | null;
+}
+
+// Chamadas pendentes (aula passada sem presença) de UMA turma, com a
+// situação do prazo — para o Resumo da turma. A função do banco devolve as
+// do professor ou, para a coordenação, todas; aqui filtra a turma.
+export interface ChamadaPendente {
+  aulaId: string;
+  data: string;
+  situacao: SituacaoChamada;
+  abertaAte: string;
+}
+
+export async function listarChamadasPendentesDaTurma(turmaId: string): Promise<ChamadaPendente[]> {
+  const { data, error } = await diario().rpc("chamadas_pendentes");
+  if (error) throw new Error(mensagemDeErroBanco(error));
+  return (data ?? [])
+    .filter((c) => c.turma_id === turmaId)
+    .map((c) => ({
+      aulaId: c.aula_id,
+      data: c.data,
+      situacao: c.situacao as SituacaoChamada,
+      abertaAte: c.aberta_ate,
+    }));
+}
+
+// Coordenação libera a chamada de uma aula fora do prazo: o professor
+// ganha mais 7 dias a partir de hoje. Devolve a nova data limite.
+export async function liberarChamada(aulaId: string): Promise<string> {
+  const { data, error } = await diario().rpc("liberar_chamada", { p_aula_id: aulaId });
   if (error) throw new Error(mensagemDeErroBanco(error));
   return data;
 }
@@ -135,6 +183,8 @@ export async function criarAula(input: {
   data: string;
   horario: string;
   descricao: string;
+  /** Opcional (ex.: "Sala 3"); vazio = sem sala. */
+  sala?: string;
 }): Promise<Aula> {
   const { data, error } = await diario()
     .from("aulas")
@@ -143,6 +193,7 @@ export async function criarAula(input: {
       data: input.data,
       horario: input.horario || null,
       descricao: input.descricao || null,
+      sala: input.sala?.trim() || null,
     })
     .select("*")
     .single();
@@ -154,7 +205,7 @@ export async function criarAula(input: {
 // registradas, que referenciam aula_id, continuam intactas.
 export async function atualizarAula(
   id: string,
-  patch: { data: string; horario: string; descricao: string },
+  patch: { data: string; horario: string; descricao: string; sala?: string },
 ): Promise<Aula> {
   const { data, error } = await diario()
     .from("aulas")
@@ -162,6 +213,7 @@ export async function atualizarAula(
       data: patch.data,
       horario: patch.horario || null,
       descricao: patch.descricao || null,
+      sala: patch.sala?.trim() || null,
     })
     .eq("id", id)
     .select("*")
@@ -202,6 +254,7 @@ export async function criarAulasEmLote(input: {
   datas: string[];
   horario: string;
   descricao: string;
+  sala?: string;
 }): Promise<void> {
   if (input.datas.length === 0) return;
   const { error } = await diario()
@@ -212,6 +265,7 @@ export async function criarAulasEmLote(input: {
         data,
         horario: input.horario || null,
         descricao: input.descricao || null,
+        sala: input.sala?.trim() || null,
       })),
     );
   if (error) throw new Error(mensagemDeErroBanco(error));
@@ -280,6 +334,8 @@ export async function listarAlunosDoDiario(turmaId: string): Promise<AlunoDoDiar
 }
 
 export interface NotaLancada {
+  /** id da linha em diario.notas (o Realtime de DELETE só traz isso); falta na célula recém-gravada até a releitura. */
+  id?: string;
   avaliacaoId: string;
   matriculaId: string;
   valor: number;
@@ -291,10 +347,11 @@ export async function buscarNotasDasAvaliacoes(avaliacaoIds: string[]): Promise<
   if (avaliacaoIds.length === 0) return [];
   const { data, error } = await diario()
     .from("notas")
-    .select("avaliacao_id, matricula_id, valor")
+    .select("id, avaliacao_id, matricula_id, valor")
     .in("avaliacao_id", avaliacaoIds);
   if (error) throw new Error(mensagemDeErroBanco(error));
   return (data ?? []).map((n) => ({
+    id: n.id,
     avaliacaoId: n.avaliacao_id,
     matriculaId: n.matricula_id,
     valor: Number(n.valor),
@@ -334,6 +391,19 @@ export async function salvarNotasEmLote(
     }
     throw new Error(mensagemDeErroBanco(error));
   }
+}
+
+// Limpar a célula da grade remove a nota (QA, P5). A RLS (notas_delete) e o
+// trigger que protege matrícula encerrada valem como em qualquer exclusão.
+export async function removerNota(avaliacaoId: string, matriculaId: string): Promise<void> {
+  const { data, error } = await diario()
+    .from("notas")
+    .delete()
+    .eq("avaliacao_id", avaliacaoId)
+    .eq("matricula_id", matriculaId)
+    .select("id");
+  if (error) lancarErroDeExclusao(error, "A nota");
+  if (!data || data.length === 0) throw new Error("A nota não foi removida: ela não existe mais ou você não tem permissão.");
 }
 
 export async function buscarPresencasDaAula(aulaId: string): Promise<Map<string, boolean>> {
@@ -387,14 +457,41 @@ export async function buscarProgressoMatricula(matriculaId: string): Promise<Pro
   };
 }
 
+// Progresso de todas as matrículas da turma numa chamada só
+// (diario.progresso_da_turma; professor da turma ou coordenação). Antes,
+// eram três RPCs por aluno. Record (não Map) para caber no cache.
+export async function buscarProgressoDaTurma(turmaId: string): Promise<Record<string, ProgressoMatricula>> {
+  const { data, error } = await diario().rpc("progresso_da_turma", { p_turma_id: turmaId });
+  if (error) throw new Error(mensagemDeErroBanco(error));
+  const resultado: Record<string, ProgressoMatricula> = {};
+  for (const linha of data ?? []) {
+    resultado[linha.matricula_id] = {
+      media: linha.media === null ? null : Number(linha.media),
+      frequencia: linha.frequencia === null ? null : Number(linha.frequencia),
+      prontoParaEncerrar: Boolean(linha.pronto_para_encerrar),
+    };
+  }
+  return resultado;
+}
+
 export async function encerrarMatricula(matriculaId: string): Promise<void> {
   const { error } = await diario().rpc("encerrar_matricula", { p_matricula_id: matriculaId });
   if (error) throw new Error(mensagemDeErroBanco(error));
 }
 
-export async function desfazerEncerramento(matriculaId: string): Promise<void> {
-  const { error } = await diario().rpc("desfazer_encerramento", { p_matricula_id: matriculaId });
+// Coordenação desfaz o encerramento de um aluno. Motivo obrigatório (o
+// banco exige 10+ caracteres e grava no histórico); se havia certificado,
+// ele é revogado pelo próprio banco. Devolve quantos foram revogados.
+export async function desfazerEncerramento(
+  matriculaId: string,
+  motivo: string,
+): Promise<{ certificados_revogados: number }> {
+  const { data, error } = await diario().rpc("desfazer_encerramento", {
+    p_matricula_id: matriculaId,
+    p_motivo: motivo,
+  });
   if (error) throw new Error(mensagemDeErroBanco(error));
+  return data as unknown as { certificados_revogados: number };
 }
 
 // Resumo devolvido por diario.encerrar_turma (jsonb). O rpc é tipado como
@@ -413,14 +510,44 @@ export async function encerrarTurma(turmaId: string): Promise<ResumoEncerramento
   return data as unknown as ResumoEncerramentoTurma;
 }
 
+// Resumo devolvido por diario.reativar_turma (jsonb): quem voltou a
+// "Cursando" e quem foi pulado, com o motivo (sem vaga, matrícula ativa em
+// outra turma do mesmo módulo).
 export interface ResumoReativacaoTurma {
   reativadas: number;
+  puladas: number;
+  alunos_reativados: Array<{ matricula_id: string; aluno_nome: string | null }>;
+  alunos_pulados: Array<{ matricula_id: string; aluno_nome: string | null; motivo: string }>;
+  certificados_revogados: number;
 }
 
-export async function reativarTurma(turmaId: string): Promise<ResumoReativacaoTurma> {
-  const { data, error } = await diario().rpc("reativar_turma", { p_turma_id: turmaId });
+export async function reativarTurma(turmaId: string, motivo: string): Promise<ResumoReativacaoTurma> {
+  const { data, error } = await diario().rpc("reativar_turma", { p_turma_id: turmaId, p_motivo: motivo });
   if (error) throw new Error(mensagemDeErroBanco(error));
   return data as unknown as ResumoReativacaoTurma;
+}
+
+// Histórico de encerrar/desfazer/reativar da turma, mais recente primeiro,
+// com o nome de quem fez (realizado_por é só o id). A RLS libera para a
+// coordenação e o professor da turma.
+export interface RegistroDeEncerramento extends HistoricoEncerramento {
+  realizadoPorNome: string | null;
+}
+
+export async function listarHistoricoEncerramentos(turmaId: string): Promise<RegistroDeEncerramento[]> {
+  const { data, error } = await diario()
+    .from("historico_encerramentos")
+    .select("*")
+    .eq("turma_id", turmaId)
+    .order("realizado_em", { ascending: false });
+  if (error) throw new Error(mensagemDeErroBanco(error));
+  const nomes = await buscarNomesCompletos([
+    ...new Set(data.flatMap((r) => (r.realizado_por ? [r.realizado_por] : []))),
+  ]);
+  return data.map((r) => ({
+    ...r,
+    realizadoPorNome: r.realizado_por ? (nomes.get(r.realizado_por) ?? null) : null,
+  }));
 }
 
 export interface AvaliacaoComNota {
@@ -482,6 +609,21 @@ export async function listarAulasComPresencaDoAluno(
   }));
 }
 
+/**
+ * Ids das presenças das matrículas do aluno, por id → matrícula. Só serve
+ * ao Realtime: o DELETE chega sem filtro e só com o id da linha apagada,
+ * e é por esta lista que o aluno sabe se a exclusão é dele.
+ */
+export async function listarIdsDePresenca(matriculaIds: string[]): Promise<Map<string, string>> {
+  if (matriculaIds.length === 0) return new Map();
+  const { data, error } = await diario()
+    .from("presencas")
+    .select("id, matricula_id")
+    .in("matricula_id", matriculaIds);
+  if (error) throw new Error(mensagemDeErroBanco(error));
+  return new Map((data ?? []).map((p) => [p.id, p.matricula_id]));
+}
+
 // ---------------------------------------------------------------------
 // D4 (klass-uikit.pdf) — tela "Hoje" do professor. As três consultas
 // abaixo são só leitura sobre dados que já existem (turmas, aulas,
@@ -493,6 +635,9 @@ export interface AulaDeHoje {
   id: string;
   turmaId: string;
   turmaCodigo: string;
+  /** Turno da turma e sala da aula, opcionais (UI Kit: "AM-2026-2 · Noite", "Sala 3"). */
+  turmaTurno: string | null;
+  sala: string | null;
   moduloNome: string;
   horario: string | null;
   totalAlunos: number;
@@ -538,15 +683,105 @@ export async function listarAulasDeHojeDoProfessor(
       id: aula.id,
       turmaId: aula.turma_id,
       turmaCodigo: turma?.codigo ?? "—",
+      turmaTurno: turma?.turno ?? null,
       moduloNome: turma?.moduloNome ?? "—",
       horario: aula.horario,
+      sala: aula.sala,
       totalAlunos: turma?.matriculados ?? 0,
       chamadaFeita: aulasComChamada.has(aula.id),
     };
   });
 }
 
-export type TipoPendenciaProfessor = "avaliacao_sem_nota" | "chamada_atrasada" | "turma_terminando";
+// "Esta semana" do professor: aulas de amanhã até daqui a 7 dias (as de
+// hoje já estão em "Aulas de hoje"), com a situação da chamada — uma aula
+// futura normalmente ainda não tem chamada, mas a chamada antecipada
+// existe e aparece como feita.
+export interface AulaDaSemana extends AulaDeHoje {
+  data: string;
+}
+
+/** Data local N dias a partir de hoje, em AAAA-MM-DD. */
+function diaRelativoISO(dias: number): string {
+  const agora = new Date();
+  const d = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate() + dias);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+export async function listarAulasDaSemanaDoProfessor(
+  professorId: string,
+  turmasConhecidas?: TurmaDoProfessor[],
+): Promise<AulaDaSemana[]> {
+  const turmas = turmasConhecidas ?? (await listarTurmasDoProfessor(professorId));
+  if (turmas.length === 0) return [];
+
+  const { data: aulas, error } = await diario()
+    .from("aulas")
+    .select("*")
+    .in(
+      "turma_id",
+      turmas.map((t) => t.id),
+    )
+    .gte("data", diaRelativoISO(1))
+    .lte("data", diaRelativoISO(7))
+    .order("data")
+    .order("horario");
+  if (error) throw new Error(mensagemDeErroBanco(error));
+  if (!aulas || aulas.length === 0) return [];
+
+  const { data: presencas, error: erroPresencas } = await diario()
+    .from("presencas")
+    .select("aula_id")
+    .in(
+      "aula_id",
+      aulas.map((a) => a.id),
+    );
+  if (erroPresencas) throw new Error(mensagemDeErroBanco(erroPresencas));
+  const aulasComChamada = new Set((presencas ?? []).map((p) => p.aula_id));
+
+  const turmaPorId = new Map(turmas.map((t) => [t.id, t]));
+  return aulas.map((aula) => {
+    const turma = turmaPorId.get(aula.turma_id);
+    return {
+      id: aula.id,
+      data: aula.data,
+      turmaId: aula.turma_id,
+      turmaCodigo: turma?.codigo ?? "—",
+      turmaTurno: turma?.turno ?? null,
+      moduloNome: turma?.moduloNome ?? "—",
+      horario: aula.horario,
+      sala: aula.sala,
+      totalAlunos: turma?.matriculados ?? 0,
+      chamadaFeita: aulasComChamada.has(aula.id),
+    };
+  });
+}
+
+/**
+ * Agrupa itens com `data` (AAAA-MM-DD) por dia, em ordem de data e
+ * horário (ordena aqui: não depende da ordem em que o banco devolveu).
+ */
+export function agruparPorDia<T extends { data: string; horario?: string | null }>(
+  itens: T[],
+): Array<{ data: string; itens: T[] }> {
+  const ordenados = [...itens].sort((a, b) =>
+    a.data !== b.data ? (a.data < b.data ? -1 : 1) : (a.horario ?? "").localeCompare(b.horario ?? ""),
+  );
+  const grupos: Array<{ data: string; itens: T[] }> = [];
+  for (const item of ordenados) {
+    const ultimo = grupos[grupos.length - 1];
+    if (ultimo && ultimo.data === item.data) ultimo.itens.push(item);
+    else grupos.push({ data: item.data, itens: [item] });
+  }
+  return grupos;
+}
+
+export type TipoPendenciaProfessor =
+  | "avaliacao_sem_nota"
+  | "chamada_atrasada"
+  /** Chamada não feita e prazo de 7 dias vencido: só com liberação da coordenação. */
+  | "chamada_fora_do_prazo"
+  | "turma_terminando";
 
 export interface PendenciaProfessor {
   tipo: TipoPendenciaProfessor;
@@ -554,6 +789,26 @@ export interface PendenciaProfessor {
   detalhe: string;
   turmaId: string;
   aulaId?: string;
+}
+
+/**
+ * Avaliações a que falta nota de algum aluno cursando. Nota de quem já foi
+ * encerrado não conta (nem a favor nem contra): é a mesma regra no Hoje do
+ * professor e no Resumo da turma.
+ */
+export function avaliacoesSemNota<A extends { id: string }>(
+  avaliacoes: A[],
+  notas: Array<{ avaliacaoId: string; matriculaId: string }>,
+  matriculasAtivas: Iterable<string>,
+): Array<{ avaliacao: A; faltam: number }> {
+  const ativas = new Set(matriculasAtivas);
+  const lancadas = new Map<string, number>();
+  for (const n of notas) {
+    if (ativas.has(n.matriculaId)) lancadas.set(n.avaliacaoId, (lancadas.get(n.avaliacaoId) ?? 0) + 1);
+  }
+  return avaliacoes
+    .map((avaliacao) => ({ avaliacao, faltam: ativas.size - (lancadas.get(avaliacao.id) ?? 0) }))
+    .filter((x) => x.faltam > 0);
 }
 
 export async function listarPendenciasDoProfessor(
@@ -567,70 +822,62 @@ export async function listarPendenciasDoProfessor(
   const turmaIds = turmas.map((t) => t.id);
   const hoje = hojeISO();
 
-  const [avaliacoesResp, aulasResp, listasDeAlunos] = await Promise.all([
+  // Chamadas pendentes vêm prontas do banco (aula passada sem presença,
+  // com a situação do prazo), em vez de trazer todas as presenças.
+  const [avaliacoesResp, pendentesResp, listasDeAlunos] = await Promise.all([
     diario().from("avaliacoes").select("*").in("turma_id", turmaIds),
-    diario().from("aulas").select("*").in("turma_id", turmaIds),
+    diario().rpc("chamadas_pendentes"),
     Promise.all(turmas.map((t) => obterAlunos(t.id))),
   ]);
   if (avaliacoesResp.error) throw new Error(mensagemDeErroBanco(avaliacoesResp.error));
-  if (aulasResp.error) throw new Error(mensagemDeErroBanco(aulasResp.error));
+  if (pendentesResp.error) throw new Error(mensagemDeErroBanco(pendentesResp.error));
 
   const alunosPorTurmaId = new Map(turmas.map((t, i) => [t.id, listasDeAlunos[i]]));
   const turmaPorId = new Map(turmas.map((t) => [t.id, t]));
 
   const pendencias: PendenciaProfessor[] = [];
 
-  // Notas e presenças só dependem de avaliações/aulas: as duas consultas
-  // saem juntas, não uma depois da outra.
   const avaliacoes = avaliacoesResp.data ?? [];
   const avaliacaoIds = avaliacoes.map((a) => a.id);
-  const aulasPassadas = (aulasResp.data ?? []).filter((a) => a.data < hoje);
-  const aulaIds = aulasPassadas.map((a) => a.id);
-  const [
-    { data: notas, error: erroNotas },
-    { data: presencas, error: erroPresencas },
-  ] = await Promise.all([
+  const { data: notas, error: erroNotas } =
     avaliacaoIds.length > 0
-      ? diario().from("notas").select("avaliacao_id, matricula_id").in("avaliacao_id", avaliacaoIds)
-      : Promise.resolve({ data: [] as Array<{ avaliacao_id: string; matricula_id: string }>, error: null }),
-    aulaIds.length > 0
-      ? diario().from("presencas").select("aula_id").in("aula_id", aulaIds)
-      : Promise.resolve({ data: [] as Array<{ aula_id: string }>, error: null }),
-  ]);
+      ? await diario().from("notas").select("avaliacao_id, matricula_id").in("avaliacao_id", avaliacaoIds)
+      : { data: [] as Array<{ avaliacao_id: string; matricula_id: string }>, error: null };
   if (erroNotas) throw new Error(mensagemDeErroBanco(erroNotas));
-  if (erroPresencas) throw new Error(mensagemDeErroBanco(erroPresencas));
 
-  // Avaliações sem nota completa: menos notas lançadas do que alunos ativos.
-  const notasPorAvaliacao = new Map<string, number>();
-  for (const n of notas ?? []) {
-    notasPorAvaliacao.set(n.avaliacao_id, (notasPorAvaliacao.get(n.avaliacao_id) ?? 0) + 1);
-  }
-  for (const avaliacao of avaliacoes) {
-    const totalAtivos = (alunosPorTurmaId.get(avaliacao.turma_id) ?? []).length;
-    const lancadas = notasPorAvaliacao.get(avaliacao.id) ?? 0;
-    const faltam = totalAtivos - lancadas;
-    if (faltam > 0) {
-      const turma = turmaPorId.get(avaliacao.turma_id);
+  // Avaliações sem nota completa — mesma conta do Resumo da turma.
+  const notasLancadas = (notas ?? []).map((n) => ({ avaliacaoId: n.avaliacao_id, matriculaId: n.matricula_id }));
+  for (const turma of turmas) {
+    const daTurma = avaliacoes.filter((a) => a.turma_id === turma.id);
+    const ativos = (alunosPorTurmaId.get(turma.id) ?? []).map((a) => a.matriculaId);
+    for (const { avaliacao, faltam } of avaliacoesSemNota(daTurma, notasLancadas, ativos)) {
       pendencias.push({
         tipo: "avaliacao_sem_nota",
         titulo: `${avaliacao.titulo} sem nota para ${plural(faltam, "aluno", "alunos")}`,
-        detalhe: `${turma?.codigo ?? "—"} · ${turma?.moduloNome ?? "—"}`,
-        turmaId: avaliacao.turma_id,
+        detalhe: `${turma.codigo} · ${turma.moduloNome}`,
+        turmaId: turma.id,
       });
     }
   }
 
-  // Chamadas atrasadas: aula já passou e não tem nenhuma presença registrada.
-  const aulasComChamada = new Set((presencas ?? []).map((p) => p.aula_id));
-  for (const aula of aulasPassadas) {
-    if (aulasComChamada.has(aula.id)) continue;
+  // Chamadas atrasadas: aula já passou e não tem nenhuma presença
+  // registrada. Com o prazo de 7 dias vencido (e sem liberação), o
+  // professor não consegue mais fazê-la: a pendência vira pedir liberação.
+  const turmasDoProfessor = new Set(turmaIds);
+  for (const aula of pendentesResp.data ?? []) {
+    if (!turmasDoProfessor.has(aula.turma_id)) continue;
     const turma = turmaPorId.get(aula.turma_id);
+    const foraDoPrazo = (aula.situacao as SituacaoChamada) === "encerrada";
     pendencias.push({
-      tipo: "chamada_atrasada",
-      titulo: `Chamada de ${aula.data.split("-").reverse().join("/")} não feita`,
-      detalhe: `${turma?.codigo ?? "—"} · Aula`,
+      tipo: foraDoPrazo ? "chamada_fora_do_prazo" : "chamada_atrasada",
+      titulo: foraDoPrazo
+        ? `Chamada de ${formatarData(aula.data)} fora do prazo`
+        : `Chamada de ${formatarData(aula.data)} não feita (até ${formatarData(aula.aberta_ate)})`,
+      detalhe: foraDoPrazo
+        ? `${turma?.codigo ?? "—"} · peça liberação à coordenação`
+        : `${turma?.codigo ?? "—"} · Aula`,
       turmaId: aula.turma_id,
-      aulaId: aula.id,
+      aulaId: aula.aula_id,
     });
   }
 
@@ -683,7 +930,7 @@ export function identificarAlunosQuePedemAtencao(
           turmaId: turma.id,
           turmaCodigo: turma.codigo,
           motivo: "frequência",
-          valor: `${p.frequencia.toFixed(0)}%`,
+          valor: formatarPercentual(p.frequencia),
         });
       } else if (p.media !== null && p.media < turma.trilhaMediaMinima) {
         resultado.push({
@@ -691,7 +938,7 @@ export function identificarAlunosQuePedemAtencao(
           turmaId: turma.id,
           turmaCodigo: turma.codigo,
           motivo: "média parcial",
-          valor: p.media.toFixed(1),
+          valor: formatarMedia(p.media),
         });
       }
     }
@@ -703,12 +950,38 @@ export function identificarAlunosQuePedemAtencao(
 // D4 (klass-uikit.pdf) — tela "Início" do aluno.
 // ---------------------------------------------------------------------
 
+/**
+ * "Você pode faltar mais N aulas" (pág. 4 do UI Kit). Conta sobre as aulas
+ * já cadastradas da turma: o limite de faltas é a parte delas que a
+ * frequência mínima deixa de fora (arredondada para baixo), menos as
+ * faltas já registradas. Negativo = o aluno já passou do limite.
+ */
+export interface MargemDeFaltas {
+  totalAulas: number;
+  faltas: number;
+  limite: number;
+  restantes: number;
+}
+
+export function calcularMargemDeFaltas(
+  aulas: AulaComPresenca[],
+  frequenciaMinimaPercentual: number,
+): MargemDeFaltas {
+  const totalAulas = aulas.length;
+  const faltas = aulas.filter((a) => a.presente === false).length;
+  const limite = Math.floor(totalAulas * (1 - frequenciaMinimaPercentual / 100));
+  return { totalAulas, faltas, limite, restantes: limite - faltas };
+}
+
 export interface ProximoPassoAluno {
   trilhaNome: string;
   trilhaSlug: string;
   modulosConcluidos: number;
   totalModulos: number;
   moduloAtualNome: string;
+  tipoCertificacao: TipoCertificacao;
+  matriculaId: string;
+  turmaId: string;
   frequenciaAtual: number | null;
   frequenciaMinima: number;
 }
@@ -751,12 +1024,17 @@ export function montarProximoPasso(
     modulosConcluidos: escolha.concluidos,
     totalModulos: modulos.length,
     moduloAtualNome: escolha.matricula.moduloNome,
+    tipoCertificacao: trilha.tipo_certificacao,
+    matriculaId: escolha.matricula.id,
+    turmaId: escolha.matricula.turmaId,
     frequenciaAtual: progresso.frequencia,
     frequenciaMinima: escolha.matricula.frequenciaMinimaPercentual,
   };
 }
 
 export interface NovidadeAluno {
+  /** Decide o ícone na tela (nota lançada ou matrícula confirmada). */
+  tipo: "nota" | "matricula";
   texto: string;
   detalhe: string;
   quando: string;
@@ -793,7 +1071,8 @@ export async function listarNovidadesDoAluno(
   const eventosNota: NovidadeAluno[] = (notas ?? []).map((n) => {
     const m = matriculaPorId.get(n.matricula_id);
     return {
-      texto: `Nota publicada: ${tituloPorAvaliacao.get(n.avaliacao_id) ?? "Avaliação"} · ${Number(n.valor).toFixed(1)}`,
+      tipo: "nota" as const,
+      texto: `Nota publicada: ${tituloPorAvaliacao.get(n.avaliacao_id) ?? "Avaliação"} · ${formatarNota(n.valor)}`,
       detalhe: m?.moduloNome ?? "—",
       quando: n.lancada_em,
     };
@@ -807,6 +1086,7 @@ export async function listarNovidadesDoAluno(
   const eventosMatricula: NovidadeAluno[] = matriculas
     .filter((m) => m.deferidoEm !== null && m.status !== "inscrita" && m.status !== "rejeitada")
     .map((m) => ({
+      tipo: "matricula" as const,
       texto: `Matrícula confirmada em ${m.turmaCodigo}`,
       detalhe: m.moduloNome,
       quando: m.deferidoEm as string,
@@ -815,6 +1095,86 @@ export async function listarNovidadesDoAluno(
   return [...eventosNota, ...eventosMatricula]
     .sort((a, b) => (a.quando < b.quando ? 1 : -1))
     .slice(0, 5);
+}
+
+// ---------------------------------------------------------------------
+// "Esta semana" do aluno.
+// ---------------------------------------------------------------------
+
+export interface AulaDaSemanaDoAluno {
+  id: string;
+  data: string;
+  horario: string | null;
+  turmaCodigo: string;
+  moduloNome: string;
+  /** null = chamada ainda não feita. */
+  presente: boolean | null;
+}
+
+/**
+ * Pura: das aulas (em cache, por matrícula) das turmas que o aluno está
+ * cursando, as de hoje até daqui a 6 dias — sete dias contando hoje.
+ */
+export function montarAulasDaSemanaDoAluno(
+  porMatricula: Array<{ matricula: MatriculaDoAluno; aulas: AulaComPresenca[] }>,
+): AulaDaSemanaDoAluno[] {
+  const inicio = hojeISO();
+  const fim = diaRelativoISO(6);
+  return porMatricula
+    .flatMap(({ matricula, aulas }) =>
+      aulas
+        .filter((a) => a.data >= inicio && a.data <= fim)
+        .map((a) => ({
+          id: a.id,
+          data: a.data,
+          horario: a.horario,
+          turmaCodigo: matricula.turmaCodigo,
+          moduloNome: matricula.moduloNome,
+          presente: a.presente,
+        })),
+    )
+    .sort((a, b) =>
+      a.data !== b.data ? (a.data < b.data ? -1 : 1) : (a.horario ?? "").localeCompare(b.horario ?? ""),
+    );
+}
+
+export interface NotaDaSemana {
+  avaliacaoTitulo: string;
+  valor: number;
+  moduloNome: string;
+  lancadaEm: string;
+}
+
+/** Notas do aluno lançadas (ou alteradas) nos últimos 7 dias, da mais recente à mais antiga. */
+export async function listarNotasDaSemanaDoAluno(matriculas: MatriculaDoAluno[]): Promise<NotaDaSemana[]> {
+  if (matriculas.length === 0) return [];
+  const matriculaPorId = new Map(matriculas.map((m) => [m.id, m]));
+  const agora = new Date();
+  const desde = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate() - 6).toISOString();
+
+  const { data: notas, error } = await diario()
+    .from("notas")
+    .select("matricula_id, valor, lancada_em, avaliacao_id")
+    .in("matricula_id", [...matriculaPorId.keys()])
+    .gte("lancada_em", desde)
+    .order("lancada_em", { ascending: false });
+  if (error) throw new Error(mensagemDeErroBanco(error));
+  if (!notas || notas.length === 0) return [];
+
+  const avaliacaoIds = [...new Set(notas.map((n) => n.avaliacao_id))];
+  const { data: avaliacoes, error: erroAval } = await diario()
+    .from("avaliacoes")
+    .select("id, titulo")
+    .in("id", avaliacaoIds);
+  if (erroAval) throw new Error(mensagemDeErroBanco(erroAval));
+  const tituloPorAvaliacao = new Map((avaliacoes ?? []).map((a) => [a.id, a.titulo]));
+
+  return notas.map((n) => ({
+    avaliacaoTitulo: tituloPorAvaliacao.get(n.avaliacao_id) ?? "Avaliação",
+    valor: Number(n.valor),
+    moduloNome: matriculaPorId.get(n.matricula_id)?.moduloNome ?? "—",
+    lancadaEm: n.lancada_em,
+  }));
 }
 
 export type { Aula, Avaliacao };

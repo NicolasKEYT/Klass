@@ -11,7 +11,8 @@ import { BarraLateral } from "@/components/navegacao/BarraLateral";
 import { TiraSuperior } from "@/components/navegacao/TiraSuperior";
 import { navPorPapel } from "@/components/navegacao/itensDeNavegacao";
 import { prefetchCaminho } from "@/lib/consultas/prefetch";
-import { useRealtimeDoAluno } from "@/lib/consultas/realtime";
+import { opcoesSelecao } from "@/lib/consultas/selecao";
+import { useRealtimeDoAluno, useRealtimeDoProfessor } from "@/lib/consultas/realtime";
 import { useEhMobile } from "@/lib/useEhMobile";
 
 // Casca comum das telas autenticadas, montada UMA vez (rota de layout com
@@ -30,9 +31,16 @@ export function LayoutAutenticado() {
   // Em vez de redirecionar (o que perderia o estado de formulários em
   // andamento sem aviso), mostramos um recado honesto no lugar do
   // conteúdo — a tela continua existindo, só não é usável do celular.
-  const bloqueadoNoMobile = papel === "coordenacao" && ehMobile && location.pathname !== "/";
+  // Acompanhamento (gráficos, só leitura) também fica liberado: é o
+  // "acompanhar" que o Início oferece no celular, um toque adiante.
+  // /perfil: é por ele que a coordenação no celular chega ao seletor de
+  // tema (avatar da faixa superior).
+  const LIBERADAS_NO_MOBILE = ["/", "/coordenacao/acompanhamento", "/perfil"];
+  const bloqueadoNoMobile =
+    papel === "coordenacao" && ehMobile && !LIBERADAS_NO_MOBILE.includes(location.pathname);
 
   useRealtimeDoAluno(papel === "aluno" ? usuario?.id : undefined);
+  useRealtimeDoProfessor(papel === "professor" ? usuario?.id : undefined);
   usePrefetchOcioso(usuario?.id, papel, papel === "coordenacao" && ehMobile);
 
   return (
@@ -85,6 +93,23 @@ function usePrefetchOcioso(usuarioId: string | undefined, papel: Papel | undefin
       if (cancelado) return;
       for (const item of navPorPapel(papel)) {
         if (item.para && !item.aindaNaoExiste) prefetchCaminho(qc, item.para, { usuarioId: usuarioId!, papel });
+      }
+      // Professor: depois do Hoje, o próximo passo quase sempre é abrir uma
+      // turma. Com o progresso em lote (uma RPC por turma), pré-carregar o
+      // detalhe de cada turma ficou barato — vai numa segunda folga do
+      // navegador, depois das telas da navegação.
+      if (papel === "professor") {
+        void qc
+          .fetchQuery(opcoesSelecao.turmasDoProfessor(usuarioId!))
+          .then((turmas) => {
+            const preCarregarTurmas = () => {
+              if (cancelado) return;
+              for (const t of turmas) prefetchCaminho(qc, `/professor/turmas/${t.id}`, { usuarioId: usuarioId!, papel });
+            };
+            if (typeof window.requestIdleCallback === "function") window.requestIdleCallback(preCarregarTurmas, { timeout: 5000 });
+            else window.setTimeout(preCarregarTurmas, 1000);
+          })
+          .catch(() => undefined);
       }
     }
     function esperarPrimeiraTela() {

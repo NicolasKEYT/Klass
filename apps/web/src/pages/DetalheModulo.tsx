@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { useQueries } from "@tanstack/react-query";
 import { Check, Clock, Lock } from "lucide-react";
 import { useAuth } from "@/auth";
 import { CancelarInscricao } from "@/components/aluno/CancelarInscricao";
@@ -8,15 +7,13 @@ import { Aviso } from "@/components/Aviso";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
-import { BotaoVoltar } from "@/components/BotaoVoltar";
 import { Esqueleto, EsqueletoCards, RegiaoCarregando } from "@/components/Esqueleto";
 import { ErroConsulta } from "@/components/ErroConsulta";
 import { IconeCatalogo } from "@/components/IconeCatalogo";
 import { PaginaAutenticada } from "@/components/PaginaAutenticada";
 import { StatusBadge } from "@/components/StatusBadge";
-import { Titulo } from "@/components/Titulo";
+import { rotaDoPreRequisito, rotuloPreRequisito } from "@/lib/catalogo";
 import {
-  opcoesCatalogo,
   useModulosDaTrilha,
   usePreRequisitosDoModulo,
   useTrilhaPorSlug,
@@ -25,7 +22,8 @@ import { plural } from "@/lib/plural";
 import { useGravacao } from "@/lib/consultas/gravacao";
 import { invalidar } from "@/lib/consultas/invalidar";
 import { useMatriculasDoAluno, useTurmasDaTrilha } from "@/lib/consultas/selecao";
-import { inscreverAluno, type StatusMatricula } from "@/lib/selecao";
+import { formatarDiaMes, formatarMesAno, formatarPeriodo } from "@/lib/formato";
+import { codigoComTurno, inscreverAluno, type StatusMatricula } from "@/lib/selecao";
 import type { NivelModulo } from "@klass/types";
 
 const NIVEL_LABEL: Record<NivelModulo, string> = {
@@ -43,6 +41,8 @@ const STATUS_VIGENTES: StatusMatricula[] = ["inscrita", "matriculada", "concluid
 interface PreRequisitoStatus {
   moduloId: string;
   nome: string;
+  /** "Trilha · Módulo" quando o pré-requisito é de outra trilha. */
+  rotulo: string;
   /** Rota da página do módulo pré-requisito, para virar link quando pendente. */
   rota: string;
   status: "concluido" | "cursando" | "pendente";
@@ -70,18 +70,6 @@ export function DetalheModulo() {
   const consultaTurmas = useTurmasDaTrilha(trilha?.id, usuario?.id ?? null);
   const consultaMatriculas = useMatriculasDoAluno(usuario?.id);
 
-  // Hoje o banco só aceita pré-requisito da mesma trilha, mas o slug
-  // de outra trilha é buscado mesmo assim — o nome e o link vêm do
-  // próprio pré-requisito, nunca mais como "—".
-  const outrasTrilhaIds = [
-    ...new Set(
-      (consultaPreRequisitos.data ?? []).map((p) => p.trilha_id).filter((id) => id !== trilha?.id),
-    ),
-  ];
-  const outrasTrilhas = useQueries({
-    queries: trilha ? outrasTrilhaIds.map((id) => opcoesCatalogo.trilhaPorId(id)) : [],
-  });
-
   const [escolha, setEscolha] = useState<{ moduloId: string; turmaId: string } | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [mensagem, setMensagem] = useState<string | null>(null);
@@ -97,27 +85,24 @@ export function DetalheModulo() {
       (consultaModulos.isPending ||
         consultaPreRequisitos.isPending ||
         consultaTurmas.isPending ||
-        consultaMatriculas.isPending ||
-        outrasTrilhas.some((t) => t.isPending)));
+        consultaMatriculas.isPending));
   const atualizando = consultaTurmas.isFetching || consultaMatriculas.isFetching;
 
   const modulo = consultaModulos.data?.find((m) => m.id === moduloId) ?? null;
   const minhasMatriculas = consultaMatriculas.data ?? [];
 
-  const slugPorTrilha = new Map<string, string>();
-  if (trilha) slugPorTrilha.set(trilha.id, trilha.slug);
-  for (const t of outrasTrilhas) if (t.data) slugPorTrilha.set(t.data.id, t.data.slug);
-
+  // Nome, trilha e slug vêm do próprio pré-requisito (pode ser de outra
+  // trilha): o link nunca depende da lista de módulos da trilha atual.
   const preRequisitos: PreRequisitoStatus[] = (consultaPreRequisitos.data ?? []).map((pr) => {
-    const slugTrilha = slugPorTrilha.get(pr.trilha_id);
     const base = {
-      moduloId: pr.id,
+      moduloId: pr.pre_requisito_id,
       nome: pr.nome,
-      rota: slugTrilha ? `/catalogo/${slugTrilha}/modulos/${pr.id}` : "/catalogo",
+      rotulo: rotuloPreRequisito(pr, trilha?.id),
+      rota: rotaDoPreRequisito(pr),
     };
     // some/find por status, não a primeira matrícula do módulo: depois
     // de uma reinscrição o aluno pode ter mais de uma ali.
-    const doModulo = minhasMatriculas.filter((m) => m.moduloId === pr.id);
+    const doModulo = minhasMatriculas.filter((m) => m.moduloId === pr.pre_requisito_id);
     const concluida = doModulo.find((m) => m.status === "concluida");
     if (concluida) return { ...base, status: "concluido", data: concluida.periodoFim };
     const cursando = doModulo.find((m) => m.status === "matriculada");
@@ -131,7 +116,7 @@ export function DetalheModulo() {
   const turmaSelecionada =
     escolha && escolha.moduloId === moduloId
       ? escolha.turmaId
-      : (turmas.find((t) => !t.minhaMatricula && t.vagasRestantes > 0)?.id ?? null);
+      : (turmas.find((t) => !t.minhaMatricula && t.vagasRestantes > 0 && !t.inscricoesEncerradas)?.id ?? null);
 
   const preRequisitosPendentes = preRequisitos.filter((p) => p.status !== "concluido");
   const podeInscrever = preRequisitosPendentes.length === 0;
@@ -159,10 +144,7 @@ export function DetalheModulo() {
   // como "Módulo não encontrado" ou como um carregamento que nunca resolve.
   if (erroDeLeitura && !modulo) {
     return (
-      <PaginaAutenticada largura="estreita">
-        <Link to="/catalogo" className="mb-4 flex items-center gap-1.5 text-body-sm font-medium text-text-secondary hover:text-text-primary">
-          ← Catálogo
-        </Link>
+      <PaginaAutenticada largura="media" voltar={{ para: "/catalogo", rotulo: "Catálogo", posicao: "acima" }}>
         <ErroConsulta
           erro={erroDeLeitura}
           padrao="Não foi possível carregar o módulo."
@@ -176,7 +158,7 @@ export function DetalheModulo() {
   // ou módulo fora da lista de módulos dela.
   if (carregando) {
     return (
-      <PaginaAutenticada largura="estreita">
+      <PaginaAutenticada largura="media">
         <RegiaoCarregando className="flex flex-col gap-3">
           <Esqueleto className="h-4 w-32" />
           <Esqueleto className="h-8 w-64" />
@@ -194,10 +176,7 @@ export function DetalheModulo() {
 
   if (!trilha || !modulo) {
     return (
-      <PaginaAutenticada largura="estreita">
-        <Link to="/catalogo" className="mb-4 flex items-center gap-1.5 text-body-sm font-medium text-text-secondary hover:text-text-primary">
-          ← Catálogo
-        </Link>
+      <PaginaAutenticada largura="media" voltar={{ para: "/catalogo", rotulo: "Catálogo", posicao: "acima" }}>
         <Aviso variant="danger">Módulo não encontrado.</Aviso>
       </PaginaAutenticada>
     );
@@ -208,16 +187,19 @@ export function DetalheModulo() {
   const matriculaAnterior = matriculaVigente ? undefined : matriculasNoModulo[0];
 
   return (
-    <PaginaAutenticada largura="estreita">
-      {/* Destino fixo na trilha (não navigate(-1)): é ela que, por sua vez,
-          volta fixo ao catálogo — sem loop trilha ↔ módulo. */}
-      <BotaoVoltar para={`/catalogo/${trilha.slug}`} rotulo={trilha.nome} />
-
-      <div className="flex items-center gap-2">
-        <IconeCatalogo nome={modulo.icone} className="h-6 w-6 text-primary" />
-        <Titulo>{modulo.nome}</Titulo>
-      </div>
-      <div className="mt-2 flex flex-wrap gap-2">
+    // Voltar com destino fixo na trilha (não navigate(-1)): é ela que, por
+    // sua vez, volta fixo ao catálogo — sem loop trilha ↔ módulo.
+    <PaginaAutenticada
+      largura="media"
+      voltar={{ para: `/catalogo/${trilha.slug}`, rotulo: trilha.nome, posicao: "acima" }}
+      titulo={
+        <span className="flex items-center gap-2">
+          <IconeCatalogo nome={modulo.icone} className="h-6 w-6 shrink-0 text-primary" />
+          {modulo.nome}
+        </span>
+      }
+    >
+      <div className="flex flex-wrap gap-2">
         <Badge variant="contorno">{NIVEL_LABEL[modulo.nivel]}</Badge>
         <Badge variant="contorno">{modulo.carga_horaria_horas} h</Badge>
         <Badge variant="contorno">Trilha {trilha.nome}</Badge>
@@ -238,24 +220,25 @@ export function DetalheModulo() {
       {preRequisitos.length > 0 && (
         <Card className="mt-4">
           <h2 className="mb-3 text-klass-lg text-text-primary">Antes de se inscrever</h2>
-          <div className="flex flex-col gap-2.5">
+          <div className="flex flex-col divide-y divide-border">
             {preRequisitos.map((p) => (
-              <div key={p.moduloId} className="flex items-center gap-2.5">
-                {p.status === "concluido" && <Check className="h-4 w-4 shrink-0 text-text-primary" aria-hidden />}
-                {p.status === "cursando" && <Clock className="h-4 w-4 shrink-0 text-text-secondary" aria-hidden />}
-                {p.status === "pendente" && <Lock className="h-4 w-4 shrink-0 text-text-muted" aria-hidden />}
+              <div key={p.moduloId} className="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
+                {/* Ícone por situação (pág. 6): ✓ concluído, relógio cursando, cadeado pendente. */}
+                {p.status === "concluido" && <Check className="mt-0.5 h-5 w-5 shrink-0 text-text-primary" aria-label="Concluído" />}
+                {p.status === "cursando" && <Clock className="mt-0.5 h-5 w-5 shrink-0 text-text-primary" aria-label="Cursando" />}
+                {p.status === "pendente" && <Lock className="mt-0.5 h-5 w-5 shrink-0 text-text-primary" aria-label="Pendente" />}
                 <div>
                   {p.status === "concluido" ? (
-                    <p className="text-body-sm font-medium text-text-primary">{p.nome}</p>
+                    <p className="text-body-sm font-medium text-text-primary">{p.rotulo}</p>
                   ) : (
                     <Link to={p.rota} className="text-body-sm font-medium text-primary hover:underline">
-                      {p.nome}
+                      {p.rotulo}
                     </Link>
                   )}
-                  <p className="text-label text-text-muted">
-                    {p.status === "concluido" && `Concluído em ${p.data}`}
-                    {p.status === "cursando" && `Você está cursando. Conclusão prevista: ${p.data}.`}
-                    {p.status === "pendente" && "Pendente."}
+                  <p className="text-body-sm text-text-secondary">
+                    {p.status === "concluido" && p.data && `Concluído em ${formatarMesAno(p.data)}`}
+                    {p.status === "cursando" && p.data && `Você está cursando. Conclusão prevista: ${formatarDiaMes(p.data)}.`}
+                    {p.status === "pendente" && "Ainda não cursado."}
                   </p>
                 </div>
               </div>
@@ -281,69 +264,88 @@ export function DetalheModulo() {
 
       {profile?.papel === "aluno" && !matriculaVigente && (
         <>
-          <Card className="mt-4">
-            <h2 className="mb-3 text-klass-lg text-text-primary">Escolha a turma</h2>
-            {turmas.length === 0 && (
-              <p className="text-body-sm text-text-secondary">
-                Nenhuma turma aberta para este módulo no momento.
-              </p>
-            )}
-            <div className="flex flex-col gap-2">
-              {turmas.map((turma) => (
-                <label
+          <h2 className="mb-3 mt-6 text-klass-lg text-text-primary">Escolha a turma</h2>
+          {turmas.length === 0 && (
+            <p className="text-body-sm text-text-secondary">Nenhuma turma aberta para este módulo no momento.</p>
+          )}
+          <div className="flex flex-col gap-3">
+            {turmas.map((turma) =>
+              // Período encerrado: o banco recusa a inscrição. Cartão sem
+              // rádio, só informativo (as turmas passadas continuam na lista
+              // para o aluno ver o histórico do módulo).
+              turma.inscricoesEncerradas ? (
+                <div
                   key={turma.id}
-                  // Prompt 17 — a linha selecionada ganha borda preta mais
-                  // grossa (não um preenchimento colorido): o único azul da
-                  // tela inteira é o próprio ponto do rádio, via
-                  // accent-acento abaixo (medido por pixel em "Escolha a
-                  // turma": #0A84FF, citado no diagnóstico do PDF).
-                  className={`flex cursor-pointer items-center justify-between gap-3 rounded-klass-control border px-3.5 py-3 ${
-                    turmaSelecionada === turma.id ? "border-2 border-text-primary" : "border-border"
-                  }`}
+                  className="flex items-center justify-between gap-3 rounded-klass-card border border-border bg-surface px-4 py-3.5"
                 >
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="radio"
-                      name="turma"
-                      className="h-5 w-5 shrink-0 accent-acento"
-                      checked={turmaSelecionada === turma.id}
-                      onChange={() => setEscolha({ moduloId: moduloId!, turmaId: turma.id })}
-                      disabled={turma.vagasRestantes <= 0 || turma.minhaMatricula !== null}
-                    />
-                    <div>
-                      <p className="text-body-sm font-medium text-text-primary">{turma.codigo}</p>
-                      <p className="text-label text-text-muted">
-                        {turma.periodoInicio} a {turma.periodoFim} · Prof. {turma.professorNome}
-                      </p>
-                      {turma.minhaMatricula && (
-                        <p className="text-label text-text-muted">Você já se inscreveu nesta turma antes.</p>
-                      )}
-                    </div>
+                  <div className="min-w-0">
+                    <p className="text-body-sm font-semibold text-text-primary">{codigoComTurno(turma.codigo, turma.turno)}</p>
+                    <p className="text-body-sm text-text-secondary">
+                      {formatarPeriodo(turma.periodoInicio, turma.periodoFim, true)} · Prof.{" "}
+                      {turma.professorNome}
+                    </p>
                   </div>
-                  <span className="font-mono text-label tabular-nums text-text-muted">
-                    {plural(turma.vagasRestantes, "vaga", "vagas")}
-                  </span>
-                </label>
-              ))}
-            </div>
-          </Card>
+                  <Badge variant="tracejado">Inscrições encerradas</Badge>
+                </div>
+              ) : (
+              <label
+                key={turma.id}
+                // Cartão por turma (pág. 6); o selecionado ganha borda escura
+                // de 2px (não preenchimento colorido): o único azul da tela é
+                // o ponto do rádio, via accent-acento.
+                className={`flex cursor-pointer items-center justify-between gap-3 rounded-klass-card bg-surface px-4 py-3.5 ${
+                  turmaSelecionada === turma.id ? "border-2 border-text-primary" : "border border-border"
+                }`}
+              >
+                <div className="flex min-w-0 items-center gap-3">
+                  <input
+                    type="radio"
+                    name="turma"
+                    className="h-5 w-5 shrink-0 accent-acento"
+                    checked={turmaSelecionada === turma.id}
+                    onChange={() => setEscolha({ moduloId: moduloId!, turmaId: turma.id })}
+                    disabled={turma.vagasRestantes <= 0 || turma.minhaMatricula !== null}
+                  />
+                  <div className="min-w-0">
+                    <p className="text-body-sm font-semibold text-text-primary">{codigoComTurno(turma.codigo, turma.turno)}</p>
+                    <p className="text-body-sm text-text-secondary">
+                      {formatarPeriodo(turma.periodoInicio, turma.periodoFim, true)} · Prof.{" "}
+                      {turma.professorNome}
+                    </p>
+                    {turma.minhaMatricula && (
+                      <p className="text-label text-text-secondary">Você já se inscreveu nesta turma antes.</p>
+                    )}
+                  </div>
+                </div>
+                <span className="shrink-0 font-mono text-body-sm tabular-nums text-text-primary">
+                  {plural(turma.vagasRestantes, "vaga", "vagas")}
+                </span>
+              </label>
+              ),
+            )}
+          </div>
 
+          <p className="mt-4 rounded-klass-card border border-dashed border-controle px-4 py-3 text-body-sm text-text-secondary">
+            Depois de enviar: a coordenação analisa a inscrição, e você recebe um e-mail e um aviso
+            aqui quando ela for aprovada.
+          </p>
+
+          {/* Estado bloqueado (pág. 6): cadeado + motivo acima do botão, que
+              fica tracejado e desabilitado. Sem "Avise-me quando liberar":
+              não há backend para esse aviso. */}
+          {!podeInscrever && (
+            <p className="mt-4 flex items-start gap-2 text-body-sm font-medium text-text-primary">
+              <Lock className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+              Inscrição abre quando você concluir {preRequisitosPendentes.map((p) => p.rotulo).join(", ")}
+            </p>
+          )}
           <Button
-            className="mt-4 w-full"
+            className="mt-3 w-full"
             variant={!podeInscrever ? "tracejado" : "primary"}
             disabled={!podeInscrever || !turmaSelecionada || inscrevendo || atualizando || turmas.length === 0}
-            title={
-              !podeInscrever
-                ? `Conclua ${preRequisitosPendentes.map((p) => p.nome).join(", ")} antes de se inscrever.`
-                : undefined
-            }
             onClick={() => void aoInscrever()}
           >
-            {inscrevendo
-              ? "Inscrevendo..."
-              : !podeInscrever
-                ? `Requer: ${preRequisitosPendentes.map((p) => p.nome).join(", ")}`
-                : "Inscrever-se"}
+            {inscrevendo ? "Inscrevendo..." : "Inscrever-se"}
           </Button>
         </>
       )}

@@ -6,6 +6,12 @@ export type BadgeVariant = "preenchido" | "contorno" | "tracejado" | "alerta";
 
 interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
   variant?: BadgeVariant;
+  /**
+   * Exceção à regra de não quebrar: badge com texto variável e longo
+   * ("Pendente: Programação para Dados, Cálculo Aplicado") dentro de
+   * célula de tabela pode quebrar, senão empurra as colunas para fora.
+   */
+  quebraLinha?: boolean;
 }
 
 // Vocabulário monocromático do UI Kit (klass-uikit.pdf, Fundamentos pág. 2,
@@ -17,7 +23,7 @@ interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
 // como "Abaixo da média" na grade de notas. Cor nunca carrega o
 // significado sozinha — ícone + texto sempre acompanham (ver StatusBadge).
 const variantClasses: Record<BadgeVariant, string> = {
-  preenchido: "bg-primary text-white",
+  preenchido: "bg-primary text-primary-contraste",
   contorno: "border border-border bg-surface text-text-primary",
   tracejado: "border border-dashed border-border bg-surface text-text-secondary",
   alerta: "border border-controle bg-surface text-text-primary",
@@ -25,6 +31,7 @@ const variantClasses: Record<BadgeVariant, string> = {
 
 export function Badge({
   variant = "contorno",
+  quebraLinha = false,
   className = "",
   children,
   ...props
@@ -34,7 +41,7 @@ export function Badge({
     // espreme o título ao lado. Se faltar espaço, quem o contém usa
     // flex-wrap e o badge desce inteiro para baixo do título.
     <span
-      className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-klass-pill px-3 py-1 text-label font-medium ${variantClasses[variant]} ${className}`}
+      className={`inline-flex items-center gap-1.5 rounded-klass-pill px-3 py-1 text-label font-medium ${quebraLinha ? "" : "shrink-0 whitespace-nowrap"} ${variantClasses[variant]} ${className}`}
       {...props}
     >
       {children}

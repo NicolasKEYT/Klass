@@ -48,10 +48,38 @@ export async function trilhaTemCertificados(trilhaId: string): Promise<boolean> 
 
 // Verificação pública: chama a função SECURITY DEFINER exposta ao role
 // anon. Não lê a tabela (a RLS bloquearia o visitante sem login) — a
-// função devolve só os dados mínimos, filtrados por hash exato. Retorna
-// null quando não existe certificado com aquele hash.
+// função devolve só os dados mínimos, filtrados por hash exato (inclusive
+// se é de módulo ou de trilha e se foi revogado). Retorna null quando não
+// existe certificado com aquele hash.
 export async function verificarPorHash(hash: string): Promise<CertificadoVerificado | null> {
   const { data, error } = await certificacao().rpc("verificar_por_hash", { p_hash: hash });
   if (error) throw new Error(mensagemDeErroBanco(error));
-  return data && data.length > 0 ? data[0] : null;
+  // tipo/modulo_nome/turma_codigo/revogado_em: nulidade real documentada em
+  // CertificadoVerificado (o tipo gerado não a enxerga).
+  return data && data.length > 0 ? (data[0] as CertificadoVerificado) : null;
+}
+
+// Certificado revogado (encerramento desfeito) continua existindo — pode
+// já ter circulado —, mas não vale mais: listas o marcam, o Boletim não o
+// oferece para download e a verificação pública avisa.
+export function certificadoRevogado(certificado: Pick<Certificado, "revogado_em">): boolean {
+  return certificado.revogado_em !== null;
+}
+
+// O código do certificado é a única chave da verificação pública: é ele que
+// vai na URL impressa no PDF, no QR code e nos links "Verificar" das listas.
+export function caminhoDeVerificacao(hash: string): string {
+  return `/verificar/${encodeURIComponent(hash)}`;
+}
+
+// URL completa, com a origem do site que gerou o PDF (produção, preview ou
+// dev) — o QR precisa abrir de qualquer celular, então não pode ser relativa.
+export function urlDeVerificacao(hash: string): string {
+  return `${window.location.origin}${caminhoDeVerificacao(hash)}`;
+}
+
+// Formato gravado pelo banco (check certificados_hash_formato): só
+// maiúsculas, então normalizar o que a pessoa digita não perde nada.
+export function normalizarCodigo(codigo: string): string {
+  return codigo.trim().toUpperCase();
 }

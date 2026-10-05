@@ -3,15 +3,14 @@ import { Card } from "@/components/Card";
 import { EsqueletoTabela } from "@/components/Esqueleto";
 import { ErroConsulta } from "@/components/ErroConsulta";
 import { Input } from "@/components/Input";
+import { LinkVerificar } from "@/components/LinkVerificar";
 import { PaginaAutenticada } from "@/components/PaginaAutenticada";
-import { Titulo } from "@/components/Titulo";
+import { Badge } from "@/components/Badge";
+import { certificadoRevogado } from "@/lib/certificacao";
 import { useTodosCertificados } from "@/lib/consultas/certificacao";
 import { gerarPdfDoCertificado } from "@/pdf/gerarCertificado";
 import type { Certificado } from "@klass/types";
-
-function formatarData(iso: string): string {
-  return new Date(iso).toLocaleDateString("pt-BR", { timeZone: "UTC" });
-}
+import { formatarData } from "@/lib/formato";
 
 export function Certificados() {
   const consulta = useTodosCertificados();
@@ -41,8 +40,7 @@ export function Certificados() {
   }
 
   return (
-    <PaginaAutenticada largura="ampla">
-        <Titulo className="mb-6">Certificados</Titulo>
+    <PaginaAutenticada titulo="Certificados">
 
         {consulta.isError && !certificados && (
           <ErroConsulta
@@ -98,13 +96,16 @@ export function Certificados() {
                   <th className="px-4 py-3 font-medium">Aluno</th>
                   <th className="px-4 py-3 font-medium">Trilha</th>
                   <th className="px-4 py-3 font-medium">Emitido em</th>
-                  <th className="px-4 py-3 font-medium">Código</th>
+                  <th className="px-4 py-3 font-medium">Código de verificação</th>
                   <th className="px-4 py-3 font-medium" />
                 </tr>
               </thead>
               <tbody>
                 {filtrados.map((certificado) => (
-                  <tr key={certificado.id} className="border-b border-border last:border-b-0">
+                  <tr
+                    key={certificado.id}
+                    className={`border-b border-border last:border-b-0 ${certificadoRevogado(certificado) ? "opacity-70" : ""}`}
+                  >
                     <td className="px-4 py-3 text-body-sm text-text-primary">
                       {certificado.aluno_nome}
                     </td>
@@ -113,16 +114,26 @@ export function Certificados() {
                       {certificado.modulo_id !== null && (
                         <span className="block text-label text-text-muted">
                           Módulo: {certificado.modulo_nome}
+                          {certificado.turma_codigo ? ` · turma ${certificado.turma_codigo}` : ""}
                         </span>
                       )}
                     </td>
                     <td className="px-4 py-3 text-body-sm text-text-secondary">
                       {formatarData(certificado.emitido_em)}
+                      {certificado.revogado_em && (
+                        <span className="mt-1 flex flex-col items-start gap-1">
+                          <Badge variant="alerta">Revogado</Badge>
+                          <span className="text-label text-text-muted" title={certificado.motivo_revogacao ?? undefined}>
+                            em {formatarData(certificado.revogado_em)}
+                          </span>
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3 font-mono text-label text-text-muted">
                       {certificado.hash_publico}
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="whitespace-nowrap px-4 py-3 text-right">
+                      <LinkVerificar hash={certificado.hash_publico} className="mr-4" />
                       <button
                         type="button"
                         onClick={() => void abrirPdf(certificado)}

@@ -1,7 +1,8 @@
 import { supabase } from "@/lib/supabase";
 import { mensagemDeErroBanco } from "@/lib/mensagensDeErroBanco";
 import { plural } from "@/lib/plural";
-import { situacaoDaTurma, type TurmaListagem } from "@/lib/selecao";
+import { formatarData, formatarDiaMes, paraDataLocal } from "@/lib/formato";
+import { buscarOcupacaoTurmas, situacaoDaTurma, type TurmaListagem } from "@/lib/selecao";
 
 // D7 (klass-uikit.pdf) — dados do painel "Início" da coordenação. Mistura
 // catalogo (as duas views novas), selecao e diario de propósito: é uma
@@ -30,90 +31,50 @@ function hojeISO(): string {
   return `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, "0")}-${String(agora.getDate()).padStart(2, "0")}`;
 }
 
-// Mesma regra de diario.frequencia_percentual (aula sem NENHUMA presença
-// registrada não conta no denominador), só que calculada em lote no
-// cliente para não fazer uma chamada RPC por matrícula do sistema
-// inteiro. Devolve a frequência média geral, quantos alunos estão abaixo
-// do mínimo legal (75%, LDB art. 24) e a frequência média POR TURMA (usada
-// na tabela "Turmas em andamento"). Uma consulta só alimenta os
-// indicadores e a tabela — antes o painel calculava tudo duas vezes.
-// Ainda traz todas as presenças das turmas ativas para o navegador: uma
-// função agregada no banco resolveria isto com uma linha por turma.
+// Frequências e aulas por turma calculadas no banco
+// (diario.indicadores_por_turma, só coordenação): uma linha por turma, em
+// vez de trazer todas as matrículas, aulas e presenças para o navegador
+// (que agregava aqui e truncava em 1000 linhas). Mesma regra de
+// diario.frequencia_percentual (aula sem nenhuma presença não conta).
+// Devolve a frequência média geral (ponderada pelos alunos de cada turma
+// = média de todos os alunos), quantos estão abaixo do mínimo legal (75%,
+// LDB art. 24), a média POR TURMA (tabela "Turmas em andamento" e gráfico
+// de Acompanhamento) e o total de aulas por turma (pendência "sem aulas").
 export interface FrequenciasCoordenacao {
   mediaGeral: number | null;
   abaixoDoMinimo: number;
   /** turma_id -> frequência média. Record (não Map) para caber no cache. */
   porTurma: Record<string, number>;
+  /** turma_id -> aulas cadastradas. */
+  aulasPorTurma: Record<string, number>;
 }
 
 export async function calcularFrequencias(): Promise<FrequenciasCoordenacao> {
-  const { data: matriculas, error } = await selecao()
-    .from("matriculas")
-    .select("id, turma_id")
-    .eq("status", "matriculada");
+  const { data, error } = await diario().rpc("indicadores_por_turma");
   if (error) throw new Error(mensagemDeErroBanco(error));
-  if (!matriculas || matriculas.length === 0) {
-    return { mediaGeral: null, abaixoDoMinimo: 0, porTurma: {} };
-  }
-
-  const turmaIds = [...new Set(matriculas.map((m) => m.turma_id))];
-  const { data: aulas, error: erroAulas } = await diario()
-    .from("aulas")
-    .select("id, turma_id")
-    .in("turma_id", turmaIds);
-  if (erroAulas) throw new Error(mensagemDeErroBanco(erroAulas));
-
-  const aulaIds = (aulas ?? []).map((a) => a.id);
-  const { data: presencas, error: erroPresencas } =
-    aulaIds.length > 0
-      ? await diario().from("presencas").select("aula_id, matricula_id, presente").in("aula_id", aulaIds)
-      : { data: [] as Array<{ aula_id: string; matricula_id: string; presente: boolean }>, error: null };
-  if (erroPresencas) throw new Error(mensagemDeErroBanco(erroPresencas));
-
-  const aulasComAlgumaPresenca = new Set((presencas ?? []).map((p) => p.aula_id));
-  const aulaIdsPorTurma = new Map<string, string[]>();
-  for (const a of aulas ?? []) {
-    const lista = aulaIdsPorTurma.get(a.turma_id) ?? [];
-    lista.push(a.id);
-    aulaIdsPorTurma.set(a.turma_id, lista);
-  }
-  const presencaPorMatricula = new Map<string, Map<string, boolean>>();
-  for (const p of presencas ?? []) {
-    const mapa = presencaPorMatricula.get(p.matricula_id) ?? new Map();
-    mapa.set(p.aula_id, p.presente);
-    presencaPorMatricula.set(p.matricula_id, mapa);
-  }
 
   let somaGeral = 0;
   let contGeral = 0;
   let abaixoDoMinimo = 0;
-  const somaPorTurma = new Map<string, { soma: number; cont: number }>();
-
-  for (const m of matriculas) {
-    const aulasDaTurmaComChamada = (aulaIdsPorTurma.get(m.turma_id) ?? []).filter((id) =>
-      aulasComAlgumaPresenca.has(id),
-    );
-    if (aulasDaTurmaComChamada.length === 0) continue;
-    const presencaAluno = presencaPorMatricula.get(m.id) ?? new Map();
-    const presentes = aulasDaTurmaComChamada.filter((id) => presencaAluno.get(id) === true).length;
-    const freq = (presentes / aulasDaTurmaComChamada.length) * 100;
-
-    somaGeral += freq;
-    contGeral++;
-    if (freq < 75) abaixoDoMinimo++;
-
-    const acumuladoTurma = somaPorTurma.get(m.turma_id) ?? { soma: 0, cont: 0 };
-    acumuladoTurma.soma += freq;
-    acumuladoTurma.cont++;
-    somaPorTurma.set(m.turma_id, acumuladoTurma);
-  }
-
   const porTurma: Record<string, number> = {};
-  for (const [turmaId, { soma, cont }] of somaPorTurma) {
-    porTurma[turmaId] = soma / cont;
+  const aulasPorTurma: Record<string, number> = {};
+  for (const linha of data ?? []) {
+    aulasPorTurma[linha.turma_id] = linha.total_aulas;
+    if (linha.alunos_com_frequencia > 0 && linha.frequencia_media !== null) {
+      const media = Number(linha.frequencia_media);
+      porTurma[linha.turma_id] = media;
+      somaGeral += media * linha.alunos_com_frequencia;
+      contGeral += linha.alunos_com_frequencia;
+      abaixoDoMinimo += linha.alunos_abaixo_minimo_legal;
+    }
   }
 
-  return { mediaGeral: contGeral > 0 ? somaGeral / contGeral : null, abaixoDoMinimo, porTurma };
+  return {
+    mediaGeral: contGeral > 0 ? somaGeral / contGeral : null,
+    abaixoDoMinimo,
+    porTurma,
+    aulasPorTurma,
+  };
 }
 
 export interface IndicadoresCoordenacao {
@@ -134,35 +95,88 @@ export interface IndicadoresDasViews {
   periodoEvasao: string | null;
 }
 
-// Só as duas views do artigo (vw_desempenho_por_trilha, vw_taxa_evasao);
-// a frequência vem de calcularFrequencias e as duas se juntam em
-// montarIndicadores.
-export async function buscarIndicadoresDasViews(): Promise<IndicadoresDasViews> {
+// As duas views do artigo, linha a linha: alimentam os indicadores do
+// Início (agregados em resumirViews) e os gráficos de Acompanhamento (por
+// trilha e por semestre) — uma leitura só para os dois.
+export interface LinhaDesempenhoTrilha {
+  trilhaId: string;
+  trilhaNome: string;
+  totalAprovados: number;
+  totalEncerrados: number;
+  /** null = trilha sem matrícula encerrada ainda. */
+  taxaAprovacao: number | null;
+}
+
+export interface LinhaEvasaoSemestre {
+  /** "2026/1" */
+  periodo: string;
+  totalEvadidos: number;
+  totalEncerrados: number;
+  taxaEvasao: number | null;
+}
+
+export interface LinhasDasViews {
+  desempenho: LinhaDesempenhoTrilha[];
+  evasao: LinhaEvasaoSemestre[];
+}
+
+export async function buscarLinhasDasViews(): Promise<LinhasDasViews> {
   const [desempenhoResp, evasaoResp] = await Promise.all([
     catalogo()
       .from("vw_desempenho_por_trilha")
-      .select("total_aprovados, total_encerrados"),
+      .select("trilha_id, trilha_nome, total_aprovados, total_encerrados, taxa_aprovacao_percentual"),
     catalogo()
       .from("vw_taxa_evasao")
-      .select("periodo, taxa_evasao_percentual")
-      .order("periodo", { ascending: false })
-      .limit(1),
+      .select("periodo, total_evadidos, total_encerrados, taxa_evasao_percentual")
+      .order("periodo", { ascending: false }),
   ]);
   if (desempenhoResp.error) throw new Error(mensagemDeErroBanco(desempenhoResp.error));
   if (evasaoResp.error) throw new Error(mensagemDeErroBanco(evasaoResp.error));
 
+  // As views devolvem numeric como texto/number conforme o driver; Number()
+  // normaliza. Linha sem trilha/período (não deveria existir) é descartada.
+  return {
+    desempenho: (desempenhoResp.data ?? []).flatMap((r) =>
+      r.trilha_id && r.trilha_nome
+        ? [
+            {
+              trilhaId: r.trilha_id,
+              trilhaNome: r.trilha_nome,
+              totalAprovados: Number(r.total_aprovados ?? 0),
+              totalEncerrados: Number(r.total_encerrados ?? 0),
+              taxaAprovacao: r.taxa_aprovacao_percentual === null ? null : Number(r.taxa_aprovacao_percentual),
+            },
+          ]
+        : [],
+    ),
+    evasao: (evasaoResp.data ?? []).flatMap((r) =>
+      r.periodo
+        ? [
+            {
+              periodo: r.periodo,
+              totalEvadidos: Number(r.total_evadidos ?? 0),
+              totalEncerrados: Number(r.total_encerrados ?? 0),
+              taxaEvasao: r.taxa_evasao_percentual === null ? null : Number(r.taxa_evasao_percentual),
+            },
+          ]
+        : [],
+    ),
+  };
+}
+
+export function resumirViews(linhas: LinhasDasViews): IndicadoresDasViews {
   // Agregado ponderado (soma dos aprovados / soma dos encerrados), não
   // média das porcentagens por trilha — evita distorcer o número quando
   // uma trilha tem poucos módulos encerrados e outra tem muitos.
-  const totalAprovados = (desempenhoResp.data ?? []).reduce((s, r) => s + (r.total_aprovados ?? 0), 0);
-  const totalEncerrados = (desempenhoResp.data ?? []).reduce((s, r) => s + (r.total_encerrados ?? 0), 0);
-
-  const linhaEvasao = evasaoResp.data?.[0];
+  const totalAprovados = linhas.desempenho.reduce((s, r) => s + r.totalAprovados, 0);
+  const totalEncerrados = linhas.desempenho.reduce((s, r) => s + r.totalEncerrados, 0);
+  // A view já vem do semestre mais recente para o mais antigo.
+  const linhaEvasao = linhas.evasao[0];
 
   return {
     totalAprovados,
     totalEncerrados,
-    evasaoSemestreAtual: linhaEvasao ? Number(linhaEvasao.taxa_evasao_percentual) : null,
+    evasaoSemestreAtual: linhaEvasao?.taxaEvasao ?? null,
     periodoEvasao: linhaEvasao?.periodo ?? null,
   };
 }
@@ -183,7 +197,12 @@ export function montarIndicadores(
   };
 }
 
-export type TipoPendenciaCoordenacao = "inscricoes" | "chamadas_atrasadas" | "turmas_terminando";
+export type TipoPendenciaCoordenacao =
+  | "inscricoes"
+  | "chamadas_atrasadas"
+  | "turmas_aguardando_encerramento"
+  | "turmas_sem_aulas"
+  | "turmas_terminando";
 
 export interface PendenciaCoordenacao {
   tipo: TipoPendenciaCoordenacao;
@@ -193,26 +212,53 @@ export interface PendenciaCoordenacao {
   turmaIds: string[];
 }
 
-export async function listarPendenciasCoordenacao(): Promise<PendenciaCoordenacao[]> {
+// Aula que já passou sem nenhuma presença registrada, vinda pronta do
+// banco (diario.chamadas_pendentes), com a situação do prazo: "encerrada"
+// = o professor já não consegue fazê-la sem a coordenação liberar. Lida
+// uma vez e compartilhada (cache) entre "Precisa de você" e "Esta semana".
+export interface ChamadaAtrasada {
+  aulaId: string;
+  turmaId: string;
+  data: string;
+  foraDoPrazo: boolean;
+}
+
+export async function buscarChamadasAtrasadas(): Promise<ChamadaAtrasada[]> {
+  const { data, error } = await diario().rpc("chamadas_pendentes");
+  if (error) throw new Error(mensagemDeErroBanco(error));
+  return (data ?? []).map((a) => ({
+    aulaId: a.aula_id,
+    turmaId: a.turma_id,
+    data: a.data,
+    foraDoPrazo: a.situacao === "encerrada",
+  }));
+}
+
+export async function listarPendenciasCoordenacao(
+  /** Quem já tem as chamadas atrasadas em cache passa um leitor. */
+  obterAtrasadas: () => Promise<ChamadaAtrasada[]> = buscarChamadasAtrasadas,
+  /** Idem para os indicadores por turma (aulas cadastradas). */
+  obterFrequencias: () => Promise<FrequenciasCoordenacao> = calcularFrequencias,
+): Promise<PendenciaCoordenacao[]> {
   const pendencias: PendenciaCoordenacao[] = [];
   const hoje = hojeISO();
 
-  // As quatro leituras são independentes: saem juntas. Só as presenças
-  // dependem das aulas passadas e ficam para depois.
-  const [inscricoesResp, turmasResp, aulasResp, matriculasAtivasResp] = await Promise.all([
+  // As leituras são independentes: saem juntas.
+  // Contagens vêm agregadas do banco (ocupação por turma, aulas por turma),
+  // não linha a linha.
+  const [inscricoesResp, turmasResp, atrasadas, ocupacao, frequencias] = await Promise.all([
     selecao()
       .from("matriculas")
       .select("criado_em, turma_id")
       .eq("status", "inscrita")
       .order("criado_em", { ascending: true }),
-    selecao().from("turmas").select("id, codigo, periodo_fim"),
-    diario().from("aulas").select("id, turma_id, data").lt("data", hoje),
-    selecao().from("matriculas").select("turma_id").eq("status", "matriculada"),
+    selecao().from("turmas").select("id, codigo, periodo_inicio, periodo_fim"),
+    obterAtrasadas(),
+    buscarOcupacaoTurmas(null),
+    obterFrequencias(),
   ]);
   if (inscricoesResp.error) throw new Error(mensagemDeErroBanco(inscricoesResp.error));
   if (turmasResp.error) throw new Error(mensagemDeErroBanco(turmasResp.error));
-  if (aulasResp.error) throw new Error(mensagemDeErroBanco(aulasResp.error));
-  if (matriculasAtivasResp.error) throw new Error(mensagemDeErroBanco(matriculasAtivasResp.error));
 
   const inscricoes = inscricoesResp.data;
   if (inscricoes && inscricoes.length > 0) {
@@ -231,29 +277,24 @@ export async function listarPendenciasCoordenacao(): Promise<PendenciaCoordenaca
   const turmas = turmasResp.data;
   const turmaPorId = new Map((turmas ?? []).map((t) => [t.id, t]));
 
-  const aulasPassadas = aulasResp.data;
-  const aulaIds = (aulasPassadas ?? []).map((a) => a.id);
-  const { data: presencas, error: erroPresencas } =
-    aulaIds.length > 0
-      ? await diario().from("presencas").select("aula_id").in("aula_id", aulaIds)
-      : { data: [] as Array<{ aula_id: string }>, error: null };
-  if (erroPresencas) throw new Error(mensagemDeErroBanco(erroPresencas));
-  const aulasComChamada = new Set((presencas ?? []).map((p) => p.aula_id));
-  const atrasadas = (aulasPassadas ?? []).filter((a) => !aulasComChamada.has(a.id));
   if (atrasadas.length > 0) {
     const exemplos = atrasadas
       .slice(0, 2)
-      .map((a) => `${turmaPorId.get(a.turma_id)?.codigo ?? "—"} (${a.data.split("-").reverse().join("/")})`)
+      .map((a) => `${turmaPorId.get(a.turmaId)?.codigo ?? "—"} (${formatarData(a.data)})`)
       .join(", ");
+    // Fora do prazo de 7 dias: só a coordenação libera (aba Aulas da turma).
+    const foraDoPrazo = atrasadas.filter((a) => a.foraDoPrazo).length;
     pendencias.push({
       tipo: "chamadas_atrasadas",
       quantidade: atrasadas.length,
-      detalhe: exemplos,
-      turmaIds: [...new Set(atrasadas.map((a) => a.turma_id))],
+      detalhe: foraDoPrazo > 0 ? `${exemplos} · ${foraDoPrazo} fora do prazo (liberar na turma)` : exemplos,
+      turmaIds: [...new Set(atrasadas.map((a) => a.turmaId))],
     });
   }
 
-  const turmasComAtivos = new Set((matriculasAtivasResp.data ?? []).map((m) => m.turma_id));
+  const turmasComAtivos = new Set(
+    [...ocupacao].filter(([, o]) => o.matriculadas > 0).map(([turmaId]) => turmaId),
+  );
   const terminando = (turmas ?? []).filter((t) => {
     const dias = Math.round(
       (new Date(`${t.periodo_fim}T00:00:00`).getTime() - new Date(`${hoje}T00:00:00`).getTime()) /
@@ -261,6 +302,34 @@ export async function listarPendenciasCoordenacao(): Promise<PendenciaCoordenaca
     );
     return dias >= 0 && dias <= 7 && turmasComAtivos.has(t.id);
   });
+  // Período acabou e ainda há aluno cursando: falta encerrar a turma.
+  const aguardando = (turmas ?? []).filter((t) => t.periodo_fim < hoje && turmasComAtivos.has(t.id));
+  if (aguardando.length > 0) {
+    pendencias.push({
+      tipo: "turmas_aguardando_encerramento",
+      quantidade: aguardando.length,
+      detalhe: aguardando.map((t) => t.codigo).join(", "),
+      turmaIds: aguardando.map((t) => t.id),
+    });
+  }
+
+  // Turma ainda não terminada sem nenhuma aula: sem aula não há chamada,
+  // e a turma não chega a "pronta para encerrar".
+  const semAulas = (turmas ?? []).filter(
+    (t) => t.periodo_fim >= hoje && (frequencias.aulasPorTurma[t.id] ?? 0) === 0,
+  );
+  if (semAulas.length > 0) {
+    pendencias.push({
+      tipo: "turmas_sem_aulas",
+      quantidade: semAulas.length,
+      detalhe: semAulas
+        .map((t) => `${t.codigo} · começa em ${formatarDiaMes(t.periodo_inicio)}`)
+        .slice(0, 2)
+        .join(", "),
+      turmaIds: semAulas.map((t) => t.id),
+    });
+  }
+
   if (terminando.length > 0) {
     pendencias.push({
       tipo: "turmas_terminando",
@@ -270,7 +339,14 @@ export async function listarPendenciasCoordenacao(): Promise<PendenciaCoordenaca
     });
   }
 
-  return pendencias;
+  // pág. 10 — "Precisa de você" tem no máximo 4 cartões; a ordem acima já
+  // é a de prioridade.
+  return pendencias.slice(0, 4);
+}
+
+/** "Semestre 2026/2" — 1º semestre de janeiro a junho, 2º de julho a dezembro. */
+export function semestreAtual(data = new Date()): string {
+  return `${data.getFullYear()}/${data.getMonth() < 6 ? 1 : 2}`;
 }
 
 export interface TurmaEmAndamento extends TurmaListagem {
@@ -291,7 +367,7 @@ export function montarTurmasEmAndamento(
     const s = situacaoDaTurma(t, hoje);
     if (s === "encerrada") return [];
     let situacao: string;
-    if (s === "futura") situacao = `Começa ${t.periodoInicio.split("-").reverse().join("/")}`;
+    if (s === "futura") situacao = `Começa ${formatarData(t.periodoInicio)}`;
     else if (s === "aguardando_encerramento") situacao = "Aguardando encerramento";
     else if (t.pendentes > 0) situacao = "Inscrições abertas";
     else situacao = "Em andamento";
@@ -316,4 +392,108 @@ export async function buscarAlunosPorNome(termo: string): Promise<ResultadoBusca
     .limit(10);
   if (error) throw new Error(mensagemDeErroBanco(error));
   return (data ?? []).map((p) => ({ id: p.id, nomeCompleto: p.nome_completo }));
+}
+
+// ---------------------------------------------------------------------
+// "Esta semana" do Início da coordenação: o que chegou nos últimos 7 dias
+// e o que acontece nos próximos 7. Turmas e chamadas atrasadas vêm do
+// cache (as mesmas leituras da tabela e de "Precisa de você"); só as
+// inscrições recentes são uma leitura nova.
+// ---------------------------------------------------------------------
+
+/** Data local N dias a partir de hoje (negativo = passado), em AAAA-MM-DD. */
+export function diaRelativoISO(dias: number, base = new Date()): string {
+  const d = new Date(base.getFullYear(), base.getMonth(), base.getDate() + dias);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+export interface InscricaoRecente {
+  turmaId: string;
+  status: string;
+  criadoEm: string;
+}
+
+/** Matrículas criadas nos últimos 7 dias (hoje incluído), em qualquer situação. */
+export async function listarInscricoesRecentes(): Promise<InscricaoRecente[]> {
+  const desde = paraDataLocal(diaRelativoISO(-6)).toISOString();
+  const { data, error } = await selecao()
+    .from("matriculas")
+    .select("turma_id, status, criado_em")
+    .gte("criado_em", desde)
+    .order("criado_em", { ascending: false });
+  if (error) throw new Error(mensagemDeErroBanco(error));
+  return (data ?? []).map((m) => ({ turmaId: m.turma_id, status: m.status, criadoEm: m.criado_em }));
+}
+
+export interface EventoDeTurmaNaSemana {
+  turmaId: string;
+  codigo: string;
+  moduloNome: string;
+  tipo: "comeca" | "termina";
+  data: string;
+}
+
+export interface AtrasoPorTurma {
+  turmaId: string;
+  codigo: string;
+  quantidade: number;
+  maisAntiga: string;
+}
+
+export interface SemanaCoordenacao {
+  inscricoesRecebidas: number;
+  inscricoesEmAnalise: number;
+  /** Turmas com inscrição nova (link direto quando é uma só). */
+  turmasComInscricao: string[];
+  eventosDeTurma: EventoDeTurmaNaSemana[];
+  atrasosPorTurma: AtrasoPorTurma[];
+}
+
+// Pura: junta o que já está em cache. "Próximos 7 dias" = hoje até daqui
+// a 7 dias, inclusive.
+export function montarSemanaCoordenacao(
+  turmas: TurmaListagem[],
+  atrasadas: ChamadaAtrasada[],
+  inscricoes: InscricaoRecente[],
+  hoje = hojeISO(),
+): SemanaCoordenacao {
+  const limite = diaRelativoISO(7, paraDataLocal(hoje));
+  const naJanela = (data: string) => data >= hoje && data <= limite;
+
+  const eventosDeTurma: EventoDeTurmaNaSemana[] = turmas
+    .flatMap((t) => {
+      const eventos: EventoDeTurmaNaSemana[] = [];
+      if (naJanela(t.periodoInicio))
+        eventos.push({ turmaId: t.id, codigo: t.codigo, moduloNome: t.moduloNome, tipo: "comeca", data: t.periodoInicio });
+      // Turma já sem ninguém (encerrada) não "termina" mais nada.
+      if (naJanela(t.periodoFim) && situacaoDaTurma(t, hoje) !== "encerrada")
+        eventos.push({ turmaId: t.id, codigo: t.codigo, moduloNome: t.moduloNome, tipo: "termina", data: t.periodoFim });
+      return eventos;
+    })
+    .sort((a, b) => (a.data === b.data ? a.codigo.localeCompare(b.codigo) : a.data < b.data ? -1 : 1));
+
+  const codigoPorTurma = new Map(turmas.map((t) => [t.id, t.codigo]));
+  const porTurma = new Map<string, AtrasoPorTurma>();
+  for (const a of atrasadas) {
+    const atual = porTurma.get(a.turmaId);
+    if (atual) {
+      atual.quantidade++;
+      if (a.data < atual.maisAntiga) atual.maisAntiga = a.data;
+    } else {
+      porTurma.set(a.turmaId, {
+        turmaId: a.turmaId,
+        codigo: codigoPorTurma.get(a.turmaId) ?? "—",
+        quantidade: 1,
+        maisAntiga: a.data,
+      });
+    }
+  }
+
+  return {
+    inscricoesRecebidas: inscricoes.length,
+    inscricoesEmAnalise: inscricoes.filter((i) => i.status === "inscrita").length,
+    turmasComInscricao: [...new Set(inscricoes.map((i) => i.turmaId))],
+    eventosDeTurma,
+    atrasosPorTurma: [...porTurma.values()].sort((a, b) => b.quantidade - a.quantidade || a.codigo.localeCompare(b.codigo)),
+  };
 }

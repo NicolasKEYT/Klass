@@ -2,7 +2,9 @@ import { useEffect, useState } from "react";
 import { Search } from "lucide-react";
 import { Badge } from "@/components/Badge";
 import { BarraDeMeta } from "@/components/BarraDeMeta";
+import { BotaoExportarCsv } from "@/components/BotaoExportarCsv";
 import { Card } from "@/components/Card";
+import { BlocoDaSemana, CartaoEstaSemana, VazioDaSemana } from "@/components/EstaSemana";
 import { Esqueleto, RegiaoCarregando } from "@/components/Esqueleto";
 import { ErroConsulta } from "@/components/ErroConsulta";
 import { Input } from "@/components/Input";
@@ -12,28 +14,51 @@ import { Titulo } from "@/components/Titulo";
 import { useTrilhas } from "@/lib/consultas/catalogo";
 import { useBuscaDeAlunos } from "@/lib/consultas/identidade";
 import {
+  useChamadasAtrasadas,
   useFrequenciasCoordenacao,
   useIndicadoresDasViews,
+  useInscricoesRecentes,
   usePendenciasCoordenacao,
 } from "@/lib/consultas/painelCoordenacao";
 import { useTurmasDaCoordenacao } from "@/lib/consultas/selecao";
 import {
   montarIndicadores,
+  montarSemanaCoordenacao,
   montarTurmasEmAndamento,
+  semestreAtual,
   type PendenciaCoordenacao,
 } from "@/lib/painelCoordenacao";
+import { PaginaAutenticada } from "@/components/PaginaAutenticada";
 import { flexionar, plural } from "@/lib/plural";
+import { formatarData, formatarDiaSemanaData, formatarPercentual } from "@/lib/formato";
 
 // Sem o número: ele já aparece em destaque logo acima no cartão.
 const TEXTO_PENDENCIA: Record<PendenciaCoordenacao["tipo"], (q: number) => string> = {
   inscricoes: (q) => flexionar(q, "inscrição para aprovar", "inscrições para aprovar"),
   chamadas_atrasadas: (q) => flexionar(q, "chamada atrasada", "chamadas atrasadas"),
+  turmas_aguardando_encerramento: (q) =>
+    flexionar(q, "turma aguardando encerramento", "turmas aguardando encerramento"),
+  turmas_sem_aulas: (q) => flexionar(q, "turma sem aulas cadastradas", "turmas sem aulas cadastradas"),
   turmas_terminando: (q) => flexionar(q, "turma terminando", "turmas terminando"),
 };
 
-// Com uma turma só envolvida, vai direto ao detalhe dela.
+const ACAO_PENDENCIA: Record<PendenciaCoordenacao["tipo"], string> = {
+  inscricoes: "Revisar",
+  chamadas_atrasadas: "Ver turmas",
+  turmas_aguardando_encerramento: "Ver turmas",
+  turmas_sem_aulas: "Ver turmas",
+  turmas_terminando: "Ver turmas",
+};
+
+// Com uma turma só envolvida, vai direto ao detalhe dela: inscrições na
+// aba de inscrições, chamadas atrasadas na de aulas (onde se libera a
+// chamada); o resto no Resumo, que é a aba padrão.
 function linkDaPendencia(p: PendenciaCoordenacao): string {
-  return p.turmaIds.length === 1 ? `/coordenacao/turmas/${p.turmaIds[0]}` : "/coordenacao/turmas";
+  if (p.turmaIds.length !== 1) return "/coordenacao/turmas";
+  const base = `/coordenacao/turmas/${p.turmaIds[0]}`;
+  if (p.tipo === "inscricoes") return `${base}?aba=inscricoes`;
+  if (p.tipo === "chamadas_atrasadas") return `${base}?aba=aulas`;
+  return base;
 }
 
 // D7 (klass-uikit.pdf) — painel "Início" da coordenação: busca global,
@@ -65,7 +90,21 @@ export function Inicio() {
       ? montarTurmasEmAndamento(consultaTurmas.data, consultaFrequencias.data.porTurma)
       : null;
   const trilhas = consultaTrilhas.data ?? [];
-  const consultas = [consultaFrequencias, consultaViews, consultaPendencias, consultaTurmas, consultaTrilhas];
+  const consultaAtrasadas = useChamadasAtrasadas();
+  const consultaInscricoes = useInscricoesRecentes();
+  const semana =
+    consultaTurmas.data && consultaAtrasadas.data && consultaInscricoes.data
+      ? montarSemanaCoordenacao(consultaTurmas.data, consultaAtrasadas.data, consultaInscricoes.data)
+      : null;
+  const consultas = [
+    consultaFrequencias,
+    consultaViews,
+    consultaPendencias,
+    consultaTurmas,
+    consultaTrilhas,
+    consultaAtrasadas,
+    consultaInscricoes,
+  ];
   const erro = consultas.find((c) => c.isError)?.error ?? null;
 
   const [termoBusca, setTermoBusca] = useState("");
@@ -91,20 +130,23 @@ export function Inicio() {
   const mostrandoBusca = termoBusca.trim().length >= 2;
 
   return (
-    <>
-      <div className="mb-6 flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
-        <Titulo>Início</Titulo>
-        <div className="relative w-full sm:w-72">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
+    <PaginaAutenticada
+      sobrelinha={`Semestre ${semestreAtual()}`}
+      titulo="Início"
+      acoes={
+        <div className="relative w-full md:w-80">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
           <Input
-            className="pl-9"
+            className="w-full pl-9"
             type="search"
+            aria-label="Buscar aluno, turma ou trilha"
             placeholder="Buscar aluno, turma ou trilha"
             value={termoBusca}
             onChange={(e) => setTermoBusca(e.target.value)}
           />
         </div>
-      </div>
+      }
+    >
 
       {erro && (
         <ErroConsulta
@@ -164,7 +206,7 @@ export function Inicio() {
           <Titulo nivel="secao" className="mb-3">
             Precisa de você
           </Titulo>
-          <div className="mb-6 grid gap-4 sm:grid-cols-3">
+          <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             {consultaPendencias.isPending &&
               [0, 1, 2].map((i) => (
                 <RegiaoCarregando key={i} className="flex flex-col gap-2 rounded-klass-card border border-border bg-surface px-klass-card-x py-6">
@@ -175,24 +217,38 @@ export function Inicio() {
                 </RegiaoCarregando>
               ))}
             {pendencias?.length === 0 && (
-              <p className="text-body-sm text-text-secondary sm:col-span-3">
+              <p className="text-body-sm text-text-secondary sm:col-span-2 xl:col-span-4">
                 Nenhuma pendência no momento.
               </p>
             )}
             {pendencias?.map((p) => (
+              // pág. 10 — número grande e rótulo na mesma linha, detalhe e a ação.
               <Card key={p.tipo} className="flex flex-col gap-2">
-                <span className="font-mono text-klass-stat font-semibold tabular-nums text-text-primary">
-                  {p.quantidade}
-                </span>
-                <p className="text-body-sm text-text-secondary">{TEXTO_PENDENCIA[p.tipo](p.quantidade)}</p>
-                <p className="text-label text-text-muted">{p.detalhe}</p>
-                <LinkBotao to={linkDaPendencia(p)} variant="secondary" className="mt-1 w-full">
-                  Revisar
+                <p className="flex items-baseline gap-2">
+                  <span className="font-mono text-klass-stat font-semibold tabular-nums text-text-primary">
+                    {p.quantidade}
+                  </span>
+                  <span className="text-body-sm font-semibold text-text-primary">
+                    {TEXTO_PENDENCIA[p.tipo](p.quantidade)}
+                  </span>
+                </p>
+                <p className="text-body-sm text-text-secondary">{p.detalhe}</p>
+                <LinkBotao to={linkDaPendencia(p)} variant="secondary" className="mt-auto w-fit">
+                  {ACAO_PENDENCIA[p.tipo]}
                 </LinkBotao>
               </Card>
             ))}
           </div>
 
+          {/* Os gráficos ficam numa tela própria (Acompanhamento): aqui
+              ficam só os três números do relance, para o Início não virar
+              um relatório. */}
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <Titulo nivel="secao">Indicadores</Titulo>
+            <LinkBotao to="/coordenacao/acompanhamento" variant="secondary">
+              Ver gráficos de acompanhamento
+            </LinkBotao>
+          </div>
           {!indicadores && !erro ? (
             <div className="mb-6 grid gap-4 sm:grid-cols-3">
               {[0, 1, 2].map((i) => (
@@ -207,10 +263,10 @@ export function Inicio() {
           ) : (
           <div className="mb-6 grid gap-4 sm:grid-cols-3">
             <Card>
-              <p className="text-label font-medium text-text-muted">Frequência média</p>
+              <h3 className="text-body-sm font-semibold text-text-primary">Frequência média</h3>
               <p className="mt-1 font-mono text-klass-stat font-semibold tabular-nums text-text-primary">
                 {indicadores?.frequenciaMedia !== null && indicadores?.frequenciaMedia !== undefined
-                  ? `${indicadores.frequenciaMedia.toFixed(0)}%`
+                  ? formatarPercentual(indicadores.frequenciaMedia)
                   : "—"}
               </p>
               <p className="mb-2 text-label text-text-muted">mínimo 75%</p>
@@ -226,11 +282,11 @@ export function Inicio() {
               )}
             </Card>
             <Card>
-              <p className="text-label font-medium text-text-muted">Aprovação nos módulos encerrados</p>
+              <h3 className="text-body-sm font-semibold text-text-primary">Aprovação nos módulos encerrados</h3>
               <p className="mt-1 font-mono text-klass-stat font-semibold tabular-nums text-text-primary">
                 {indicadores?.aprovacaoModulosEncerrados !== null &&
                 indicadores?.aprovacaoModulosEncerrados !== undefined
-                  ? `${indicadores.aprovacaoModulosEncerrados.toFixed(0)}%`
+                  ? formatarPercentual(indicadores.aprovacaoModulosEncerrados)
                   : "—"}
               </p>
               <p className="mb-2 text-label text-text-muted">
@@ -245,12 +301,12 @@ export function Inicio() {
               />
             </Card>
             <Card>
-              <p className="text-label font-medium text-text-muted">
+              <h3 className="text-body-sm font-semibold text-text-primary">
                 Evasão {indicadores?.periodoEvasao ? `(${indicadores.periodoEvasao})` : "no semestre"}
-              </p>
+              </h3>
               <p className="mt-1 font-mono text-klass-stat font-semibold tabular-nums text-text-primary">
                 {indicadores?.evasaoSemestreAtual !== null && indicadores?.evasaoSemestreAtual !== undefined
-                  ? `${indicadores.evasaoSemestreAtual.toFixed(0)}%`
+                  ? formatarPercentual(indicadores.evasaoSemestreAtual)
                   : "—"}
               </p>
               <p className="mb-2 text-label text-text-muted">meta: até 10%</p>
@@ -263,16 +319,36 @@ export function Inicio() {
           </div>
           )}
 
-          <Titulo nivel="secao" className="mb-3">
-            Turmas em andamento
-          </Titulo>
           {/* No celular a tabela rola na horizontal dentro do cartão, em vez
               de espremer as colunas. No desktop ela cabe no cartão: nomes de
-              módulo/professor quebram linha, o badge de situação não. */}
+              módulo/professor quebram linha, o badge de situação não. O
+              título fica dentro do cartão, como na pág. 10. */}
           <Card className="overflow-x-auto !px-0 !py-0">
+            <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-4">
+              <h2 className="text-klass-lg text-text-primary">Turmas em andamento</h2>
+              <BotaoExportarCsv
+                nome={["turmas-em-andamento"]}
+                rotulo="Exportar turmas em andamento em CSV"
+                linhas={turmas ?? []}
+                colunas={[
+                  { titulo: "Turma", valor: (t) => t.codigo },
+                  { titulo: "Módulo", valor: (t) => t.moduloNome },
+                  { titulo: "Trilha", valor: (t) => t.trilhaNome },
+                  { titulo: "Professor", valor: (t) => t.professorNome },
+                  { titulo: "Início", valor: (t) => formatarData(t.periodoInicio) },
+                  { titulo: "Fim", valor: (t) => formatarData(t.periodoFim) },
+                  { titulo: "Matriculados", valor: (t) => t.matriculados },
+                  { titulo: "Vagas", valor: (t) => t.vagasTotal },
+                  { titulo: "Inscrições em análise", valor: (t) => t.pendentes },
+                  // Inteiro truncado, como na tela.
+                  { titulo: "Freq. média (%)", valor: (t) => (t.frequenciaMedia !== null ? Math.trunc(t.frequenciaMedia) : null) },
+                  { titulo: "Situação", valor: (t) => t.situacao },
+                ]}
+              />
+            </div>
             <table className="w-full min-w-max text-left md:min-w-0">
               <thead>
-                <tr className="border-b border-border text-label text-text-muted">
+                <tr className="border-y border-border bg-background text-label text-text-secondary">
                   <th className="px-4 py-3 font-medium">Turma</th>
                   <th className="px-4 py-3 font-medium">Módulo</th>
                   <th className="px-4 py-3 font-medium">Professor</th>
@@ -305,13 +381,13 @@ export function Inicio() {
                     <td className="px-4 py-3">
                       <LinkComPrefetch
                         to={`/coordenacao/turmas/${t.id}`}
-                        className="text-body-sm font-medium text-primary hover:underline"
+                        className="whitespace-nowrap font-mono text-body-sm font-semibold text-primary hover:underline"
                       >
                         {t.codigo}
                       </LinkComPrefetch>
                     </td>
-                    <td className="px-4 py-3 text-body-sm text-text-secondary">{t.moduloNome}</td>
-                    <td className="px-4 py-3 text-body-sm text-text-secondary">{t.professorNome}</td>
+                    <td className="px-4 py-3 text-body-sm text-text-primary">{t.moduloNome}</td>
+                    <td className="px-4 py-3 text-body-sm text-text-primary">{t.professorNome}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <div
@@ -333,7 +409,7 @@ export function Inicio() {
                     </td>
                     <td className="px-4 py-3">
                       <span className="font-mono text-body-sm tabular-nums text-text-secondary">
-                        {t.frequenciaMedia !== null ? `${t.frequenciaMedia.toFixed(0)}%` : "—"}
+                        {t.frequenciaMedia !== null ? formatarPercentual(t.frequenciaMedia) : "—"}
                       </span>
                     </td>
                     <td className="px-4 py-3">
@@ -344,8 +420,88 @@ export function Inicio() {
               </tbody>
             </table>
           </Card>
+
+          <CartaoEstaSemana subtitulo="Inscrições dos últimos 7 dias e o que acontece nos próximos 7">
+            <BlocoDaSemana titulo="Inscrições recebidas">
+              {!semana && !erro && <Esqueleto className="h-4 w-48" />}
+              {semana && semana.inscricoesRecebidas === 0 && (
+                <VazioDaSemana>Nenhuma inscrição nos últimos 7 dias.</VazioDaSemana>
+              )}
+              {semana && semana.inscricoesRecebidas > 0 && (
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="flex items-baseline gap-2">
+                    <span className="font-mono text-klass-lg font-semibold tabular-nums text-text-primary">
+                      {semana.inscricoesRecebidas}
+                    </span>
+                    <span className="text-body-sm text-text-primary">
+                      {flexionar(semana.inscricoesRecebidas, "inscrição recebida", "inscrições recebidas")}
+                      {semana.inscricoesEmAnalise > 0
+                        ? ` · ${plural(semana.inscricoesEmAnalise, "em análise", "em análise")}`
+                        : " · todas já analisadas"}
+                    </span>
+                  </p>
+                  {semana.inscricoesEmAnalise > 0 && (
+                    <LinkBotao
+                      variant="secondary"
+                      to={
+                        semana.turmasComInscricao.length === 1
+                          ? `/coordenacao/turmas/${semana.turmasComInscricao[0]}?aba=inscricoes`
+                          : "/coordenacao/turmas"
+                      }
+                    >
+                      Revisar
+                    </LinkBotao>
+                  )}
+                </div>
+              )}
+            </BlocoDaSemana>
+
+            <BlocoDaSemana titulo="Turmas que começam ou terminam">
+              {!semana && !erro && <Esqueleto className="h-4 w-48" />}
+              {semana?.eventosDeTurma.length === 0 && (
+                <VazioDaSemana>Nenhuma turma começa ou termina nos próximos 7 dias.</VazioDaSemana>
+              )}
+              <ul className="flex flex-col divide-y divide-border">
+                {semana?.eventosDeTurma.map((e) => (
+                  <li key={`${e.turmaId}-${e.tipo}`} className="flex flex-wrap items-baseline justify-between gap-x-3 py-2">
+                    <LinkComPrefetch
+                      to={`/coordenacao/turmas/${e.turmaId}`}
+                      className="min-w-0 text-body-sm text-text-primary hover:underline"
+                    >
+                      <span className="font-mono font-semibold">{e.codigo}</span> · {e.moduloNome}
+                    </LinkComPrefetch>
+                    <span className="text-label text-text-secondary">
+                      {e.tipo === "comeca" ? "Começa" : "Termina"} {formatarDiaSemanaData(e.data)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </BlocoDaSemana>
+
+            <BlocoDaSemana titulo="Chamadas atrasadas por turma">
+              {!semana && !erro && <Esqueleto className="h-4 w-48" />}
+              {semana?.atrasosPorTurma.length === 0 && (
+                <VazioDaSemana>Nenhuma chamada atrasada.</VazioDaSemana>
+              )}
+              <ul className="flex flex-col divide-y divide-border">
+                {semana?.atrasosPorTurma.map((a) => (
+                  <li key={a.turmaId} className="flex flex-wrap items-baseline justify-between gap-x-3 py-2">
+                    <LinkComPrefetch
+                      to={`/coordenacao/turmas/${a.turmaId}?aba=aulas`}
+                      className="font-mono text-body-sm font-semibold text-text-primary hover:underline"
+                    >
+                      {a.codigo}
+                    </LinkComPrefetch>
+                    <span className="text-label text-text-secondary">
+                      {plural(a.quantidade, "chamada", "chamadas")} · desde {formatarData(a.maisAntiga)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </BlocoDaSemana>
+          </CartaoEstaSemana>
         </>
       )}
-    </>
+    </PaginaAutenticada>
   );
 }

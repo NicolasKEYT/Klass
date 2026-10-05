@@ -11,6 +11,7 @@ import { Titulo } from "@/components/Titulo";
 import { useTurmasDaCoordenacao } from "@/lib/consultas/selecao";
 import { plural } from "@/lib/plural";
 import { situacaoDaTurma, type TurmaListagem } from "@/lib/selecao";
+import { formatarPeriodo } from "@/lib/formato";
 
 function hojeISO(): string {
   const agora = new Date();
@@ -34,7 +35,7 @@ function CartaoTurma({ turma, aguardandoEncerramento }: { turma: TurmaListagem; 
           {aguardandoEncerramento && <Badge variant="contorno">Aguardando encerramento</Badge>}
         </div>
         <p className="text-label text-text-muted">
-          {turma.professorNome} · {turma.periodoInicio} a {turma.periodoFim} · {turma.matriculados}/
+          {turma.professorNome} · {formatarPeriodo(turma.periodoInicio, turma.periodoFim)} · {turma.matriculados}/
           {turma.vagasTotal} vagas
         </p>
       </div>
@@ -63,11 +64,10 @@ export function Turmas() {
   const encerradas = comSituacao.filter((t) => t.situacao === "encerrada");
 
   return (
-    <PaginaAutenticada largura="ampla">
-        <div className="mb-6 flex items-center justify-between">
-          <Titulo>Turmas</Titulo>
-          <LinkBotao to="/coordenacao/turmas/nova">Nova turma</LinkBotao>
-        </div>
+    <PaginaAutenticada
+      titulo="Turmas"
+      acoes={<LinkBotao to="/coordenacao/turmas/nova">Nova turma</LinkBotao>}
+    >
 
         {consulta.isError && !turmas && (
           <ErroConsulta

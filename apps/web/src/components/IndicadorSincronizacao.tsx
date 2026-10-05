@@ -3,6 +3,7 @@ import { useIsMutating } from "@tanstack/react-query";
 import { Check, CloudOff, Loader2 } from "lucide-react";
 import { useUltimaGravacao } from "@/lib/consultas/estadoGravacao";
 import { supabase } from "@/lib/supabase";
+import { formatarHora } from "@/lib/formato";
 
 // D13 (klass-uikit.pdf) — "o estado de sincronização fica sempre visível:
 // tempo real, salvando, salvo, sem conexão". Mora na faixa superior da
@@ -58,10 +59,6 @@ function useRealtimeCaido(): boolean {
   return caido;
 }
 
-function formatarHora(data: Date): string {
-  return data.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-}
-
 // Prompt 17 — mapeamento de forma corrigido por pixel-comparação direta
 // com a página de Fundamentos: "Tempo real" e "Salvo" são contorno,
 // "Salvando..." é tracejado (estado incerto/em andamento), "Sem conexão"
@@ -98,7 +95,7 @@ export function IndicadorSincronizacao({ className = "" }: { className?: string 
     "sem-conexao": {
       texto: "Sem conexão",
       icone: <CloudOff className="h-3.5 w-3.5" aria-hidden />,
-      classeForma: "bg-text-primary text-white",
+      classeForma: "bg-text-primary text-primary-contraste",
     },
   };
 

@@ -1,7 +1,6 @@
 import { useParams } from "react-router-dom";
 import { useAuth } from "@/auth";
 import { Badge } from "@/components/Badge";
-import { BotaoVoltar } from "@/components/BotaoVoltar";
 import { Card } from "@/components/Card";
 import { Esqueleto, EsqueletoCards, RegiaoCarregando } from "@/components/Esqueleto";
 import { ErroConsulta } from "@/components/ErroConsulta";
@@ -9,6 +8,7 @@ import { IconeCatalogo } from "@/components/IconeCatalogo";
 import { LinkComPrefetch } from "@/components/LinkComPrefetch";
 import { PaginaAutenticada } from "@/components/PaginaAutenticada";
 import { Titulo } from "@/components/Titulo";
+import { rotuloPreRequisito } from "@/lib/catalogo";
 import {
   useModulosDaTrilha,
   usePreRequisitosDaTrilha,
@@ -41,10 +41,19 @@ export function DetalheTrilha() {
   const erro = consultaTrilha.error ?? consultaModulos.error ?? consultaPreRequisitos.error;
 
   return (
-    <PaginaAutenticada>
-      {/* Destino fixo, não navigate(-1): vindo de um módulo, o histórico
-          devolvia ao módulo, que por sua vez volta para cá (loop). */}
-      <BotaoVoltar para="/catalogo" rotulo="Catálogo" />
+    // Destino fixo, não navigate(-1): vindo de um módulo, o histórico
+    // devolvia ao módulo, que por sua vez volta para cá (loop).
+    <PaginaAutenticada
+      voltar={{ para: "/catalogo", rotulo: "Catálogo", posicao: "acima" }}
+      titulo={
+        trilha ? (
+          <span className="flex items-center gap-2">
+            <IconeCatalogo nome={trilha.icone} className="h-6 w-6 shrink-0 text-primary" />
+            {trilha.nome}
+          </span>
+        ) : undefined
+      }
+    >
       {erro && (
         <ErroConsulta
           className="mb-4"
@@ -68,11 +77,7 @@ export function DetalheTrilha() {
 
       {trilha && (
         <>
-          <div className="flex items-center gap-2">
-            <IconeCatalogo nome={trilha.icone} className="h-6 w-6 text-primary" />
-            <Titulo>{trilha.nome}</Titulo>
-          </div>
-          <p className="mt-2 text-body-sm text-text-secondary">{trilha.descricao}</p>
+          <p className="text-body-sm text-text-secondary">{trilha.descricao}</p>
           <p className="mt-2 text-label text-text-muted">
             Carga horária total: {trilha.carga_horaria_total}h
           </p>
@@ -98,7 +103,11 @@ export function DetalheTrilha() {
                     <p className="text-label text-text-muted">{modulo.carga_horaria_horas}h</p>
                     {(preRequisitos.get(modulo.id)?.length ?? 0) > 0 && (
                       <p className="text-label text-text-muted">
-                        Requer: {preRequisitos.get(modulo.id)!.join(", ")}
+                        Requer:{" "}
+                        {preRequisitos
+                          .get(modulo.id)!
+                          .map((p) => rotuloPreRequisito(p, trilha.id))
+                          .join(", ")}
                       </p>
                     )}
                     {/* A inscrição continua dentro do módulo; o card só

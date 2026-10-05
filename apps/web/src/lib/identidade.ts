@@ -25,6 +25,8 @@ export interface Pessoa {
   id: string;
   nomeCompleto: string;
   papel: Papel;
+  /** Data do cadastro (vai no CSV da tela Pessoas). */
+  criadoEm: string;
 }
 
 // A RLS (profiles_select) só devolve todos os perfis para a coordenação;
@@ -32,10 +34,15 @@ export interface Pessoa {
 export async function listarPessoas(): Promise<Pessoa[]> {
   const { data, error } = await identidade()
     .from("profiles")
-    .select("id, nome_completo, papel")
+    .select("id, nome_completo, papel, criado_em")
     .order("nome_completo");
   if (error) throw new Error(mensagemDeErroBanco(error));
-  return (data ?? []).map((p) => ({ id: p.id, nomeCompleto: p.nome_completo, papel: p.papel }));
+  return (data ?? []).map((p) => ({
+    id: p.id,
+    nomeCompleto: p.nome_completo,
+    papel: p.papel,
+    criadoEm: p.criado_em,
+  }));
 }
 
 // Só a coordenação troca papel (trigger profiles_impedir_troca_de_papel).

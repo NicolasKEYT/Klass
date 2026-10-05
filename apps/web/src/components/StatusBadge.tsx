@@ -27,6 +27,11 @@ const MATRICULA: Record<
   cancelada: { texto: "Cancelada", variante: "contorno", Icone: Minus },
 };
 
+/** O texto do selo de matrícula, para onde não cabe o selo (CSV, tabela). */
+export function textoDoStatusMatricula(status: StatusMatricula): string {
+  return MATRICULA[status].texto;
+}
+
 const AULA_AVALIACAO: Record<
   StatusAulaAvaliacao,
   { texto: string; variante: BadgeVariant; Icone: typeof Check }

@@ -73,7 +73,22 @@ export const invalidar = {
 
   /** Nota lançada/alterada (a grade já atualiza a própria célula no cache). */
   nota: (qc: QueryClient, matriculaId: string) =>
-    invalidarTudo(qc, [chaves.diario.progresso(matriculaId), chaves.diario.paineisDeProfessor()]),
+    invalidarTudo(qc, [
+      chaves.diario.progresso(matriculaId),
+      // Progresso em lote das turmas (a matrícula está numa delas).
+      ["diario", "progresso", "turma"],
+      chaves.diario.paineisDeProfessor(),
+    ]),
+
+  /** Coordenação liberou a chamada de uma aula fora do prazo. */
+  liberacaoDeChamada: (qc: QueryClient, turmaId: string, aulaId: string) =>
+    invalidarTudo(qc, [
+      chaves.diario.aulas(turmaId),
+      chaves.diario.chamadasPendentesDaTurma(turmaId),
+      chaves.diario.aula(aulaId),
+      chaves.diario.paineisDeProfessor(),
+      chaves.painelCoordenacao.tudo(),
+    ]),
 
   /** Chamada salva. */
   chamada: (qc: QueryClient, aulaId: string) =>
@@ -87,11 +102,17 @@ export const invalidar = {
   /**
    * Situação de matrícula mudou: aprovar, rejeitar, remover, encerrar
    * aluno/turma, desfazer encerramento, reativar turma. Encerrar pode
-   * emitir certificado (trigger no banco).
+   * emitir certificado e desfazer pode revogá-lo (no banco); as três ações
+   * entram no histórico de encerramentos da turma.
    */
   matriculas: (qc: QueryClient, turmaId: string) =>
     invalidarTudo(qc, [
       chaves.selecao.matriculasDaTurma(turmaId),
+      chaves.diario.historico(turmaId),
+      // Histórico do aluno no painel lateral e pré-requisitos das demais
+      // inscrições (aprovar/encerrar muda o que o aluno já concluiu).
+      ["selecao", "matriculas", "aluno"],
+      ["selecao", "pre-requisitos"],
       chaves.selecao.listas(),
       chaves.diario.progressos(),
       chaves.diario.paineisDeProfessor(),

@@ -1,5 +1,7 @@
 import { keepPreviousData, queryOptions, useQuery } from "@tanstack/react-query";
 import {
+  listarAvaliacoesModelo,
+  listarModulosDeTrilhasPublicadas,
   buscarTrilhaPorId,
   buscarTrilhaPorSlug,
   listarModulosDaTrilha,
@@ -30,6 +32,11 @@ function quandoAListagemFoiBuscada(): number | undefined {
 }
 
 export const opcoesCatalogo = {
+  avaliacoesModelo: (moduloId: string) =>
+    queryOptions({
+      queryKey: chaves.catalogo.avaliacoesModelo(moduloId),
+      queryFn: () => listarAvaliacoesModelo(moduloId),
+    }),
   trilhas: () => queryOptions({ queryKey: chaves.catalogo.trilhas(), queryFn: listarTrilhas }),
   trilhasComContagem: () =>
     queryOptions({ queryKey: chaves.catalogo.trilhasComContagem(), queryFn: listarTrilhasComContagem }),
@@ -78,6 +85,11 @@ export const opcoesCatalogo = {
       queryKey: chaves.catalogo.preRequisitosDoModulo(moduloId),
       queryFn: () => listarPreRequisitosDoModulo(moduloId),
     }),
+  opcoesDePreRequisito: () =>
+    queryOptions({
+      queryKey: chaves.catalogo.opcoesDePreRequisito(),
+      queryFn: listarModulosDeTrilhasPublicadas,
+    }),
 };
 
 export function useTrilhas() {
@@ -111,6 +123,14 @@ export function usePreRequisitosIdsDaTrilha(trilhaId: string | undefined) {
   });
 }
 
+export function useOpcoesDePreRequisito() {
+  return useQuery(opcoesCatalogo.opcoesDePreRequisito());
+}
+
 export function usePreRequisitosDoModulo(moduloId: string | undefined) {
   return useQuery({ ...opcoesCatalogo.preRequisitosDoModulo(moduloId ?? ""), enabled: !!moduloId });
+}
+
+export function useAvaliacoesModelo(moduloId: string | undefined) {
+  return useQuery({ ...opcoesCatalogo.avaliacoesModelo(moduloId ?? ""), enabled: !!moduloId });
 }

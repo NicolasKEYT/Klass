@@ -1,3 +1,4 @@
+import { formatarDecimal } from "@/lib/formato";
 // D11 (klass-uikit.pdf, decisão de desenho) — "indicadores com barra
 // contra a meta (bullet chart), sem velocímetro nem pizza: comprimento e
 // posição são lidos com mais precisão que ângulo ou área". Um componente
@@ -24,7 +25,7 @@ export function BarraDeMeta({ valor, meta, max = 100, rotulo, className = "" }: 
     <div
       className={`relative h-2 w-full rounded-full bg-neutral-subtle ${className}`}
       role="img"
-      aria-label={`${rotulo}: ${valor} de ${max}, meta ${meta}`}
+      aria-label={`${rotulo}: ${formatarDecimal(valor, 0)} de ${max}, meta ${formatarDecimal(meta, 0)}`}
     >
       <div
         className="h-2 rounded-full bg-text-primary transition-[width]"

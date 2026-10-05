@@ -2,9 +2,14 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Pencil, Trash2 } from "lucide-react";
+import { ResumoDaTurma } from "@/components/turma/ResumoDaTurma";
+import { MateriaisDaTurma } from "@/components/diario/MateriaisDaTurma";
+import { BloqueiosDoEncerramento } from "@/components/diario/BloqueiosDoEncerramento";
+import { SituacaoDaChamada, professorPodeFazerChamada } from "@/components/diario/SituacaoDaChamada";
 import { useAuth } from "@/auth";
 import { Aviso } from "@/components/Aviso";
-import { BotaoVoltar } from "@/components/BotaoVoltar";
+import { Abas } from "@/components/Abas";
+import { BotaoExportarCsv } from "@/components/BotaoExportarCsv";
 import { Button } from "@/components/Button";
 import { Avatar } from "@/components/Avatar";
 import { Card } from "@/components/Card";
@@ -14,16 +19,17 @@ import { ErroConsulta } from "@/components/ErroConsulta";
 import { Input } from "@/components/Input";
 import { LinkComPrefetch } from "@/components/LinkComPrefetch";
 import { PaginaAutenticada } from "@/components/PaginaAutenticada";
-import { StatusBadge } from "@/components/StatusBadge";
+import { StatusBadge, textoDoStatusMatricula } from "@/components/StatusBadge";
 import { Titulo } from "@/components/Titulo";
 import {
   opcoesDiario,
   useAulasDaTurma,
   useAvaliacoesDaTurma,
   useNotasDaTurma,
-  useProgressos,
+  useProgressoDaTurma,
 } from "@/lib/consultas/diario";
 import { useGravacao } from "@/lib/consultas/gravacao";
+import { useRealtimeDaTurma } from "@/lib/consultas/realtime";
 import { invalidar } from "@/lib/consultas/invalidar";
 import { useMatriculasDaTurma, useTurma } from "@/lib/consultas/selecao";
 import {
@@ -46,9 +52,18 @@ import {
   type ResumoEncerramentoTurma,
 } from "@/lib/diario";
 import { plural } from "@/lib/plural";
-import { PERIODO_TURMA_DATA_MAX, PERIODO_TURMA_DATA_MIN } from "@/lib/selecao";
+import { codigoComTurno, PERIODO_TURMA_DATA_MAX, PERIODO_TURMA_DATA_MIN } from "@/lib/selecao";
+import { CampoData, CampoHora } from "@/components/CampoData";
+import {
+  formatarData,
+  formatarDiaSemanaData,
+  formatarHora,
+  formatarMedia,
+  formatarPercentual,
+  formatarPeriodo,
+} from "@/lib/formato";
 
-type Aba = "avaliacoes" | "aulas" | "alunos";
+type Aba = "resumo" | "avaliacoes" | "aulas" | "alunos" | "materiais";
 type ModoCriacaoAula = "unica" | "recorrencia";
 
 const SEGUNDOS_PARA_DESFAZER = 8;
@@ -88,7 +103,19 @@ export function DetalheTurma() {
   // aba de onde saiu, em vez de resetar para "avaliacoes" a cada remount.
   const [searchParams, setSearchParams] = useSearchParams();
   const abaParam = searchParams.get("aba");
-  const aba: Aba = abaParam === "aulas" || abaParam === "alunos" ? abaParam : "avaliacoes";
+  // Aceita também os nomes por extenso das abas (ex.: ?aba=chamada,
+  // ?aba=notas) além dos valores de sempre.
+  // Sem ?aba=, abre no Resumo (aba padrão); os valores antigos continuam.
+  const aba: Aba =
+    abaParam === "aulas" || abaParam === "chamada"
+      ? "aulas"
+      : abaParam === "alunos"
+        ? "alunos"
+        : abaParam === "materiais"
+          ? "materiais"
+          : abaParam === "avaliacoes" || abaParam === "notas"
+          ? "avaliacoes"
+          : "resumo";
   function mudarAba(valor: Aba) {
     setSearchParams(
       (atual) => {
@@ -109,8 +136,11 @@ export function DetalheTurma() {
   const consultaAulas = useAulasDaTurma(id);
   const consultaMatriculas = useMatriculasDaTurma(id);
   const alunosDoDiario = consultaMatriculas.data ? filtrarAlunosDoDiario(consultaMatriculas.data) : undefined;
-  const progressos = useProgressos((alunosDoDiario ?? []).map((a) => a.matriculaId));
+  // Uma RPC para a turma inteira (antes: três por aluno).
+  const progressos = useProgressoDaTurma(id);
   useNotasDaTurma(id, consultaAvaliacoes.data?.map((a) => a.id));
+  // Notas lançadas por outra sessão (ex.: coordenação) entram na grade sem recarregar.
+  useRealtimeDaTurma(id, consultaAvaliacoes.data?.map((a) => a.id) ?? []);
 
   const turma = consultaTurma.data;
   const avaliacoes = consultaAvaliacoes.data ?? [];
@@ -144,6 +174,8 @@ export function DetalheTurma() {
   const [novaData, setNovaData] = useState("");
   const [novoHorario, setNovoHorario] = useState("");
   const [novaAulaDescricao, setNovaAulaDescricao] = useState("");
+  // Sala (UI Kit, pág. 8: "Aula 12 · Sala 3"): opcional, texto curto.
+  const [novaAulaSala, setNovaAulaSala] = useState("");
   const [salvandoAula, setSalvandoAula] = useState(false);
 
   // Recorrência: gera várias aulas de uma vez (dia(s) da semana + período);
@@ -153,11 +185,13 @@ export function DetalheTurma() {
   const [recorrenciaFim, setRecorrenciaFim] = useState("");
   const [recorrenciaHorario, setRecorrenciaHorario] = useState("");
   const [recorrenciaDescricao, setRecorrenciaDescricao] = useState("");
+  const [recorrenciaSala, setRecorrenciaSala] = useState("");
 
   const [editandoAulaId, setEditandoAulaId] = useState<string | null>(null);
   const [editData, setEditData] = useState("");
   const [editHorario, setEditHorario] = useState("");
   const [editDescricao, setEditDescricao] = useState("");
+  const [editSala, setEditSala] = useState("");
   const [salvandoEdicaoAula, setSalvandoEdicaoAula] = useState(false);
 
   const [apagandoAulaId, setApagandoAulaId] = useState<string | null>(null);
@@ -214,12 +248,14 @@ export function DetalheTurma() {
             data: novaData,
             horario: novoHorario,
             descricao: novaAulaDescricao,
+            sala: novaAulaSala,
           }),
         (qc) => invalidar.aulas(qc, id),
       );
       setNovaData("");
       setNovoHorario("");
       setNovaAulaDescricao("");
+      setNovaAulaSala("");
       setMostrarNovaAula(false);
       setMensagem("Aula criada.");
     } catch (e) {
@@ -279,6 +315,7 @@ export function DetalheTurma() {
             datas: datasNovas,
             horario: recorrenciaHorario,
             descricao: recorrenciaDescricao,
+            sala: recorrenciaSala,
           }),
         (qc) => invalidar.aulas(qc, id),
       );
@@ -304,6 +341,7 @@ export function DetalheTurma() {
     setEditData(aula.data);
     setEditHorario(aula.horario ?? "");
     setEditDescricao(aula.descricao ?? "");
+    setEditSala(aula.sala ?? "");
   }
 
   async function aoSalvarEdicaoAula(evento: FormEvent) {
@@ -315,7 +353,7 @@ export function DetalheTurma() {
     try {
       const aulaId = editandoAulaId;
       await gravar(
-        () => atualizarAula(aulaId, { data: editData, horario: editHorario, descricao: editDescricao }),
+        () => atualizarAula(aulaId, { data: editData, horario: editHorario, descricao: editDescricao, sala: editSala }),
         (qc) => invalidar.aulas(qc, id, aulaId),
       );
       setEditandoAulaId(null);
@@ -460,9 +498,40 @@ export function DetalheTurma() {
   }
 
   return (
-    <PaginaAutenticada>
-        <BotaoVoltar seSemHistorico="/professor/turmas" />
-
+    // pág. 9 — cabeçalho com "Minhas turmas / CÓDIGO", nome do módulo e as
+    // abas dentro da faixa; a trilha de navegação substitui o "Voltar".
+    <PaginaAutenticada
+      sobrelinha={
+        <span>
+          <LinkComPrefetch to="/professor/turmas" className="hover:text-text-primary hover:underline">
+            Minhas turmas
+          </LinkComPrefetch>
+          {turma ? ` / ${codigoComTurno(turma.codigo, turma.turno)}` : ""}
+        </span>
+      }
+      titulo={turma?.moduloNome}
+      subtitulo={
+        turma
+          ? `${turma.trilhaNome} · ${formatarPeriodo(turma.periodoInicio, turma.periodoFim)}`
+          : undefined
+      }
+      abas={
+        turma ? (
+          <Abas<Aba>
+            rotulo="Seções da turma"
+            ativa={aba}
+            aoTrocar={mudarAba}
+            abas={[
+              { valor: "resumo", rotulo: "Resumo" },
+              { valor: "aulas", rotulo: "Aulas e chamada" },
+              { valor: "avaliacoes", rotulo: "Avaliações e notas" },
+              { valor: "alunos", rotulo: "Alunos", contador: alunosCarregados ? alunos.length : undefined },
+              { valor: "materiais", rotulo: "Materiais" },
+            ]}
+          />
+        ) : undefined
+      }
+    >
         {erro && (
           <Aviso variant="danger" className="mb-4">
             {erro}
@@ -508,42 +577,18 @@ export function DetalheTurma() {
 
         {turma && (
           <>
-            <Card className="mb-6">
-              <Titulo>{turma.codigo}</Titulo>
-              <p className="mt-1 text-body-sm text-text-secondary">
-                {turma.moduloNome} · {turma.trilhaNome}
-              </p>
-              <p className="mt-2 text-label text-text-muted">
-                {turma.periodoInicio} a {turma.periodoFim}
-              </p>
-            </Card>
-
-            <div className="mb-4 flex gap-2 border-b border-border">
-              {(["avaliacoes", "aulas", "alunos"] as Aba[]).map((valor) => (
-                <button
-                  key={valor}
-                  onClick={() => mudarAba(valor)}
-                  className={`px-3 py-2 text-body-sm font-medium ${
-                    aba === valor
-                      ? "border-b-2 border-primary text-primary"
-                      : "text-text-secondary hover:text-text-primary"
-                  }`}
-                >
-                  {valor === "avaliacoes" ? "Avaliações" : valor === "aulas" ? "Aulas" : "Alunos"}
-                </button>
-              ))}
-            </div>
-
             {aba === "avaliacoes" && (
               <>
-                <div className="mb-4 flex items-center justify-between">
-                  <Titulo nivel="secao">
-                    Avaliações{consultaAvaliacoes.data ? ` (${avaliacoes.length})` : ""}
-                  </Titulo>
-                  <Button onClick={() => setMostrarNovaAvaliacao((v) => !v)}>
-                    {mostrarNovaAvaliacao ? "Cancelar" : "Nova avaliação"}
-                  </Button>
-                </div>
+                {/* Com avaliações, "Nova avaliação" vai para a linha dos chips
+                    da grade (pág. 9); sem nenhuma, fica sozinho aqui. */}
+                <h2 className="sr-only">Avaliações e notas</h2>
+                {avaliacoes.length === 0 && (
+                  <div className="mb-4 flex justify-end">
+                    <Button onClick={() => setMostrarNovaAvaliacao((v) => !v)}>
+                      {mostrarNovaAvaliacao ? "Cancelar" : "Nova avaliação"}
+                    </Button>
+                  </div>
+                )}
 
                 {mostrarNovaAvaliacao && (
                   <Card className="mb-4">
@@ -601,8 +646,22 @@ export function DetalheTurma() {
                     lancadoPor={usuario.id}
                     avaliacoes={avaliacoes}
                     onApagarAvaliacao={aoApagarAvaliacao}
+                    acoes={
+                      <Button onClick={() => setMostrarNovaAvaliacao((v) => !v)}>
+                        {mostrarNovaAvaliacao ? "Cancelar" : "Nova avaliação"}
+                      </Button>
+                    }
                   />
                 )}
+              </>
+            )}
+
+            {aba === "resumo" && <ResumoDaTurma turma={turma} papel="professor" />}
+
+            {aba === "materiais" && (
+              <>
+                <h2 className="sr-only">Materiais</h2>
+                <MateriaisDaTurma turmaId={turma.id} modo="gestao" />
               </>
             )}
 
@@ -647,26 +706,20 @@ export function DetalheTurma() {
 
                     {modoCriacaoAula === "unica" ? (
                       <form className="flex flex-col gap-3" onSubmit={aoCriarAula}>
-                        <div className="flex gap-4">
-                          <label className="flex flex-1 flex-col gap-1.5">
-                            <span className="text-label font-medium text-text-secondary">Data</span>
-                            <Input
-                              type="date"
-                              required
-                              value={novaData}
-                              onChange={(e) => setNovaData(e.target.value)}
-                            />
-                          </label>
-                          <label className="flex flex-1 flex-col gap-1.5">
-                            <span className="text-label font-medium text-text-secondary">
-                              Horário (opcional)
-                            </span>
-                            <Input
-                              type="time"
-                              value={novoHorario}
-                              onChange={(e) => setNovoHorario(e.target.value)}
-                            />
-                          </label>
+                        <div className="flex flex-col gap-4 sm:flex-row">
+                          <CampoData
+                            className="flex-1"
+                            rotulo="Data"
+                            obrigatorio
+                            valor={novaData}
+                            aoMudar={setNovaData}
+                          />
+                          <CampoHora
+                            className="flex-1"
+                            rotulo="Horário (opcional)"
+                            valor={novoHorario}
+                            aoMudar={setNovoHorario}
+                          />
                         </div>
                         <label className="flex flex-col gap-1.5">
                           <span className="text-label font-medium text-text-secondary">
@@ -675,6 +728,15 @@ export function DetalheTurma() {
                           <Input
                             value={novaAulaDescricao}
                             onChange={(e) => setNovaAulaDescricao(e.target.value)}
+                          />
+                        </label>
+                        <label className="flex flex-col gap-1.5">
+                          <span className="text-label font-medium text-text-secondary">Sala (opcional)</span>
+                          <Input
+                            maxLength={40}
+                            placeholder="Ex.: Sala 3"
+                            value={novaAulaSala}
+                            onChange={(e) => setNovaAulaSala(e.target.value)}
                           />
                         </label>
                         <Button type="submit" disabled={salvandoAula} className="self-start">
@@ -695,7 +757,7 @@ export function DetalheTurma() {
                                 onClick={() => alternarDiaSemana(valor)}
                                 className={`h-9 rounded-klass-control border px-3 text-body-sm font-medium transition ${
                                   diasSelecionados.includes(valor)
-                                    ? "border-text-primary bg-text-primary text-white"
+                                    ? "border-text-primary bg-text-primary text-primary-contraste"
                                     : "border-border bg-surface text-text-secondary"
                                 }`}
                               >
@@ -704,43 +766,31 @@ export function DetalheTurma() {
                             ))}
                           </div>
                         </div>
-                        <div className="flex gap-4">
-                          <label className="flex flex-1 flex-col gap-1.5">
-                            <span className="text-label font-medium text-text-secondary">
-                              Data de início
-                            </span>
-                            <Input
-                              type="date"
-                              required
-                              min={PERIODO_TURMA_DATA_MIN}
-                              max={PERIODO_TURMA_DATA_MAX}
-                              value={recorrenciaInicio}
-                              onChange={(e) => setRecorrenciaInicio(e.target.value)}
-                            />
-                          </label>
-                          <label className="flex flex-1 flex-col gap-1.5">
-                            <span className="text-label font-medium text-text-secondary">
-                              Data de fim
-                            </span>
-                            <Input
-                              type="date"
-                              required
-                              min={PERIODO_TURMA_DATA_MIN}
-                              max={PERIODO_TURMA_DATA_MAX}
-                              value={recorrenciaFim}
-                              onChange={(e) => setRecorrenciaFim(e.target.value)}
-                            />
-                          </label>
-                          <label className="flex flex-1 flex-col gap-1.5">
-                            <span className="text-label font-medium text-text-secondary">
-                              Horário (opcional)
-                            </span>
-                            <Input
-                              type="time"
-                              value={recorrenciaHorario}
-                              onChange={(e) => setRecorrenciaHorario(e.target.value)}
-                            />
-                          </label>
+                        <div className="flex flex-col gap-4 sm:flex-row">
+                          <CampoData
+                            className="flex-1"
+                            rotulo="Data de início"
+                            obrigatorio
+                            min={PERIODO_TURMA_DATA_MIN}
+                            max={PERIODO_TURMA_DATA_MAX}
+                            valor={recorrenciaInicio}
+                            aoMudar={setRecorrenciaInicio}
+                          />
+                          <CampoData
+                            className="flex-1"
+                            rotulo="Data de fim"
+                            obrigatorio
+                            min={PERIODO_TURMA_DATA_MIN}
+                            max={PERIODO_TURMA_DATA_MAX}
+                            valor={recorrenciaFim}
+                            aoMudar={setRecorrenciaFim}
+                          />
+                          <CampoHora
+                            className="flex-1"
+                            rotulo="Horário (opcional)"
+                            valor={recorrenciaHorario}
+                            aoMudar={setRecorrenciaHorario}
+                          />
                         </div>
                         <label className="flex flex-col gap-1.5">
                           <span className="text-label font-medium text-text-secondary">
@@ -751,13 +801,22 @@ export function DetalheTurma() {
                             onChange={(e) => setRecorrenciaDescricao(e.target.value)}
                           />
                         </label>
+                        <label className="flex flex-col gap-1.5">
+                          <span className="text-label font-medium text-text-secondary">Sala (opcional, aplicada a todas)</span>
+                          <Input
+                            maxLength={40}
+                            placeholder="Ex.: Sala 3"
+                            value={recorrenciaSala}
+                            onChange={(e) => setRecorrenciaSala(e.target.value)}
+                          />
+                        </label>
                         {erroPeriodoLote && (
                           <p className="text-label font-medium text-danger">{erroPeriodoLote}</p>
                         )}
                         {loteForaDoPeriodoDaTurma && turma && (
                           <p className="text-label text-text-secondary">
-                            Atenção: o período escolhido sai do período da turma ({turma.periodoInicio} a{" "}
-                            {turma.periodoFim}).
+                            Atenção: o período escolhido sai do período da turma (
+                            {formatarPeriodo(turma.periodoInicio, turma.periodoFim)}).
                           </p>
                         )}
                         <p className="text-label text-text-muted">
@@ -793,10 +852,25 @@ export function DetalheTurma() {
                       <Card key={aula.id} className="flex flex-col gap-3">
                         {situacaoApagarAula === undefined ? (
                           <p className="text-body-sm text-text-secondary">Verificando a chamada da aula...</p>
+                        ) : situacaoApagarAula.temChamada && aula.situacao_chamada === "encerrada" ? (
+                          <>
+                            <p className="text-body-sm text-text-primary">
+                              A aula de <strong>{formatarData(aula.data)}</strong> tem chamada e o prazo
+                              para alterá-la terminou. Para apagá-la, peça à coordenação para liberar a
+                              chamada desta aula.
+                            </p>
+                            <Button
+                              variant="secondary"
+                              className="self-start"
+                              onClick={() => setApagandoAulaId(null)}
+                            >
+                              Fechar
+                            </Button>
+                          </>
                         ) : situacaoApagarAula.encerrados.length > 0 ? (
                           <>
                             <p className="text-body-sm text-text-primary">
-                              A aula de <strong>{aula.data}</strong> não pode ser apagada: a chamada dela
+                              A aula de <strong>{formatarData(aula.data)}</strong> não pode ser apagada: a chamada dela
                               inclui{" "}
                               {situacaoApagarAula.encerrados.length === 1
                                 ? "um aluno já encerrado"
@@ -817,8 +891,8 @@ export function DetalheTurma() {
                         ) : (
                           <>
                             <p className="text-body-sm text-text-primary">
-                              Apagar a aula de <strong>{aula.data}</strong>
-                              {aula.horario ? ` · ${aula.horario}` : ""}?
+                              Apagar a aula de <strong>{formatarData(aula.data)}</strong>
+                              {aula.horario ? ` · ${formatarHora(aula.horario)}` : ""}?
                               {situacaoApagarAula.temChamada && (
                                 <>
                                   {" "}
@@ -846,26 +920,20 @@ export function DetalheTurma() {
                     ) : editandoAulaId === aula.id ? (
                       <Card key={aula.id}>
                         <form className="flex flex-col gap-3" onSubmit={aoSalvarEdicaoAula}>
-                          <div className="flex gap-4">
-                            <label className="flex flex-1 flex-col gap-1.5">
-                              <span className="text-label font-medium text-text-secondary">Data</span>
-                              <Input
-                                type="date"
-                                required
-                                value={editData}
-                                onChange={(e) => setEditData(e.target.value)}
-                              />
-                            </label>
-                            <label className="flex flex-1 flex-col gap-1.5">
-                              <span className="text-label font-medium text-text-secondary">
-                                Horário (opcional)
-                              </span>
-                              <Input
-                                type="time"
-                                value={editHorario}
-                                onChange={(e) => setEditHorario(e.target.value)}
-                              />
-                            </label>
+                          <div className="flex flex-col gap-4 sm:flex-row">
+                            <CampoData
+                              className="flex-1"
+                              rotulo="Data"
+                              obrigatorio
+                              valor={editData}
+                              aoMudar={setEditData}
+                            />
+                            <CampoHora
+                              className="flex-1"
+                              rotulo="Horário (opcional)"
+                              valor={editHorario}
+                              aoMudar={setEditHorario}
+                            />
                           </div>
                           <label className="flex flex-col gap-1.5">
                             <span className="text-label font-medium text-text-secondary">
@@ -876,6 +944,15 @@ export function DetalheTurma() {
                               onChange={(e) => setEditDescricao(e.target.value)}
                             />
                           </label>
+                        <label className="flex flex-col gap-1.5">
+                          <span className="text-label font-medium text-text-secondary">Sala (opcional)</span>
+                          <Input
+                            maxLength={40}
+                            placeholder="Ex.: Sala 3"
+                            value={editSala}
+                            onChange={(e) => setEditSala(e.target.value)}
+                          />
+                        </label>
                           <div className="flex gap-2">
                             <Button type="submit" disabled={salvandoEdicaoAula}>
                               {salvandoEdicaoAula ? "Salvando..." : "Salvar"}
@@ -897,12 +974,16 @@ export function DetalheTurma() {
                       <Card key={aula.id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
                         <div>
                           <p className="text-body-sm font-medium text-text-primary">
-                            {aula.data}
-                            {aula.horario ? ` · ${aula.horario}` : ""}
+                            {formatarDiaSemanaData(aula.data, true)}
+                            {aula.horario ? ` · ${formatarHora(aula.horario)}` : ""}
+                            {aula.sala ? ` · ${aula.sala}` : ""}
                           </p>
                           {aula.descricao && (
                             <p className="text-label text-text-muted">{aula.descricao}</p>
                           )}
+                          <div className="mt-1">
+                            <SituacaoDaChamada aula={aula} />
+                          </div>
                         </div>
                         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                           <button
@@ -921,12 +1002,16 @@ export function DetalheTurma() {
                             <Trash2 className="h-3.5 w-3.5" aria-hidden />
                             Apagar
                           </button>
-                          <LinkComPrefetch
-                            to={`/professor/turmas/${id}/aulas/${aula.id}/chamada`}
-                            className="text-body-sm font-medium text-primary hover:underline"
-                          >
-                            Fazer chamada
-                          </LinkComPrefetch>
+                          {/* Aula futura: ainda não há chamada a fazer. Prazo
+                              encerrado: a chamada abre só para consulta. */}
+                          {aula.situacao_chamada !== "futura" && (
+                            <LinkComPrefetch
+                              to={`/professor/turmas/${id}/aulas/${aula.id}/chamada`}
+                              className="text-body-sm font-medium text-primary hover:underline"
+                            >
+                              {professorPodeFazerChamada(aula) ? "Fazer chamada" : "Ver chamada"}
+                            </LinkComPrefetch>
+                          )}
                         </div>
                       </Card>
                     ),
@@ -937,10 +1022,27 @@ export function DetalheTurma() {
 
             {aba === "alunos" && (
               <>
-                <div className="mb-4 flex items-center justify-between gap-4">
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
                   <Titulo nivel="secao">
                     Alunos{alunosCarregados ? ` (${alunos.length})` : ""}
                   </Titulo>
+                  <div className="flex flex-wrap items-center gap-2">
+                  {turma && (
+                    <BotaoExportarCsv
+                      nome={["alunos", turma.codigo]}
+                      rotulo={`Exportar alunos da turma ${turma.codigo} em CSV`}
+                      linhas={alunos}
+                      colunas={[
+                        { titulo: "Aluno", valor: (a) => a.alunoNome },
+                        { titulo: "Situação", valor: (a) => textoDoStatusMatricula(a.status) },
+                        { titulo: "Média", valor: (a) => (a.progresso.media !== null ? formatarMedia(a.progresso.media) : null) },
+                        {
+                          titulo: "Frequência (%)",
+                          valor: (a) => (a.progresso.frequencia !== null ? Math.trunc(a.progresso.frequencia) : null),
+                        },
+                      ]}
+                    />
+                  )}
                   {alunos.some((a) => a.status === "matriculada") &&
                     !confirmandoEncerrarTurma && (
                       <Button
@@ -953,7 +1055,19 @@ export function DetalheTurma() {
                         Encerrar turma
                       </Button>
                     )}
+                  </div>
                 </div>
+
+                {id && alunos.some((a) => a.status === "matriculada" && !a.progresso.prontoParaEncerrar) && (
+                  <BloqueiosDoEncerramento
+                    turmaId={id}
+                    aulas={aulas}
+                    avaliacoes={avaliacoes}
+                    matriculasAtivas={alunos.filter((a) => a.status === "matriculada").map((a) => a.matriculaId)}
+                    aoVerAulas={() => mudarAba("aulas")}
+                    aoVerNotas={() => mudarAba("avaliacoes")}
+                  />
+                )}
 
                 {/* Ação de nível de turma, separada dos botões por aluno abaixo. */}
                 {confirmandoEncerrarTurma && (
@@ -961,7 +1075,8 @@ export function DetalheTurma() {
                     <p className="text-body-sm text-text-secondary">
                       Isto encerra de uma vez todos os alunos matriculados — cada um é aprovado ou
                       reprovado pelos próprios critérios de nota e frequência. Quem ainda estiver sem
-                      todas as notas ou chamadas é pulado e continua matriculado. Encerrar a turma
+                      todas as notas ou chamadas é pulado e continua matriculado (veja “O que impede encerrar”,
+                      acima, quando houver). Encerrar a turma
                       agora?
                     </p>
                     <div className="flex gap-2">
@@ -999,9 +1114,11 @@ export function DetalheTurma() {
                     </p>
                   )}
                 {alunos.map((aluno) => {
-                  const motivoDesabilitado = !aluno.progresso.prontoParaEncerrar
-                    ? "Ainda há avaliação sem nota ou aula sem chamada para este aluno."
-                    : undefined;
+                  const motivoDesabilitado =
+                    aluno.status === "matriculada" && !aluno.progresso.prontoParaEncerrar
+                      ? "Ainda não pode ser encerrado: falta nota ou presença — veja “O que impede encerrar” acima."
+                      : undefined;
+                  const idMotivo = `motivo-encerrar-${aluno.matriculaId}`;
                   return (
                     <Card key={aluno.matriculaId} className="flex items-center justify-between gap-4">
                       <div className="flex min-w-0 items-start gap-3">
@@ -1015,12 +1132,17 @@ export function DetalheTurma() {
                           </div>
                           <span className="text-label text-text-muted">
                             Média:{" "}
-                            {aluno.progresso.media !== null ? aluno.progresso.media.toFixed(1) : "—"}{" "}
+                            {aluno.progresso.media !== null ? formatarMedia(aluno.progresso.media) : "—"}{" "}
                             · Frequência:{" "}
                             {aluno.progresso.frequencia !== null
-                              ? `${aluno.progresso.frequencia.toFixed(0)}%`
+                              ? formatarPercentual(aluno.progresso.frequencia)
                               : "—"}
                           </span>
+                          {motivoDesabilitado && (
+                            <span id={idMotivo} className="text-label text-text-secondary">
+                              {motivoDesabilitado}
+                            </span>
+                          )}
                         </div>
                       </div>
                       {aluno.status === "matriculada" && (
@@ -1030,6 +1152,7 @@ export function DetalheTurma() {
                             !aluno.progresso.prontoParaEncerrar || encerrandoId === aluno.matriculaId
                           }
                           title={motivoDesabilitado}
+                          aria-describedby={motivoDesabilitado ? idMotivo : undefined}
                           onClick={() => void aoEncerrar(aluno.matriculaId)}
                         >
                           {encerrandoId === aluno.matriculaId ? "Encerrando..." : "Encerrar aluno"}
