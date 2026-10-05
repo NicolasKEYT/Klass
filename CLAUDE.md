@@ -228,7 +228,23 @@ siga o artigo (cliente).
   invalida o que mudou (`consultas/invalidar.ts`); eventos do Realtime
   invalidam o cache em vez de recarregar a tela. Não é desvio do artigo: o
   frontend segue falando direto com o Supabase, o cache só evita repetir
-  a mesma leitura a cada troca de tela.
+  a mesma leitura a cada troca de tela. As assinaturas do Realtime ficam em
+  `consultas/realtime.ts` (aluno, turma, professor).
+- **Tema claro/escuro.** Cores são variáveis CSS em `apps/web/src/index.css`
+  (`:root` e `:root[data-tema="escuro"]`), expostas como tokens em
+  `tailwind.config.ts`. Tela nenhuma usa cor literal; cor nova entra nos
+  dois temas.
+- **Datas e números em pt-BR** só por `apps/web/src/lib/formato.ts`
+  (datas do banco são locais, sem fuso — use `paraDataLocal`), e campo de
+  data pelo `components/CampoData.tsx`.
+- **Prazo da chamada:** o professor faz/altera a chamada até 7 dias depois
+  da aula; depois, só com liberação da coordenação. É trigger no banco
+  (`diario`), com "hoje" de `diario.hoje()` no fuso da instituição.
+- **Materiais** ficam no bucket `materiais` do Storage; o registro em
+  `diario.materiais` só entra se o objeto existe. Ao apagar, sai primeiro o
+  arquivo e depois o registro.
+- **Banco local:** ver "Banco local" no README (`supabase start`, `db reset`
+  com o seed de demonstração). Teste nunca no Supabase hospedado.
 
 ### Onde a regra de negócio mora
 

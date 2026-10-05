@@ -108,6 +108,57 @@ pnpm typecheck
 pnpm build
 ```
 
+## Banco local (opcional)
+
+Para desenvolver e testar migrations sem tocar no Supabase de produção, use a
+pilha local oficial da CLI do Supabase (precisa de um runtime de containers na
+máquina de desenvolvimento, como Docker Desktop, OrbStack ou Colima — o projeto
+em si continua sem containers):
+
+```bash
+supabase start -x studio,imgproxy,edge-runtime,logflare,vector,supavisor
+supabase db reset          # recria o banco local com todas as migrations + seed
+supabase gen types typescript --local \
+  --schema public,graphql_public,identidade,catalogo,selecao,diario,certificacao \
+  > packages/types/src/database.ts   # depois, formatar com prettier
+supabase stop
+```
+
+Para o app usar o banco local sem mexer no `.env`, passe as variáveis no
+comando (a chave publicável local aparece em `supabase status`):
+
+```bash
+VITE_SUPABASE_URL=http://127.0.0.1:54321 VITE_SUPABASE_PUBLISHABLE_KEY=<chave local> pnpm dev
+```
+
+Atenção: os triggers de webhook (`20260917001912_webhooks_via_pg_net.sql`)
+chamam o Worker de produção. Sem o segredo no Vault local, a chamada é
+recusada (401) e nenhum e-mail sai — mesmo assim, nunca grave o
+`webhook_secret` real no banco local. Nunca rode `supabase link`/`db push`
+apontando para produção a partir de um teste local.
+
+## Migrations pendentes de aplicação em produção
+
+Estas migrations estão no repositório e precisam ser aplicadas no projeto
+hospedado (por quem tem acesso, com `supabase db push`) **antes** de publicar o
+frontend que depende delas, nesta ordem:
+
+| Migration | O que faz |
+|---|---|
+| `20261003120000_catalogo_tipo_certificacao_combinado` | modo de certificação "por módulo e da trilha" |
+| `20261003120100_seguranca_funcoes_definer` | fecha funções SECURITY DEFINER à API; status final só pelo encerramento |
+| `20261003120200_certificacao_turma_revogacao_combinado` | turma no certificado, revogação, verificação pública com tipo |
+| `20261003120300_diario_historico_encerramentos` | histórico de encerramentos; desfazer/reativar com motivo |
+| `20261004120000_diario_prazo_chamada` | prazo de 7 dias para a chamada, liberação pela coordenação |
+| `20261004120100_catalogo_frequencia_minima_trilha` | frequência mínima padrão na trilha |
+| `20261004120200_selecao_inscricao_periodo_e_ocupacao` | inscrição fecha com o período; ocupação real |
+| `20261004120300_diario_agregados` | progresso da turma e indicadores agregados no banco |
+| `20261004120400_realtime_avaliacoes_aulas` | avaliações e aulas no Realtime |
+| `20261005120000_catalogo_avaliacoes_modelo` | modelo de avaliações por módulo |
+| `20261005120100_diario_avaliacoes_do_modelo` | turma nova nasce com as avaliações do modelo |
+| `20261006120000_turma_turno_aula_sala` | turno da turma e sala da aula |
+| `20261007120000_diario_materiais_turma` | materiais da turma (bucket privado `materiais`) |
+
 ## Ambiente de produção
 
 - **Pages (frontend):** https://klass-91y.pages.dev
@@ -139,8 +190,15 @@ npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
 npx wrangler secret put RESEND_API_KEY
 npx wrangler secret put ALLOWED_ORIGIN   # URL do Pages em produção
 npx wrangler secret put WEBHOOK_SECRET   # string aleatória longa — ver seção de webhook abaixo
+npx wrangler secret put EMAIL_REMETENTE  # opcional: "Klass <no-reply@seu-dominio>"
 npx wrangler deploy
 ```
+
+**Remetente dos e-mails.** Sem `EMAIL_REMETENTE`, o Worker usa
+`Klass <onboarding@resend.dev>`, o remetente de teste do Resend, que **só
+entrega para o e-mail dono da conta Resend**. Para os alunos receberem os
+e-mails, verifique um domínio em resend.com/domains, defina
+`EMAIL_REMETENTE` com um endereço desse domínio e publique o Worker de novo.
 
 Depois do primeiro deploy, volte ao passo 1 e atualize
 `VITE_WORKERS_URL` no Pages com a URL que o `wrangler deploy` imprimiu.
