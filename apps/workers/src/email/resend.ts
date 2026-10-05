@@ -8,11 +8,12 @@ interface EnviarEmailInput {
 }
 
 const RESEND_API_URL = "https://api.resend.com/emails";
-// onboarding@resend.dev é o remetente compartilhado de teste do Resend:
-// funciona sem verificar um domínio próprio, mas só entrega para o e-mail
-// dono da conta Resend. Para produção de verdade, verificar um domínio em
-// resend.com/domains e trocar por no-reply@<dominio>. Decisão registrada:
-// enquanto é TCC, fica no remetente de teste.
+// Remetente vem da variável EMAIL_REMETENTE do Worker (ex.:
+// "Klass <no-reply@dominio-verificado>"). Sem ela, cai no remetente
+// compartilhado de teste do Resend, que funciona sem domínio próprio mas
+// SÓ entrega para o e-mail dono da conta Resend — por isso, em produção,
+// é preciso verificar um domínio em resend.com/domains, definir
+// EMAIL_REMETENTE (wrangler secret put ou [vars]) e publicar o Worker.
 const REMETENTE_PADRAO = "Klass <onboarding@resend.dev>";
 
 /**
@@ -28,7 +29,7 @@ export async function enviarEmail(env: Env, input: EnviarEmailInput) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      from: input.remetente ?? REMETENTE_PADRAO,
+      from: input.remetente ?? (env.EMAIL_REMETENTE?.trim() || REMETENTE_PADRAO),
       to: input.para,
       subject: input.assunto,
       html: input.html,

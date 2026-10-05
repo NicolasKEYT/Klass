@@ -7,4 +7,6 @@ export interface Env {
   RESEND_API_KEY: string;
   ALLOWED_ORIGIN?: string;
   WEBHOOK_SECRET: string;
+  /** Remetente dos e-mails ("Nome <endereco@dominio>"); opcional — ver email/resend.ts. */
+  EMAIL_REMETENTE?: string;
 }

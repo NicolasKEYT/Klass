@@ -3,6 +3,9 @@ main = "src/index.ts"
 compatibility_date = "2026-09-10"
 compatibility_flags = ["nodejs_compat"]
 workers_dev = true
+# Sem coleta de métricas do wrangler: o build (deploy --dry-run) não para
+# perguntando sobre telemetria quando roda sem terminal interativo (CI).
+send_metrics = false
 
 # Nenhum valor de segredo entra neste arquivo. As variáveis abaixo são
 # configuradas com `wrangler secret put <NOME>` (produção) ou num arquivo
@@ -17,3 +20,8 @@ workers_dev = true
 #                              (padrão de desenvolvimento: http://localhost:5173)
 #   WEBHOOK_SECRET             valida o header Authorization dos Database
 #                              Webhooks do Supabase — ver README (seção MS3)
+#   EMAIL_REMETENTE            opcional; remetente dos e-mails, ex.
+#                              "Klass <no-reply@seu-dominio>" (domínio
+#                              verificado no Resend). Sem ela, usa o
+#                              remetente de teste onboarding@resend.dev, que
+#                              só entrega para o dono da conta Resend.
