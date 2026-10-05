@@ -309,12 +309,13 @@ $$;
 -- ao contrário do resto deste seed, essa parte não roda como o role de
 -- serviço puro: precisa personificar professor/coordenação via
 -- request.jwt.claims pra auth.uid() resolver certo.
-set local role authenticated;
-
 -- Reabre a matrícula pra poder lançar nota/presença nela (os triggers
--- do MS4 travam lançamento em matrícula que já não está 'matriculada')
--- — só coordenação passa livre por restringir_alteracoes_matricula pra
--- fazer essa transição "de trás pra frente" que não existe no fluxo normal.
+-- do MS4 travam lançamento em matrícula que já não está 'matriculada').
+-- Roda ainda como postgres (antes do `set local role authenticated`): pela
+-- API, sair de um status final só é possível por diario.desfazer_encerramento
+-- (motivo + histórico); aqui é montagem de dado de demonstração, não um
+-- desfazer de verdade. As claims de coordenação mantêm auth.uid() coerente
+-- para restringir_alteracoes_matricula.
 set local request.jwt.claims = '{"sub":"a1000000-0000-4000-8000-000000000003","role":"authenticated"}';
 
 do $$
@@ -325,6 +326,7 @@ begin
 end
 $$;
 
+set local role authenticated;
 set local request.jwt.claims = '{"sub":"a1000000-0000-4000-8000-000000000002","role":"authenticated"}';
 
 do $$
@@ -366,9 +368,14 @@ begin
     values (v_aula_id, v_turma_estatistica_id, v_data)
     on conflict (id) do nothing;
 
+    -- As aulas do seed já passaram há mais de 7 dias: pelo prazo da chamada
+    -- (diario.validar_prazo_chamada) só a coordenação ainda pode registrá-la.
+    -- A presença continua "registrada por" o professor; só a sessão muda.
+    perform set_config('request.jwt.claims', '{"sub":"a1000000-0000-4000-8000-000000000003","role":"authenticated"}', true);
     insert into diario.presencas (aula_id, matricula_id, presente, registrada_por)
     values (v_aula_id, v_matricula_concluida_id, i <> 10, v_professor_id)
     on conflict (aula_id, matricula_id) do nothing;
+    perform set_config('request.jwt.claims', '{"sub":"a1000000-0000-4000-8000-000000000002","role":"authenticated"}', true);
   end loop;
 
   -- Turma ativa (matriculada): avaliações e aulas criadas, mas SEM nota
@@ -443,9 +450,11 @@ begin
 
     for i in 1..4 loop
       v_aula_id := ('20000000-0000-4000-8000-' || lpad((10 + i)::text, 12, '0'))::uuid;
+      perform set_config('request.jwt.claims', '{"sub":"a1000000-0000-4000-8000-000000000003","role":"authenticated"}', true);
       insert into diario.presencas (aula_id, matricula_id, presente, registrada_por)
       values (v_aula_id, v_matricula_id, true, v_professor_id)
       on conflict (aula_id, matricula_id) do nothing;
+      perform set_config('request.jwt.claims', '{"sub":"a1000000-0000-4000-8000-000000000002","role":"authenticated"}', true);
     end loop;
 
     perform diario.encerrar_matricula(v_matricula_id);
@@ -503,9 +512,11 @@ begin
       insert into diario.aulas (id, turma_id, data)
       values (v_aula_id, v_turma_id, v_data)
       on conflict (id) do nothing;
+      perform set_config('request.jwt.claims', '{"sub":"a1000000-0000-4000-8000-000000000003","role":"authenticated"}', true);
       insert into diario.presencas (aula_id, matricula_id, presente, registrada_por)
       values (v_aula_id, v_matricula_id, true, v_professor_id)
       on conflict (aula_id, matricula_id) do nothing;
+      perform set_config('request.jwt.claims', '{"sub":"a1000000-0000-4000-8000-000000000002","role":"authenticated"}', true);
     end loop;
 
     perform diario.encerrar_matricula(v_matricula_id);
@@ -571,9 +582,11 @@ begin
       insert into diario.aulas (id, turma_id, data)
       values (v_aula_id, v_turma_id, v_data)
       on conflict (id) do nothing;
+      perform set_config('request.jwt.claims', '{"sub":"a1000000-0000-4000-8000-000000000003","role":"authenticated"}', true);
       insert into diario.presencas (aula_id, matricula_id, presente, registrada_por)
       values (v_aula_id, v_matricula_id, true, v_professor_id)
       on conflict (aula_id, matricula_id) do nothing;
+      perform set_config('request.jwt.claims', '{"sub":"a1000000-0000-4000-8000-000000000002","role":"authenticated"}', true);
     end loop;
 
     perform diario.encerrar_matricula(v_matricula_id);
@@ -699,9 +712,11 @@ begin
     on conflict (avaliacao_id, matricula_id) do nothing;
     for i in 1..10 loop
       v_aula_id := ('20000000-0000-4000-8000-' || lpad(i::text, 12, '0'))::uuid;
+      perform set_config('request.jwt.claims', '{"sub":"a1000000-0000-4000-8000-000000000003","role":"authenticated"}', true);
       insert into diario.presencas (aula_id, matricula_id, presente, registrada_por)
       values (v_aula_id, v_ana, true, v_professor_id)
       on conflict (aula_id, matricula_id) do nothing;
+      perform set_config('request.jwt.claims', '{"sub":"a1000000-0000-4000-8000-000000000002","role":"authenticated"}', true);
     end loop;
   end if;
 
@@ -713,6 +728,153 @@ begin
   end if;
 
   -- Carla: nada lançado — recém-matriculada, tudo pendente.
+end
+$$;
+
+reset role;
+
+-- A11 — demonstração com turmas "acontecendo agora": duas turmas da trilha
+-- Nível 2 (módulos sem pré-requisito) com quatro alunos novos cursando,
+-- notas e chamadas lançadas. Datas RELATIVAS a diario.hoje(), para o seed
+-- parecer vivo em qualquer dia em que for rodado: aulas semanais desde 5
+-- semanas atrás até 2 semanas à frente, chamada feita nas que já passaram.
+-- Alunos e turmas novos de propósito: os roteiros de QA dependem do estado
+-- exato de aluno.teste, Ana, Bruno e Carla, que não muda.
+do $$
+declare
+  v_diego_id uuid := 'a2000000-0000-4000-8000-000000000004';
+  v_elisa_id uuid := 'a2000000-0000-4000-8000-000000000005';
+  v_fabio_id uuid := 'a2000000-0000-4000-8000-000000000006';
+  v_gabriela_id uuid := 'a2000000-0000-4000-8000-000000000007';
+  v_professor_id uuid := 'a1000000-0000-4000-8000-000000000002';
+  v_coordenacao_id uuid := 'a1000000-0000-4000-8000-000000000003';
+begin
+  insert into auth.users (
+    instance_id, id, aud, role, email, encrypted_password,
+    email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+    created_at, updated_at, confirmation_token, recovery_token,
+    email_change_token_new, email_change
+  )
+  select '00000000-0000-0000-0000-000000000000', u.id, 'authenticated', 'authenticated',
+         u.email, extensions.crypt('klass-aluno-2026', extensions.gen_salt('bf')),
+         now(), '{"provider":"email","providers":["email"]}',
+         jsonb_build_object('nome_completo', u.nome), now(), now(), '', '', '', ''
+  from (values
+    (v_diego_id, 'aluno.diego@klass.dev', 'Diego Ferraz'),
+    (v_elisa_id, 'aluno.elisa@klass.dev', 'Elisa Prado'),
+    (v_fabio_id, 'aluno.fabio@klass.dev', 'Fábio Lima'),
+    (v_gabriela_id, 'aluno.gabriela@klass.dev', 'Gabriela Souza')
+  ) as u(id, email, nome)
+  on conflict (id) do nothing;
+
+  insert into auth.identities (
+    id, provider_id, user_id, identity_data, provider,
+    last_sign_in_at, created_at, updated_at
+  )
+  select u.identidade, u.id::text, u.id,
+         jsonb_build_object('sub', u.id::text, 'email', u.email),
+         'email', now(), now(), now()
+  from (values
+    ('b2000000-0000-4000-8000-000000000004'::uuid, v_diego_id, 'aluno.diego@klass.dev'),
+    ('b2000000-0000-4000-8000-000000000005'::uuid, v_elisa_id, 'aluno.elisa@klass.dev'),
+    ('b2000000-0000-4000-8000-000000000006'::uuid, v_fabio_id, 'aluno.fabio@klass.dev'),
+    ('b2000000-0000-4000-8000-000000000007'::uuid, v_gabriela_id, 'aluno.gabriela@klass.dev')
+  ) as u(identidade, id, email)
+  on conflict (id) do nothing;
+
+  -- Engenharia de Dados e Pipelines e Visualização e Comunicação de Dados.
+  insert into selecao.turmas (id, modulo_id, codigo, professor_id, periodo_inicio, periodo_fim, vagas_total, turno)
+  values
+    ('e1000000-0000-4000-8000-000000000005', 'd1000000-0000-4000-8000-000000000012', 'EDP-2026-2',
+     v_professor_id, diario.hoje() - 42, diario.hoje() + 56, 30, 'Noite'),
+    ('e1000000-0000-4000-8000-000000000006', 'd1000000-0000-4000-8000-000000000013', 'VIS-2026-2',
+     v_professor_id, diario.hoje() - 40, diario.hoje() + 58, 30, 'Manhã')
+  on conflict (id) do nothing;
+
+  -- Diego e Elisa cursam as duas; Fábio só EDP; Gabriela só VIS. Guarda por
+  -- existência pelo mesmo motivo do bloco MS3 (trigger antes do conflito).
+  insert into selecao.matriculas (id, aluno_id, turma_id, status, deferido_em, deferido_por)
+  select m.id, m.aluno_id, m.turma_id, 'matriculada', now() - interval '45 days', v_coordenacao_id
+  from (values
+    ('f2000000-0000-4000-8000-000000000004'::uuid, v_diego_id, 'e1000000-0000-4000-8000-000000000005'::uuid),
+    ('f2000000-0000-4000-8000-000000000005'::uuid, v_elisa_id, 'e1000000-0000-4000-8000-000000000005'::uuid),
+    ('f2000000-0000-4000-8000-000000000006'::uuid, v_fabio_id, 'e1000000-0000-4000-8000-000000000005'::uuid),
+    ('f2000000-0000-4000-8000-000000000007'::uuid, v_diego_id, 'e1000000-0000-4000-8000-000000000006'::uuid),
+    ('f2000000-0000-4000-8000-000000000008'::uuid, v_elisa_id, 'e1000000-0000-4000-8000-000000000006'::uuid),
+    ('f2000000-0000-4000-8000-000000000009'::uuid, v_gabriela_id, 'e1000000-0000-4000-8000-000000000006'::uuid)
+  ) as m(id, aluno_id, turma_id)
+  where not exists (select 1 from selecao.matriculas x where x.id = m.id);
+end
+$$;
+
+-- Diário das duas turmas, como professor. Se o módulo tiver modelo de
+-- avaliações, a turma já nasceu com ele; só cria avaliações se não houver.
+-- Chamada como coordenação (mesmo motivo do bloco MS4: aulas com mais de 7
+-- dias só a coordenação registra), "registrada por" o professor.
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"a1000000-0000-4000-8000-000000000002","role":"authenticated"}';
+
+do $$
+declare
+  v_professor_id uuid := 'a1000000-0000-4000-8000-000000000002';
+  v_turma record;
+  v_aula_id uuid;
+  v_data date;
+  v_primeira uuid;
+  i integer;
+begin
+  for v_turma in
+    select * from (values
+      ('e1000000-0000-4000-8000-000000000005'::uuid, 40, -36, 'Projeto de pipeline', 'Prova'),
+      ('e1000000-0000-4000-8000-000000000006'::uuid, 50, -33, 'Painel interativo', 'Apresentação')
+    ) as t(id, base, inicio, aval1, aval2)
+  loop
+    if not exists (select 1 from diario.avaliacoes where turma_id = v_turma.id) then
+      insert into diario.avaliacoes (turma_id, titulo, peso, ordem)
+      values (v_turma.id, v_turma.aval1, 4, 1), (v_turma.id, v_turma.aval2, 6, 2);
+    end if;
+    select id into v_primeira from diario.avaliacoes where turma_id = v_turma.id order by ordem limit 1;
+
+    -- Primeira avaliação já corrigida; a segunda fica para o professor lançar.
+    insert into diario.notas (avaliacao_id, matricula_id, valor, lancada_por)
+    select v_primeira, m.id, n.valor, v_professor_id
+    from selecao.matriculas m
+    join (values
+      ('a2000000-0000-4000-8000-000000000004'::uuid, 8.5),
+      ('a2000000-0000-4000-8000-000000000005'::uuid, 7.0),
+      ('a2000000-0000-4000-8000-000000000006'::uuid, 5.5),
+      ('a2000000-0000-4000-8000-000000000007'::uuid, 9.0)
+    ) as n(aluno_id, valor) on n.aluno_id = m.aluno_id
+    where m.turma_id = v_turma.id and m.status = 'matriculada'
+    on conflict (avaliacao_id, matricula_id) do nothing;
+
+    for i in 1..8 loop
+      v_data := diario.hoje() + v_turma.inicio + (i - 1) * 7;
+      v_aula_id := ('20000000-0000-4000-8000-' || lpad((v_turma.base + i)::text, 12, '0'))::uuid;
+      insert into diario.aulas (id, turma_id, data, horario, sala)
+      values (v_aula_id, v_turma.id, v_data, case when v_turma.base = 40 then '19:00'::time else '08:00'::time end, 'Lab 2')
+      on conflict (id) do nothing;
+
+      -- Chamada só nas aulas que já aconteceram (nenhuma cai hoje, para não
+      -- mexer no "Hoje" do professor). Fábio vai a só 2 das 6 aulas (abaixo
+      -- da meta, para o alerta de frequência); Elisa falta em 1.
+      if v_data <= diario.hoje() then
+        perform set_config('request.jwt.claims', '{"sub":"a1000000-0000-4000-8000-000000000003","role":"authenticated"}', true);
+        insert into diario.presencas (aula_id, matricula_id, presente, registrada_por)
+        select v_aula_id, m.id,
+               case m.aluno_id
+                 when 'a2000000-0000-4000-8000-000000000006' then i in (1, 4)
+                 when 'a2000000-0000-4000-8000-000000000005' then i <> 3
+                 else true
+               end,
+               v_professor_id
+        from selecao.matriculas m
+        where m.turma_id = v_turma.id and m.status = 'matriculada'
+        on conflict (aula_id, matricula_id) do nothing;
+        perform set_config('request.jwt.claims', '{"sub":"a1000000-0000-4000-8000-000000000002","role":"authenticated"}', true);
+      end if;
+    end loop;
+  end loop;
 end
 $$;
 
