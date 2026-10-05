@@ -1,29 +1,42 @@
-import { useEffect, useState, type FormEvent } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
-import { Pencil } from "lucide-react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useParams, useSearchParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
+import { Pencil, Trash2 } from "lucide-react";
 import { useAuth } from "@/auth";
 import { Aviso } from "@/components/Aviso";
 import { BotaoVoltar } from "@/components/BotaoVoltar";
 import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
 import { GradeNotas } from "@/components/diario/GradeNotas";
+import { Esqueleto, EsqueletoCards, EsqueletoTabela, RegiaoCarregando } from "@/components/Esqueleto";
+import { ErroConsulta } from "@/components/ErroConsulta";
 import { Input } from "@/components/Input";
+import { LinkComPrefetch } from "@/components/LinkComPrefetch";
 import { PaginaAutenticada } from "@/components/PaginaAutenticada";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Titulo } from "@/components/Titulo";
 import {
+  opcoesDiario,
+  useAulasDaTurma,
+  useAvaliacoesDaTurma,
+  useNotasDaTurma,
+  useProgressos,
+} from "@/lib/consultas/diario";
+import { useGravacao } from "@/lib/consultas/gravacao";
+import { invalidar } from "@/lib/consultas/invalidar";
+import { useMatriculasDaTurma, useTurma } from "@/lib/consultas/selecao";
+import {
+  apagarAula,
   apagarAvaliacao,
   atualizarAula,
-  buscarProgressoMatricula,
+  BloqueioAlunoEncerrado,
   calcularDatasRecorrentes,
   criarAula,
   criarAulasEmLote,
   criarAvaliacao,
   encerrarMatricula,
   encerrarTurma,
-  listarAlunosDoDiario,
-  listarAulasDaTurma,
-  listarAvaliacoesDaTurma,
+  filtrarAlunosDoDiario,
   proximaOrdemAvaliacao,
   type AlunoDoDiario,
   type Aula,
@@ -31,10 +44,13 @@ import {
   type ProgressoMatricula,
   type ResumoEncerramentoTurma,
 } from "@/lib/diario";
-import { buscarTurmaDetalhada, type TurmaDetalhada } from "@/lib/selecao";
+import { plural } from "@/lib/plural";
+import { PERIODO_TURMA_DATA_MAX, PERIODO_TURMA_DATA_MIN } from "@/lib/selecao";
 
 type Aba = "avaliacoes" | "aulas" | "alunos";
 type ModoCriacaoAula = "unica" | "recorrencia";
+
+const SEGUNDOS_PARA_DESFAZER = 8;
 
 const DIAS_SEMANA: Array<{ valor: number; label: string }> = [
   { valor: 1, label: "Seg" },
@@ -48,6 +64,18 @@ const DIAS_SEMANA: Array<{ valor: number; label: string }> = [
 
 interface AlunoComProgresso extends AlunoDoDiario {
   progresso: ProgressoMatricula;
+}
+
+// Horário vem do banco como "HH:MM:SS" e do input como "HH:MM" — a
+// comparação de aula repetida usa só horas e minutos.
+function chaveAula(data: string, horario: string | null): string {
+  return `${data}|${(horario ?? "").slice(0, 5)}`;
+}
+
+interface SituacaoApagarAula {
+  temChamada: boolean;
+  /** Alunos encerrados com presença nesta aula — o banco bloqueia apagar. */
+  encerrados: string[];
 }
 
 export function DetalheTurma() {
@@ -70,12 +98,39 @@ export function DetalheTurma() {
       { replace: true },
     );
   }
-  const [turma, setTurma] = useState<TurmaDetalhada | null | undefined>(undefined);
-  const [avaliacoes, setAvaliacoes] = useState<Avaliacao[]>([]);
-  const [aulas, setAulas] = useState<Aula[]>([]);
-  const [alunos, setAlunos] = useState<AlunoComProgresso[]>([]);
+  const gravar = useGravacao();
+  const qc = useQueryClient();
+  // Tudo que as três abas mostram é lido junto, em paralelo, ao abrir a
+  // turma — trocar de aba só troca o que aparece, sem buscar nada. As
+  // notas da grade também (mesma entrada de cache que a GradeNotas usa).
+  const consultaTurma = useTurma(id);
+  const consultaAvaliacoes = useAvaliacoesDaTurma(id);
+  const consultaAulas = useAulasDaTurma(id);
+  const consultaMatriculas = useMatriculasDaTurma(id);
+  const alunosDoDiario = consultaMatriculas.data ? filtrarAlunosDoDiario(consultaMatriculas.data) : undefined;
+  const progressos = useProgressos((alunosDoDiario ?? []).map((a) => a.matriculaId));
+  useNotasDaTurma(id, consultaAvaliacoes.data?.map((a) => a.id));
+
+  const turma = consultaTurma.data;
+  const avaliacoes = consultaAvaliacoes.data ?? [];
+  const aulas = consultaAulas.data ?? [];
+  // A lista de alunos só aparece com o progresso de cada um — sem isso,
+  // "Nenhum aluno matriculado" ou médias "—" apareciam durante a carga.
+  const alunosCarregados = !!alunosDoDiario && !progressos.pendente;
+  const alunos: AlunoComProgresso[] = alunosCarregados
+    ? alunosDoDiario.flatMap((a) => {
+        const progresso = progressos.porMatricula.get(a.matriculaId);
+        return progresso ? [{ ...a, progresso }] : [];
+      })
+    : [];
+  const consultasDaTela = [consultaTurma, consultaAvaliacoes, consultaAulas, consultaMatriculas];
+  const erroDeLeitura = consultasDaTela.find((c) => c.isError)?.error ?? progressos.erro;
   const [erro, setErro] = useState<string | null>(null);
   const [mensagem, setMensagem] = useState<string | null>(null);
+  // Avaliação sem notas recém-apagada: "Desfazer" fica disponível por alguns segundos.
+  const [apagadaRecentemente, setApagadaRecentemente] = useState<Avaliacao | null>(null);
+  const temporizadorDesfazer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(temporizadorDesfazer.current), []);
 
   const [mostrarNovaAvaliacao, setMostrarNovaAvaliacao] = useState(false);
   const [novoTitulo, setNovoTitulo] = useState("");
@@ -104,37 +159,15 @@ export function DetalheTurma() {
   const [editDescricao, setEditDescricao] = useState("");
   const [salvandoEdicaoAula, setSalvandoEdicaoAula] = useState(false);
 
+  const [apagandoAulaId, setApagandoAulaId] = useState<string | null>(null);
+  // undefined = ainda consultando as presenças da aula.
+  const [situacaoApagarAula, setSituacaoApagarAula] = useState<SituacaoApagarAula | undefined>(undefined);
+  const [apagandoAula, setApagandoAula] = useState(false);
+
   const [encerrandoId, setEncerrandoId] = useState<string | null>(null);
   const [confirmandoEncerrarTurma, setConfirmandoEncerrarTurma] = useState(false);
   const [encerrandoTurma, setEncerrandoTurma] = useState(false);
   const [resumoEncerramento, setResumoEncerramento] = useState<ResumoEncerramentoTurma | null>(null);
-
-  async function carregar() {
-    if (!id) return;
-    try {
-      const [dadosTurma, listaAvaliacoes, listaAulas, listaAlunos] = await Promise.all([
-        buscarTurmaDetalhada(id),
-        listarAvaliacoesDaTurma(id),
-        listarAulasDaTurma(id),
-        listarAlunosDoDiario(id),
-      ]);
-      setTurma(dadosTurma);
-      setAvaliacoes(listaAvaliacoes);
-      setAulas(listaAulas);
-
-      const progressos = await Promise.all(
-        listaAlunos.map((a) => buscarProgressoMatricula(a.matriculaId)),
-      );
-      setAlunos(listaAlunos.map((a, i) => ({ ...a, progresso: progressos[i] })));
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : "Não foi possível carregar a turma.");
-    }
-  }
-
-  useEffect(() => {
-    void carregar();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
 
   async function aoCriarAvaliacao(evento: FormEvent) {
     evento.preventDefault();
@@ -143,20 +176,22 @@ export function DetalheTurma() {
     setMensagem(null);
     setSalvandoAvaliacao(true);
     try {
-      const ordem = await proximaOrdemAvaliacao(id);
-      await criarAvaliacao({
-        turmaId: id,
-        titulo: novoTitulo,
-        descricao: novaDescricao,
-        peso: novoPeso,
-        ordem,
-      });
+      await gravar(
+        async () =>
+          criarAvaliacao({
+            turmaId: id,
+            titulo: novoTitulo,
+            descricao: novaDescricao,
+            peso: novoPeso,
+            ordem: await proximaOrdemAvaliacao(id),
+          }),
+        (qc) => invalidar.avaliacoes(qc, id),
+      );
       setNovoTitulo("");
       setNovaDescricao("");
       setNovoPeso(1);
       setMostrarNovaAvaliacao(false);
       setMensagem("Avaliação criada.");
-      await carregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível criar a avaliação.");
     } finally {
@@ -171,18 +206,21 @@ export function DetalheTurma() {
     setMensagem(null);
     setSalvandoAula(true);
     try {
-      await criarAula({
-        turmaId: id,
-        data: novaData,
-        horario: novoHorario,
-        descricao: novaAulaDescricao,
-      });
+      await gravar(
+        () =>
+          criarAula({
+            turmaId: id,
+            data: novaData,
+            horario: novoHorario,
+            descricao: novaAulaDescricao,
+          }),
+        (qc) => invalidar.aulas(qc, id),
+      );
       setNovaData("");
       setNovoHorario("");
       setNovaAulaDescricao("");
       setMostrarNovaAula(false);
       setMensagem("Aula criada.");
-      await carregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível criar a aula.");
     } finally {
@@ -190,7 +228,35 @@ export function DetalheTurma() {
     }
   }
 
-  const datasRecorrencia = calcularDatasRecorrentes(diasSelecionados, recorrenciaInicio, recorrenciaFim);
+  // Validação de conveniência do período do lote (mesma faixa de ano das
+  // turmas). Com erro, nem calcula as datas — um ano digitado pela metade
+  // geraria milhares de datas na prévia.
+  const erroPeriodoLote = (() => {
+    if (!recorrenciaInicio || !recorrenciaFim) return null;
+    const foraDaFaixa = (d: string) => d < PERIODO_TURMA_DATA_MIN || d > PERIODO_TURMA_DATA_MAX;
+    if (foraDaFaixa(recorrenciaInicio) || foraDaFaixa(recorrenciaFim)) {
+      return `Use datas entre ${PERIODO_TURMA_DATA_MIN.slice(0, 4)} e ${PERIODO_TURMA_DATA_MAX.slice(0, 4)}.`;
+    }
+    if (recorrenciaFim < recorrenciaInicio) return "A data de fim não pode ser anterior à de início.";
+    return null;
+  })();
+  const loteForaDoPeriodoDaTurma =
+    !!turma &&
+    !erroPeriodoLote &&
+    !!recorrenciaInicio &&
+    !!recorrenciaFim &&
+    (recorrenciaInicio < turma.periodoInicio || recorrenciaFim > turma.periodoFim);
+
+  const datasRecorrencia = erroPeriodoLote
+    ? []
+    : calcularDatasRecorrentes(diasSelecionados, recorrenciaInicio, recorrenciaFim);
+  // Gerar o mesmo lote duas vezes duplicava as aulas: a prévia já desconta
+  // as que existem na mesma data e horário, e só as novas são criadas.
+  const aulasExistentes = new Set(aulas.map((a) => chaveAula(a.data, a.horario)));
+  const datasNovas = datasRecorrencia.filter(
+    (d) => !aulasExistentes.has(chaveAula(d, recorrenciaHorario || null)),
+  );
+  const datasJaExistentes = datasRecorrencia.length - datasNovas.length;
 
   function alternarDiaSemana(valor: number) {
     setDiasSelecionados((atual) =>
@@ -200,25 +266,28 @@ export function DetalheTurma() {
 
   async function aoGerarAulas(evento: FormEvent) {
     evento.preventDefault();
-    if (!id || datasRecorrencia.length === 0) return;
+    if (!id || datasNovas.length === 0 || erroPeriodoLote) return;
     setErro(null);
     setMensagem(null);
     setSalvandoAula(true);
     try {
-      await criarAulasEmLote({
-        turmaId: id,
-        datas: datasRecorrencia,
-        horario: recorrenciaHorario,
-        descricao: recorrenciaDescricao,
-      });
+      await gravar(
+        () =>
+          criarAulasEmLote({
+            turmaId: id,
+            datas: datasNovas,
+            horario: recorrenciaHorario,
+            descricao: recorrenciaDescricao,
+          }),
+        (qc) => invalidar.aulas(qc, id),
+      );
       setDiasSelecionados([]);
       setRecorrenciaInicio("");
       setRecorrenciaFim("");
       setRecorrenciaHorario("");
       setRecorrenciaDescricao("");
       setMostrarNovaAula(false);
-      setMensagem(`${datasRecorrencia.length} aula(s) criada(s).`);
-      await carregar();
+      setMensagem(`${plural(datasNovas.length, "aula criada", "aulas criadas")}.`);
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível gerar as aulas.");
     } finally {
@@ -238,15 +307,18 @@ export function DetalheTurma() {
 
   async function aoSalvarEdicaoAula(evento: FormEvent) {
     evento.preventDefault();
-    if (!editandoAulaId) return;
+    if (!editandoAulaId || !id) return;
     setErro(null);
     setMensagem(null);
     setSalvandoEdicaoAula(true);
     try {
-      await atualizarAula(editandoAulaId, { data: editData, horario: editHorario, descricao: editDescricao });
+      const aulaId = editandoAulaId;
+      await gravar(
+        () => atualizarAula(aulaId, { data: editData, horario: editHorario, descricao: editDescricao }),
+        (qc) => invalidar.aulas(qc, id, aulaId),
+      );
       setEditandoAulaId(null);
       setMensagem("Aula atualizada.");
-      await carregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível atualizar a aula.");
     } finally {
@@ -254,21 +326,103 @@ export function DetalheTurma() {
     }
   }
 
-  async function aoApagarAvaliacao(avaliacaoId: string) {
+  async function aoPedirApagarAula(aula: Aula) {
+    setErro(null);
     setMensagem(null);
-    await apagarAvaliacao(avaliacaoId);
-    setMensagem("Avaliação apagada.");
-    await carregar();
+    setEditandoAulaId(null);
+    setApagandoAulaId(aula.id);
+    setSituacaoApagarAula(undefined);
+    try {
+      // staleTime 0: a decisão de apagar precisa da chamada atual, não do cache.
+      const presencas = await qc.fetchQuery({ ...opcoesDiario.presencas(aula.id), staleTime: 0 });
+      const encerrados = alunos
+        .filter(
+          (a) => (a.status === "concluida" || a.status === "reprovada") && presencas.has(a.matriculaId),
+        )
+        .map((a) => a.alunoNome);
+      setSituacaoApagarAula({ temChamada: presencas.size > 0, encerrados });
+    } catch (e) {
+      setApagandoAulaId(null);
+      setErro(e instanceof Error ? e.message : "Não foi possível verificar a chamada da aula.");
+    }
+  }
+
+  async function aoConfirmarApagarAula(aulaId: string) {
+    if (!id) return;
+    setErro(null);
+    setMensagem(null);
+    setApagandoAula(true);
+    try {
+      await gravar(() => apagarAula(aulaId), (qc) => invalidar.aulas(qc, id, aulaId));
+      setApagandoAulaId(null);
+      setMensagem("Aula apagada.");
+    } catch (e) {
+      if (e instanceof BloqueioAlunoEncerrado) setApagandoAulaId(null);
+      setErro(e instanceof Error ? e.message : "Não foi possível apagar a aula.");
+    } finally {
+      setApagandoAula(false);
+    }
+  }
+
+  async function aoApagarAvaliacao(avaliacao: Avaliacao, podeDesfazer: boolean) {
+    if (!id) return;
+    setMensagem(null);
+    await gravar(() => apagarAvaliacao(avaliacao.id), (qc) => invalidar.avaliacoes(qc, id));
+    if (podeDesfazer) {
+      window.clearTimeout(temporizadorDesfazer.current);
+      setApagadaRecentemente(avaliacao);
+      temporizadorDesfazer.current = window.setTimeout(() => setApagadaRecentemente(null), SEGUNDOS_PARA_DESFAZER * 1000);
+    } else {
+      setApagadaRecentemente(null);
+      setMensagem(`Avaliação ${avaliacao.titulo} apagada.`);
+    }
+  }
+
+  // "Desfazer" recria a avaliação com o mesmo título, descrição, peso e
+  // ordem (só existe para avaliação sem notas — nada mais se perdeu). Se
+  // outra avaliação já ocupou a ordem nesse meio-tempo, vai para o fim.
+  async function aoDesfazerApagar() {
+    const avaliacao = apagadaRecentemente;
+    if (!id || !avaliacao) return;
+    window.clearTimeout(temporizadorDesfazer.current);
+    setApagadaRecentemente(null);
+    setErro(null);
+    const recriar = (ordem: number) =>
+      criarAvaliacao({
+        turmaId: id,
+        titulo: avaliacao.titulo,
+        descricao: avaliacao.descricao ?? "",
+        peso: avaliacao.peso,
+        ordem,
+      });
+    try {
+      await gravar(
+        async () => {
+          try {
+            return await recriar(avaliacao.ordem);
+          } catch (e) {
+            if (e instanceof Error && e.message.includes("nessa posição")) {
+              return recriar(await proximaOrdemAvaliacao(id));
+            }
+            throw e;
+          }
+        },
+        (qc) => invalidar.avaliacoes(qc, id),
+      );
+      setMensagem(`Avaliação ${avaliacao.titulo} restaurada.`);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Não foi possível restaurar a avaliação.");
+    }
   }
 
   async function aoEncerrar(matriculaId: string) {
+    if (!id) return;
     setErro(null);
     setMensagem(null);
     setEncerrandoId(matriculaId);
     try {
-      await encerrarMatricula(matriculaId);
+      await gravar(() => encerrarMatricula(matriculaId), (qc) => invalidar.matriculas(qc, id));
       setMensagem("Resultado do aluno lançado.");
-      await carregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível encerrar o aluno.");
     } finally {
@@ -282,10 +436,9 @@ export function DetalheTurma() {
     setMensagem(null);
     setEncerrandoTurma(true);
     try {
-      const resumo = await encerrarTurma(id);
+      const resumo = await gravar(() => encerrarTurma(id), (qc) => invalidar.matriculas(qc, id));
       setResumoEncerramento(resumo);
       setConfirmandoEncerrarTurma(false);
-      await carregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível encerrar a turma.");
     } finally {
@@ -297,7 +450,9 @@ export function DetalheTurma() {
 
   // Peso não tem teto (decisão de manter flexibilidade) — mostrar quanto
   // cada avaliação representa da média final deixa o efeito prático claro
-  // sem impor limite. Recalcula sozinho porque `avaliacoes` é estado.
+  // sem impor limite. Recalcula sozinho porque `avaliacoes` é estado. O
+  // texto precisa dizer que o peso é relativo: com a primeira avaliação o
+  // percentual é sempre 100%, o que parecia erro.
   const somaPesos = avaliacoes.reduce((soma, a) => soma + a.peso, 0);
   function percentualDoPeso(peso: number, somaTotal: number): number {
     return somaTotal > 0 ? Math.round((peso / somaTotal) * 100) : 0;
@@ -305,21 +460,48 @@ export function DetalheTurma() {
 
   return (
     <PaginaAutenticada>
-        <BotaoVoltar />
+        <BotaoVoltar seSemHistorico="/professor/turmas" />
 
         {erro && (
           <Aviso variant="danger" className="mb-4">
             {erro}
           </Aviso>
         )}
+        {erroDeLeitura && (
+          <ErroConsulta
+            className="mb-4"
+            erro={erroDeLeitura}
+            padrao="Não foi possível carregar a turma."
+            tentarDeNovo={() => {
+              consultasDaTela.forEach((c) => c.isError && void c.refetch());
+              progressos.tentarDeNovo();
+            }}
+          />
+        )}
         {mensagem && (
           <Aviso variant="success" className="mb-4">
             {mensagem}
           </Aviso>
         )}
+        {apagadaRecentemente && (
+          <Aviso variant="success" className="mb-4 flex flex-wrap items-center justify-between gap-3" role="status">
+            <span>Avaliação {apagadaRecentemente.titulo} apagada.</span>
+            <button
+              type="button"
+              onClick={() => void aoDesfazerApagar()}
+              className="font-medium underline hover:no-underline"
+            >
+              Desfazer
+            </button>
+          </Aviso>
+        )}
 
-        {turma === undefined && !erro && (
-          <p className="text-body-sm text-text-secondary">Carregando...</p>
+        {consultaTurma.isPending && !erroDeLeitura && (
+          <RegiaoCarregando className="mb-6 flex flex-col gap-2 rounded-klass-card border border-border bg-surface px-klass-card-x py-6">
+            <Esqueleto className="h-8 w-40" />
+            <Esqueleto className="h-4 w-64" />
+            <Esqueleto className="h-3 w-48" />
+          </RegiaoCarregando>
         )}
         {turma === null && <p className="text-body-sm text-text-secondary">Turma não encontrada.</p>}
 
@@ -354,7 +536,9 @@ export function DetalheTurma() {
             {aba === "avaliacoes" && (
               <>
                 <div className="mb-4 flex items-center justify-between">
-                  <Titulo nivel="secao">Avaliações ({avaliacoes.length})</Titulo>
+                  <Titulo nivel="secao">
+                    Avaliações{consultaAvaliacoes.data ? ` (${avaliacoes.length})` : ""}
+                  </Titulo>
                   <Button onClick={() => setMostrarNovaAvaliacao((v) => !v)}>
                     {mostrarNovaAvaliacao ? "Cancelar" : "Nova avaliação"}
                   </Button>
@@ -391,8 +575,9 @@ export function DetalheTurma() {
                           onChange={(e) => setNovoPeso(Number(e.target.value))}
                         />
                         <span className="text-label text-text-muted">
-                          Com este peso, a avaliação representará{" "}
-                          {percentualDoPeso(novoPeso, somaPesos + novoPeso)}% da média final.
+                          {avaliacoes.length === 0
+                            ? "O peso é relativo às outras avaliações da turma. Como esta é a primeira, por enquanto ela vale 100% da média final; o percentual diminui quando outras forem criadas."
+                            : `O peso é relativo à soma dos pesos da turma: com as avaliações de hoje, esta valerá ${percentualDoPeso(novoPeso, somaPesos + novoPeso)}% da média final. O percentual muda quando outras avaliações forem criadas.`}
                         </span>
                       </label>
                       <Button type="submit" disabled={salvandoAvaliacao} className="self-start">
@@ -402,7 +587,8 @@ export function DetalheTurma() {
                   </Card>
                 )}
 
-                {avaliacoes.length === 0 && (
+                {consultaAvaliacoes.isPending && <EsqueletoTabela linhas={3} colunas={6} />}
+                {consultaAvaliacoes.data?.length === 0 && (
                   <p className="text-body-sm text-text-secondary">
                     Nenhuma avaliação cadastrada ainda.
                   </p>
@@ -422,7 +608,9 @@ export function DetalheTurma() {
             {aba === "aulas" && (
               <>
                 <div className="mb-4 flex items-center justify-between">
-                  <Titulo nivel="secao">Aulas ({aulas.length})</Titulo>
+                  <Titulo nivel="secao">
+                    Aulas{consultaAulas.data ? ` (${aulas.length})` : ""}
+                  </Titulo>
                   <Button
                     onClick={() => {
                       setMostrarNovaAula((v) => !v);
@@ -523,6 +711,8 @@ export function DetalheTurma() {
                             <Input
                               type="date"
                               required
+                              min={PERIODO_TURMA_DATA_MIN}
+                              max={PERIODO_TURMA_DATA_MAX}
                               value={recorrenciaInicio}
                               onChange={(e) => setRecorrenciaInicio(e.target.value)}
                             />
@@ -534,6 +724,8 @@ export function DetalheTurma() {
                             <Input
                               type="date"
                               required
+                              min={PERIODO_TURMA_DATA_MIN}
+                              max={PERIODO_TURMA_DATA_MAX}
                               value={recorrenciaFim}
                               onChange={(e) => setRecorrenciaFim(e.target.value)}
                             />
@@ -558,14 +750,29 @@ export function DetalheTurma() {
                             onChange={(e) => setRecorrenciaDescricao(e.target.value)}
                           />
                         </label>
+                        {erroPeriodoLote && (
+                          <p className="text-label font-medium text-danger">{erroPeriodoLote}</p>
+                        )}
+                        {loteForaDoPeriodoDaTurma && turma && (
+                          <p className="text-label text-text-secondary">
+                            Atenção: o período escolhido sai do período da turma ({turma.periodoInicio} a{" "}
+                            {turma.periodoFim}).
+                          </p>
+                        )}
                         <p className="text-label text-text-muted">
                           {datasRecorrencia.length === 0
-                            ? "Escolha ao menos um dia da semana e o período."
-                            : `${datasRecorrencia.length} aula(s) serão criadas.`}
+                            ? erroPeriodoLote
+                              ? ""
+                              : "Escolha ao menos um dia da semana e o período."
+                            : datasNovas.length === 0
+                              ? `${datasJaExistentes === 1 ? "A aula já existe" : `As ${datasJaExistentes} aulas já existem`} nessa data e horário; nada será criado.`
+                              : datasJaExistentes === 0
+                                ? `${plural(datasNovas.length, "aula será criada", "aulas serão criadas")}.`
+                                : `${plural(datasNovas.length, "aula será criada", "aulas serão criadas")}; ${plural(datasJaExistentes, "já existe e será ignorada", "já existem e serão ignoradas")}.`}
                         </p>
                         <Button
                           type="submit"
-                          disabled={salvandoAula || datasRecorrencia.length === 0}
+                          disabled={salvandoAula || datasNovas.length === 0 || !!erroPeriodoLote}
                           className="self-start"
                         >
                           {salvandoAula ? "Gerando..." : "Gerar aulas"}
@@ -576,11 +783,66 @@ export function DetalheTurma() {
                 )}
 
                 <div className="flex flex-col gap-2">
-                  {aulas.length === 0 && (
+                  {consultaAulas.isPending && <EsqueletoCards quantidade={4} altura="h-16" />}
+                  {consultaAulas.data?.length === 0 && (
                     <p className="text-body-sm text-text-secondary">Nenhuma aula cadastrada ainda.</p>
                   )}
                   {aulas.map((aula) =>
-                    editandoAulaId === aula.id ? (
+                    apagandoAulaId === aula.id ? (
+                      <Card key={aula.id} className="flex flex-col gap-3">
+                        {situacaoApagarAula === undefined ? (
+                          <p className="text-body-sm text-text-secondary">Verificando a chamada da aula...</p>
+                        ) : situacaoApagarAula.encerrados.length > 0 ? (
+                          <>
+                            <p className="text-body-sm text-text-primary">
+                              A aula de <strong>{aula.data}</strong> não pode ser apagada: a chamada dela
+                              inclui{" "}
+                              {situacaoApagarAula.encerrados.length === 1
+                                ? "um aluno já encerrado"
+                                : "alunos já encerrados"}{" "}
+                              ({situacaoApagarAula.encerrados.join(", ")}). O histórico de quem já foi
+                              aprovado ou reprovado não muda. Para apagá-la, peça à coordenação para
+                              desfazer o encerramento{" "}
+                              {situacaoApagarAula.encerrados.length === 1 ? "desse aluno" : "desses alunos"}.
+                            </p>
+                            <Button
+                              variant="secondary"
+                              className="self-start"
+                              onClick={() => setApagandoAulaId(null)}
+                            >
+                              Fechar
+                            </Button>
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-body-sm text-text-primary">
+                              Apagar a aula de <strong>{aula.data}</strong>
+                              {aula.horario ? ` · ${aula.horario}` : ""}?
+                              {situacaoApagarAula.temChamada && (
+                                <>
+                                  {" "}
+                                  <span className="font-medium text-danger">
+                                    A chamada já feita nesta aula será apagada junto.
+                                  </span>
+                                </>
+                              )}
+                            </p>
+                            <div className="flex gap-2">
+                              <Button disabled={apagandoAula} onClick={() => void aoConfirmarApagarAula(aula.id)}>
+                                {apagandoAula ? "Apagando..." : "Apagar aula"}
+                              </Button>
+                              <Button
+                                variant="secondary"
+                                disabled={apagandoAula}
+                                onClick={() => setApagandoAulaId(null)}
+                              >
+                                Cancelar
+                              </Button>
+                            </div>
+                          </>
+                        )}
+                      </Card>
+                    ) : editandoAulaId === aula.id ? (
                       <Card key={aula.id}>
                         <form className="flex flex-col gap-3" onSubmit={aoSalvarEdicaoAula}>
                           <div className="flex gap-4">
@@ -648,12 +910,20 @@ export function DetalheTurma() {
                             <Pencil className="h-3.5 w-3.5" aria-hidden />
                             Editar
                           </button>
-                          <Link
+                          <button
+                            type="button"
+                            onClick={() => void aoPedirApagarAula(aula)}
+                            className="flex items-center gap-1 text-body-sm font-medium text-text-secondary hover:text-danger"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                            Apagar
+                          </button>
+                          <LinkComPrefetch
                             to={`/professor/turmas/${id}/aulas/${aula.id}/chamada`}
                             className="text-body-sm font-medium text-primary hover:underline"
                           >
                             Fazer chamada
-                          </Link>
+                          </LinkComPrefetch>
                         </div>
                       </Card>
                     ),
@@ -665,7 +935,9 @@ export function DetalheTurma() {
             {aba === "alunos" && (
               <>
                 <div className="mb-4 flex items-center justify-between gap-4">
-                  <Titulo nivel="secao">Alunos ({alunos.length})</Titulo>
+                  <Titulo nivel="secao">
+                    Alunos{alunosCarregados ? ` (${alunos.length})` : ""}
+                  </Titulo>
                   {alunos.some((a) => a.status === "matriculada") &&
                     !confirmandoEncerrarTurma && (
                       <Button
@@ -706,17 +978,19 @@ export function DetalheTurma() {
 
                 {resumoEncerramento && (
                   <Aviso variant="success" className="mb-4">
-                    Encerramento concluído: {resumoEncerramento.aprovadas} aprovado(s),{" "}
-                    {resumoEncerramento.reprovadas} reprovado(s)
+                    Encerramento concluído:{" "}
+                    {plural(resumoEncerramento.aprovadas, "aprovado", "aprovados")},{" "}
+                    {plural(resumoEncerramento.reprovadas, "reprovado", "reprovados")}
                     {resumoEncerramento.puladas > 0
-                      ? `, ${resumoEncerramento.puladas} pulado(s) (faltam notas ou chamadas)`
+                      ? `, ${plural(resumoEncerramento.puladas, "pulado", "pulados")} (faltam notas ou chamadas)`
                       : ""}
                     .
                   </Aviso>
                 )}
 
                 <div className="flex flex-col gap-2">
-                  {alunos.length === 0 && (
+                  {!alunosCarregados && !erroDeLeitura && <EsqueletoCards quantidade={3} altura="h-16" />}
+                  {alunosCarregados && alunos.length === 0 && (
                     <p className="text-body-sm text-text-secondary">
                       Nenhum aluno matriculado ainda.
                     </p>

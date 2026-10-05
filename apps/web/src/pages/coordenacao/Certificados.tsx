@@ -1,12 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
-import { pdf } from "@react-pdf/renderer";
-import { Aviso } from "@/components/Aviso";
+import { useMemo, useState } from "react";
 import { Card } from "@/components/Card";
+import { EsqueletoTabela } from "@/components/Esqueleto";
+import { ErroConsulta } from "@/components/ErroConsulta";
 import { Input } from "@/components/Input";
 import { PaginaAutenticada } from "@/components/PaginaAutenticada";
 import { Titulo } from "@/components/Titulo";
-import { listarTodosCertificados } from "@/lib/certificacao";
-import { CertificadoPDF } from "@/pdf/CertificadoPDF";
+import { useTodosCertificados } from "@/lib/consultas/certificacao";
+import { gerarPdfDoCertificado } from "@/pdf/gerarCertificado";
 import type { Certificado } from "@klass/types";
 
 function formatarData(iso: string): string {
@@ -14,18 +14,10 @@ function formatarData(iso: string): string {
 }
 
 export function Certificados() {
-  const [certificados, setCertificados] = useState<Certificado[] | null>(null);
-  const [erro, setErro] = useState<string | null>(null);
+  const consulta = useTodosCertificados();
+  const certificados = consulta.data;
   const [filtroTrilha, setFiltroTrilha] = useState("");
   const [filtroAluno, setFiltroAluno] = useState("");
-
-  useEffect(() => {
-    listarTodosCertificados()
-      .then(setCertificados)
-      .catch((e) =>
-        setErro(e instanceof Error ? e.message : "Não foi possível carregar os certificados."),
-      );
-  }, []);
 
   const trilhas = useMemo(
     () => [...new Set((certificados ?? []).map((c) => c.trilha_nome))].sort(),
@@ -41,9 +33,10 @@ export function Certificados() {
     });
   }, [certificados, filtroTrilha, filtroAluno]);
 
-  // Gera o PDF na hora e abre em nova aba (a coordenação confere sem baixar).
+  // Gera o PDF na hora e abre em nova aba (a coordenação confere sem
+  // baixar). O código do react-pdf só é carregado neste clique.
   async function abrirPdf(certificado: Certificado) {
-    const blob = await pdf(<CertificadoPDF certificado={certificado} />).toBlob();
+    const blob = await gerarPdfDoCertificado(certificado);
     window.open(URL.createObjectURL(blob), "_blank");
   }
 
@@ -51,10 +44,13 @@ export function Certificados() {
     <PaginaAutenticada largura="ampla">
         <Titulo className="mb-6">Certificados</Titulo>
 
-        {erro && (
-          <Aviso variant="danger" className="mb-4">
-            {erro}
-          </Aviso>
+        {consulta.isError && !certificados && (
+          <ErroConsulta
+            className="mb-4"
+            erro={consulta.error}
+            padrao="Não foi possível carregar os certificados."
+            tentarDeNovo={() => void consulta.refetch()}
+          />
         )}
 
         <div className="mb-4 flex flex-wrap items-end gap-3">
@@ -84,9 +80,7 @@ export function Certificados() {
           </label>
         </div>
 
-        {!erro && certificados === null && (
-          <p className="text-body-sm text-text-secondary">Carregando...</p>
-        )}
+        {consulta.isPending && <EsqueletoTabela linhas={4} colunas={5} />}
         {certificados?.length === 0 && (
           <p className="text-body-sm text-text-secondary">Nenhum certificado emitido ainda.</p>
         )}

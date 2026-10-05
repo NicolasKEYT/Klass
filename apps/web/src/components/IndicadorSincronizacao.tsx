@@ -1,46 +1,25 @@
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useState,
-  type ReactNode,
-} from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useIsMutating } from "@tanstack/react-query";
 import { Check, CloudOff, Loader2 } from "lucide-react";
+import { useUltimaGravacao } from "@/lib/consultas/estadoGravacao";
+import { supabase } from "@/lib/supabase";
 
 // D13 (klass-uikit.pdf) — "o estado de sincronização fica sempre visível:
-// tempo real, salvando, salvo, sem conexão". Contexto único no shell
-// autenticado: por padrão reflete a conectividade real do navegador
-// (tempo real quando online, sem conexão quando offline); telas com
-// gravação própria (chamada, grade de notas) chamam notificarSalvando/
-// notificarSalvo para substituir o "tempo real" genérico pelo estado real
-// daquela operação, sem cada tela reimplementar o indicador.
+// tempo real, salvando, salvo, sem conexão". Mora na faixa superior da
+// casca persistente, então o estado sobrevive à troca de tela. Lê tudo do
+// estado real, sem cada tela avisar nada:
+// - sem conexão: navegador offline, ou canais do Realtime abertos com o
+//   socket caído (as atualizações ao vivo pararam de chegar);
+// - salvando: alguma gravação (useGravacao → mutation) ainda no ar;
+// - salvo às HH:MM: horário da última gravação concluída;
+// - tempo real: o resto.
 type EstadoSincronizacao = "tempo-real" | "salvando" | "salvo" | "sem-conexao";
 
-interface SincronizacaoContextValue {
-  estado: EstadoSincronizacao;
-  salvoEm: Date | null;
-  notificarSalvando: () => void;
-  notificarSalvo: () => void;
-  /** Falha ao salvar: volta para "tempo real"/"sem conexão" sem fingir sucesso. */
-  notificarErro: () => void;
-}
-
-const SincronizacaoContext = createContext<SincronizacaoContextValue | null>(null);
-
-export function SincronizacaoProvider({ children }: { children: ReactNode }) {
-  const [online, setOnline] = useState(() =>
-    typeof navigator === "undefined" ? true : navigator.onLine,
-  );
-  const [estadoManual, setEstadoManual] = useState<"salvando" | "salvo" | null>(null);
-  const [salvoEm, setSalvoEm] = useState<Date | null>(null);
-
+function useOnline(): boolean {
+  const [online, setOnline] = useState(() => (typeof navigator === "undefined" ? true : navigator.onLine));
   useEffect(() => {
-    function aoFicarOnline() {
-      setOnline(true);
-    }
-    function aoFicarOffline() {
-      setOnline(false);
-    }
+    const aoFicarOnline = () => setOnline(true);
+    const aoFicarOffline = () => setOnline(false);
     window.addEventListener("online", aoFicarOnline);
     window.addEventListener("offline", aoFicarOffline);
     return () => {
@@ -48,37 +27,35 @@ export function SincronizacaoProvider({ children }: { children: ReactNode }) {
       window.removeEventListener("offline", aoFicarOffline);
     };
   }, []);
-
-  const estado: EstadoSincronizacao = !online
-    ? "sem-conexao"
-    : estadoManual === "salvando"
-      ? "salvando"
-      : estadoManual === "salvo"
-        ? "salvo"
-        : "tempo-real";
-
-  const valor: SincronizacaoContextValue = {
-    estado,
-    salvoEm,
-    notificarSalvando: () => setEstadoManual("salvando"),
-    notificarSalvo: () => {
-      setEstadoManual("salvo");
-      setSalvoEm(new Date());
-    },
-    notificarErro: () => setEstadoManual(null),
-  };
-
-  return (
-    <SincronizacaoContext.Provider value={valor}>{children}</SincronizacaoContext.Provider>
-  );
+  return online;
 }
 
-export function useSincronizacao(): SincronizacaoContextValue {
-  const contexto = useContext(SincronizacaoContext);
-  if (!contexto) {
-    throw new Error("useSincronizacao precisa ser usado dentro de um <SincronizacaoProvider>.");
-  }
-  return contexto;
+// O supabase-js não emite evento público de mudança de conexão do
+// Realtime; consulta o socket e o estado dos canais ativos a cada 2 s.
+// Tolerância de 5 s fora do ar antes de avisar: a conexão inicial e as
+// reconexões automáticas não devem piscar "Sem conexão".
+const TOLERANCIA_MS = 5_000;
+
+function useRealtimeCaido(): boolean {
+  const [caido, setCaido] = useState(false);
+  const foraDesde = useRef<number | null>(null);
+  useEffect(() => {
+    if (!supabase) return;
+    const cliente = supabase;
+    function verificar() {
+      const canais = cliente.getChannels();
+      const conectado =
+        canais.length === 0 ||
+        (cliente.realtime.isConnected() && canais.every((c) => c.state !== "errored" && c.state !== "closed"));
+      if (conectado) foraDesde.current = null;
+      else foraDesde.current ??= Date.now();
+      setCaido(foraDesde.current !== null && Date.now() - foraDesde.current >= TOLERANCIA_MS);
+    }
+    verificar();
+    const intervalo = window.setInterval(verificar, 2_000);
+    return () => window.clearInterval(intervalo);
+  }, []);
+  return caido;
 }
 
 function formatarHora(data: Date): string {
@@ -91,7 +68,13 @@ function formatarHora(data: Date): string {
 // é preenchido a preto (o único estado que exige atenção imediata). Cor
 // nunca é verde/vermelha — só preto, contorno ou tracejado.
 export function IndicadorSincronizacao({ className = "" }: { className?: string }) {
-  const { estado, salvoEm } = useSincronizacao();
+  const online = useOnline();
+  const realtimeCaido = useRealtimeCaido();
+  const gravando = useIsMutating() > 0;
+  const salvoEm = useUltimaGravacao();
+
+  const estado: EstadoSincronizacao =
+    !online || realtimeCaido ? "sem-conexao" : gravando ? "salvando" : salvoEm ? "salvo" : "tempo-real";
 
   const conteudo: Record<
     EstadoSincronizacao,

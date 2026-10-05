@@ -1,15 +1,13 @@
-import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { PDFDownloadLink } from "@react-pdf/renderer";
 import { useAuth } from "@/auth";
-import { Aviso } from "@/components/Aviso";
 import { Badge } from "@/components/Badge";
+import { BotaoBaixarCertificado } from "@/components/BotaoBaixarCertificado";
 import { Card } from "@/components/Card";
+import { EsqueletoCards } from "@/components/Esqueleto";
+import { ErroConsulta } from "@/components/ErroConsulta";
 import { PaginaAutenticada } from "@/components/PaginaAutenticada";
 import { Titulo } from "@/components/Titulo";
-import { listarCertificadosDoAluno } from "@/lib/certificacao";
-import { CertificadoPDF } from "@/pdf/CertificadoPDF";
-import type { Certificado } from "@klass/types";
+import { useCertificadosDoAluno } from "@/lib/consultas/certificacao";
 
 function formatarData(iso: string): string {
   return new Date(iso).toLocaleDateString("pt-BR", { timeZone: "UTC" });
@@ -17,31 +15,23 @@ function formatarData(iso: string): string {
 
 export function Certificados() {
   const { usuario } = useAuth();
-  const [certificados, setCertificados] = useState<Certificado[] | null>(null);
-  const [erro, setErro] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!usuario) return;
-    listarCertificadosDoAluno(usuario.id)
-      .then(setCertificados)
-      .catch((e) =>
-        setErro(e instanceof Error ? e.message : "Não foi possível carregar seus certificados."),
-      );
-  }, [usuario?.id]);
+  const consulta = useCertificadosDoAluno(usuario?.id);
+  const certificados = consulta.data;
 
   return (
     <PaginaAutenticada>
         <Titulo className="mb-6">Meus certificados</Titulo>
 
-        {erro && (
-          <Aviso variant="danger" className="mb-4">
-            {erro}
-          </Aviso>
+        {consulta.isError && !certificados && (
+          <ErroConsulta
+            className="mb-4"
+            erro={consulta.error}
+            padrao="Não foi possível carregar seus certificados."
+            tentarDeNovo={() => void consulta.refetch()}
+          />
         )}
 
-        {!erro && certificados === null && (
-          <p className="text-body-sm text-text-secondary">Carregando...</p>
-        )}
+        {consulta.isPending && <EsqueletoCards quantidade={2} altura="h-28" />}
 
         {certificados?.length === 0 && (
           <Card>
@@ -89,13 +79,7 @@ export function Certificados() {
                 <p className="font-mono text-label text-text-muted">{certificado.hash_publico}</p>
               </div>
 
-              <PDFDownloadLink
-                document={<CertificadoPDF certificado={certificado} />}
-                fileName={`certificado-${certificado.hash_publico}.pdf`}
-                className="inline-flex h-12 sm:h-10 items-center justify-center rounded-klass-control bg-primary px-4 text-klass-md font-medium text-white hover:bg-primary/90"
-              >
-                {({ loading }) => (loading ? "Gerando..." : "Baixar PDF")}
-              </PDFDownloadLink>
+              <BotaoBaixarCertificado certificado={certificado} />
             </Card>
           ))}
         </div>

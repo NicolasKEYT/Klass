@@ -1,7 +1,7 @@
 import { supabase } from "@/lib/supabase";
 import { mensagemDeErroBanco } from "@/lib/mensagensDeErroBanco";
 import { listarModulosDaTrilha } from "@/lib/catalogo";
-import type { Matricula, StatusMatricula, Turma } from "@klass/types";
+import type { Matricula, Modulo, StatusMatricula, Turma } from "@klass/types";
 
 // Ponto único de acesso a selecao.* — mesmo padrão de apps/web/src/lib/catalogo.ts.
 function selecao() {
@@ -131,6 +131,22 @@ export async function listarTurmasParaCoordenacao(): Promise<TurmaListagem[]> {
   });
 }
 
+export type SituacaoTurma = "futura" | "em_andamento" | "aguardando_encerramento" | "encerrada";
+
+// Ainda não existe estado de turma no banco: a situação é derivada aqui.
+// "encerrada" = período terminado E nenhuma matrícula ativa (inscrita ou
+// matriculada); período terminado com aluno ativo = "aguardando
+// encerramento" (falta o professor encerrar os alunos). Quando houver um
+// estado próprio de turma no banco, esta função passa a só lê-lo.
+export function situacaoDaTurma(
+  turma: Pick<TurmaListagem, "periodoInicio" | "periodoFim" | "matriculados" | "pendentes">,
+  hoje: string,
+): SituacaoTurma {
+  if (turma.periodoInicio > hoje) return "futura";
+  if (turma.periodoFim >= hoje) return "em_andamento";
+  return turma.matriculados + turma.pendentes > 0 ? "aguardando_encerramento" : "encerrada";
+}
+
 export interface TurmaDetalhada {
   id: string;
   codigo: string;
@@ -237,17 +253,46 @@ export async function listarProfessores(): Promise<Array<{ id: string; nomeCompl
 export const PERIODO_TURMA_DATA_MIN = "2000-01-01";
 export const PERIODO_TURMA_DATA_MAX = "2100-12-31";
 
+export const MENSAGEM_ANO_PERIODO_TURMA = "O ano das datas do período precisa estar entre 2000 e 2100.";
+
 // Validação de conveniência antes de enviar (a garantia é do banco).
-// Retorna a mensagem de erro em português, ou null se estiver ok.
+// Retorna a mensagem de erro em português, ou null se estiver ok. A data
+// inteira é conferida (não só os 4 primeiros caracteres): o input nativo
+// aceita digitar um ano de 5 dígitos ("20261-05-01"), que passava.
 export function validarPeriodoTurma(inicio: string, fim: string): string | null {
   if (!inicio || !fim) return "Preencha as datas de início e fim do período.";
-  const anoInicio = Number(inicio.slice(0, 4));
-  const anoFim = Number(fim.slice(0, 4));
-  if (anoInicio < 2000 || anoInicio > 2100 || anoFim < 2000 || anoFim > 2100) {
-    return "O ano do período precisa ter 4 dígitos, entre 2000 e 2100.";
-  }
+  const formato = /^\d{4}-\d{2}-\d{2}$/;
+  if (!formato.test(inicio) || !formato.test(fim)) return MENSAGEM_ANO_PERIODO_TURMA;
+  if (inicio < PERIODO_TURMA_DATA_MIN || inicio > PERIODO_TURMA_DATA_MAX) return MENSAGEM_ANO_PERIODO_TURMA;
+  if (fim < PERIODO_TURMA_DATA_MIN || fim > PERIODO_TURMA_DATA_MAX) return MENSAGEM_ANO_PERIODO_TURMA;
   if (fim <= inicio) return "O período final precisa vir depois do início.";
   return null;
+}
+
+export const AJUDA_CODIGO_TURMA =
+  "2 ou 3 partes de letras maiúsculas e números separadas por hífen; a primeira com pelo menos 2 caracteres; até 30 caracteres, sem espaços nem acentos. Ex.: CDA-2026-1.";
+
+// Mesma regra do check turmas_codigo_formato (migration
+// 20260923120000_turmas_edicao_validacoes): validação enquanto digita.
+export function validarCodigoTurma(codigo: string): string | null {
+  if (codigo.length > 30) return "O código pode ter no máximo 30 caracteres.";
+  if (/\s/.test(codigo)) return "O código não pode ter espaços.";
+  if (!/^[A-Z0-9]{2,}(-[A-Z0-9]+){1,2}$/.test(codigo)) return `Código fora do formato: ${AJUDA_CODIGO_TURMA}`;
+  return null;
+}
+
+/** Outras turmas do mesmo módulo cujo período se sobrepõe ao informado. */
+export function turmasSobrepostas<T extends { id: string; moduloId: string; periodoInicio: string; periodoFim: string }>(
+  turmas: T[],
+  moduloId: string,
+  inicio: string,
+  fim: string,
+  ignorarId?: string,
+): T[] {
+  if (!moduloId || !inicio || !fim) return [];
+  return turmas.filter(
+    (t) => t.id !== ignorarId && t.moduloId === moduloId && t.periodoInicio <= fim && t.periodoFim >= inicio,
+  );
 }
 
 export async function criarTurma(input: {
@@ -455,6 +500,9 @@ export interface TurmaDoProfessor {
   periodoInicio: string;
   periodoFim: string;
   matriculados: number;
+  /** Critérios de aprovação — o "Hoje" compara frequência/média com eles. */
+  frequenciaMinimaPercentual: number;
+  trilhaMediaMinima: number;
 }
 
 export async function listarTurmasDoProfessor(professorId: string): Promise<TurmaDoProfessor[]> {
@@ -487,6 +535,8 @@ export async function listarTurmasDoProfessor(professorId: string): Promise<Turm
       matriculados: (matriculasResp.data ?? []).filter(
         (m) => m.turma_id === turma.id && m.status === "matriculada",
       ).length,
+      frequenciaMinimaPercentual: turma.frequencia_minima_percentual,
+      trilhaMediaMinima: contexto?.trilhaMediaMinima ?? 6,
     };
   });
 }
@@ -498,7 +548,12 @@ export interface TurmaDisponivel {
   periodoInicio: string;
   periodoFim: string;
   vagasRestantes: number;
-  /** Situação do aluno atual nesta turma, se houver. */
+  /**
+   * Matrícula do aluno atual nesta turma, em qualquer status — inclusive
+   * rejeitada/cancelada/reprovada. Não significa inscrição vigente: serve
+   * para bloquear só esta turma (unique aluno+turma); se o aluno ainda
+   * pode se inscrever no módulo é decidido pelo status (DetalheModulo).
+   */
   minhaMatricula: { id: string; status: StatusMatricula } | null;
 }
 
@@ -518,8 +573,9 @@ export interface ModuloComTurmas {
 export async function listarModulosComTurmasDaTrilha(
   trilhaId: string,
   alunoId: string | null,
+  modulosConhecidos?: Modulo[],
 ): Promise<ModuloComTurmas[]> {
-  const modulos = await listarModulosDaTrilha(trilhaId);
+  const modulos = modulosConhecidos ?? (await listarModulosDaTrilha(trilhaId));
   if (modulos.length === 0) return [];
 
   const moduloIds = modulos.map((m) => m.id);

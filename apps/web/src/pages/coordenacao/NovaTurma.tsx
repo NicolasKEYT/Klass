@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { Aviso } from "@/components/Aviso";
 import { BotaoVoltar } from "@/components/BotaoVoltar";
@@ -7,29 +7,49 @@ import { Card } from "@/components/Card";
 import { Input } from "@/components/Input";
 import { PaginaAutenticada } from "@/components/PaginaAutenticada";
 import { Titulo } from "@/components/Titulo";
-import { listarModulosDaTrilha, listarTrilhas } from "@/lib/catalogo";
+import { ErroConsulta } from "@/components/ErroConsulta";
+import { CampoCodigoTurma } from "@/components/turma/CampoCodigoTurma";
+import { useModulosDaTrilha, useTrilhas } from "@/lib/consultas/catalogo";
+import { useGravacao } from "@/lib/consultas/gravacao";
+import { useProfessores } from "@/lib/consultas/identidade";
+import { useTurmasDaCoordenacao } from "@/lib/consultas/selecao";
+import { invalidar } from "@/lib/consultas/invalidar";
 import {
   criarTurma,
-  listarProfessores,
+  turmasSobrepostas,
+  validarCodigoTurma,
   validarPeriodoTurma,
   PERIODO_TURMA_DATA_MIN,
   PERIODO_TURMA_DATA_MAX,
 } from "@/lib/selecao";
-import type { Modulo, Trilha } from "@klass/types";
 
 const ATRASO_ANTES_DE_NAVEGAR_MS = 700;
 const FREQUENCIA_MINIMA_PADRAO = 75;
 
 export function NovaTurma() {
   const navigate = useNavigate();
-  const [trilhas, setTrilhas] = useState<Trilha[]>([]);
-  const [modulos, setModulos] = useState<Modulo[]>([]);
-  const [professores, setProfessores] = useState<Array<{ id: string; nomeCompleto: string }>>([]);
+  const gravar = useGravacao();
+  const consultaTrilhas = useTrilhas();
+  const consultaProfessores = useProfessores();
+  const trilhas = (consultaTrilhas.data ?? []).filter((t) => t.publicada);
+  const professores = consultaProfessores.data ?? [];
 
-  const [trilhaId, setTrilhaId] = useState("");
-  const [moduloId, setModuloId] = useState("");
+  // Escolha do usuário; sem escolha, vale o primeiro item da lista (o
+  // padrão chega junto com os dados, sem efeito de sincronização).
+  const [trilhaEscolhida, setTrilhaId] = useState("");
+  const trilhaId = trilhaEscolhida || trilhas[0]?.id || "";
+  // Turma é oferta de um módulo específico — a trilha só existe aqui pra
+  // filtrar a lista de módulos, não é gravada em lugar nenhum.
+  const consultaModulos = useModulosDaTrilha(trilhaId || undefined);
+  const modulos = consultaModulos.isPlaceholderData ? [] : (consultaModulos.data ?? []);
+  const [moduloEscolhido, setModuloEscolhido] = useState<{ trilhaId: string; moduloId: string } | null>(null);
+  const moduloId =
+    moduloEscolhido && moduloEscolhido.trilhaId === trilhaId ? moduloEscolhido.moduloId : (modulos[0]?.id ?? "");
+  const setModuloId = (id: string) => setModuloEscolhido({ trilhaId, moduloId: id });
   const [codigo, setCodigo] = useState("");
-  const [professorId, setProfessorId] = useState("");
+  const [professorEscolhido, setProfessorId] = useState("");
+  const professorId = professorEscolhido || professores[0]?.id || "";
+  const erroDeLeitura = consultaTrilhas.error ?? consultaProfessores.error ?? consultaModulos.error;
   const [periodoInicio, setPeriodoInicio] = useState("");
   const [periodoFim, setPeriodoFim] = useState("");
   const [vagasTotal, setVagasTotal] = useState(30);
@@ -41,56 +61,32 @@ export function NovaTurma() {
   const [mensagem, setMensagem] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
 
-  useEffect(() => {
-    Promise.all([listarTrilhas(), listarProfessores()])
-      .then(([todasTrilhas, todosProfessores]) => {
-        const publicadas = todasTrilhas.filter((t) => t.publicada);
-        setTrilhas(publicadas);
-        setProfessores(todosProfessores);
-        if (publicadas[0]) setTrilhaId(publicadas[0].id);
-        if (todosProfessores[0]) setProfessorId(todosProfessores[0].id);
-      })
-      .catch((e) => setErro(e instanceof Error ? e.message : "Não foi possível carregar o formulário."));
-  }, []);
-
-  // Turma é oferta de um módulo específico — a trilha só existe aqui pra
-  // filtrar a lista de módulos, não é gravada em lugar nenhum.
-  useEffect(() => {
-    if (!trilhaId) {
-      setModulos([]);
-      setModuloId("");
-      return;
-    }
-    listarModulosDaTrilha(trilhaId)
-      .then((lista) => {
-        setModulos(lista);
-        setModuloId(lista[0]?.id ?? "");
-      })
-      .catch((e) => setErro(e instanceof Error ? e.message : "Não foi possível carregar os módulos."));
-  }, [trilhaId]);
-
   // "Ficar na tela" não existe pra turma como existe pra trilha — não há
   // uma edição de turma neste módulo. O equivalente de "continuar
   // trabalhando" é ir para a tela de detalhes, não repetir o envio.
   async function salvar(irParaListaAoInves: boolean) {
     setErro(null);
     setMensagem(null);
-    const erroPeriodo = validarPeriodoTurma(periodoInicio, periodoFim);
-    if (erroPeriodo) {
-      setErro(erroPeriodo);
+    const erroValidacao = validarCodigoTurma(codigo) ?? validarPeriodoTurma(periodoInicio, periodoFim);
+    if (erroValidacao) {
+      setErro(erroValidacao);
       return;
     }
     setEnviando(true);
     try {
-      const turma = await criarTurma({
-        moduloId,
-        codigo,
-        professorId,
-        periodoInicio,
-        periodoFim,
-        vagasTotal,
-        frequenciaMinimaPercentual,
-      });
+      const turma = await gravar(
+        () =>
+          criarTurma({
+            moduloId,
+            codigo,
+            professorId,
+            periodoInicio,
+            periodoFim,
+            vagasTotal,
+            frequenciaMinimaPercentual,
+          }),
+        (qc) => invalidar.turma(qc),
+      );
       setMensagem("Turma criada.");
       await new Promise((resolve) => setTimeout(resolve, ATRASO_ANTES_DE_NAVEGAR_MS));
       navigate(irParaListaAoInves ? "/coordenacao/turmas" : `/coordenacao/turmas/${turma.id}`);
@@ -101,15 +97,36 @@ export function NovaTurma() {
     }
   }
 
-  async function aoSubmeter(evento: FormEvent) {
+  // Os dois botões são submit (o segundo era type="button" e pulava a
+  // validação nativa do formulário — required, min/max); qual foi clicado
+  // vem do submitter.
+  async function aoSubmeter(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault();
-    await salvar(true);
+    const submitter = (evento.nativeEvent as SubmitEvent).submitter;
+    await salvar(submitter?.dataset.destino !== "detalhes");
   }
+
+  // Turmas paralelas do mesmo módulo são legítimas (ex.: noite e sábado);
+  // o aviso só evita criar uma duplicada sem querer.
+  const consultaTurmas = useTurmasDaCoordenacao();
+  const sobrepostas = turmasSobrepostas(consultaTurmas.data ?? [], moduloId, periodoInicio, periodoFim);
 
   return (
     <PaginaAutenticada largura="estreita">
         <BotaoVoltar />
         <Titulo className="mb-6">Nova turma</Titulo>
+        {erroDeLeitura && (
+          <ErroConsulta
+            className="mb-4"
+            erro={erroDeLeitura}
+            padrao="Não foi possível carregar o formulário."
+            tentarDeNovo={() => {
+              if (consultaTrilhas.isError) void consultaTrilhas.refetch();
+              if (consultaProfessores.isError) void consultaProfessores.refetch();
+              if (consultaModulos.isError) void consultaModulos.refetch();
+            }}
+          />
+        )}
 
         <Card>
           <form className="flex flex-col gap-4" onSubmit={aoSubmeter}>
@@ -127,7 +144,7 @@ export function NovaTurma() {
                   </option>
                 ))}
               </select>
-              {trilhas.length === 0 && (
+              {consultaTrilhas.isSuccess && trilhas.length === 0 && (
                 <span className="text-label text-text-muted">
                   Nenhuma trilha publicada ainda — publique uma antes de criar turma.
                 </span>
@@ -157,18 +174,7 @@ export function NovaTurma() {
               )}
             </label>
 
-            <label className="flex flex-col gap-1.5">
-              <span className="text-label font-medium text-text-secondary">Código</span>
-              <Input
-                required
-                placeholder="Ex.: CDA-2026-1"
-                value={codigo}
-                onChange={(e) => setCodigo(e.target.value.toUpperCase())}
-              />
-              <span className="text-label text-text-muted">
-                Letras e números separados por hífen, em 2 ou 3 partes. Ex.: CDA-2026-1.
-              </span>
-            </label>
+            <CampoCodigoTurma valor={codigo} aoMudar={setCodigo} />
 
             <label className="flex flex-col gap-1.5">
               <span className="text-label font-medium text-text-secondary">
@@ -252,6 +258,14 @@ export function NovaTurma() {
               </label>
             </div>
 
+            {sobrepostas.length > 0 && (
+              <p className="text-label text-text-secondary">
+                Atenção: {sobrepostas.length === 1 ? "a turma" : "as turmas"}{" "}
+                {sobrepostas.map((t) => t.codigo).join(", ")} deste módulo já{" "}
+                {sobrepostas.length === 1 ? "tem" : "têm"} período que se sobrepõe a este. Turmas
+                paralelas são permitidas; confira se não é uma duplicata.
+              </p>
+            )}
             {erro && <Aviso variant="danger">{erro}</Aviso>}
             {mensagem && <Aviso variant="success">{mensagem}</Aviso>}
 
@@ -259,12 +273,7 @@ export function NovaTurma() {
               <Button type="submit" disabled={enviando}>
                 {enviando ? "Criando..." : "Salvar e voltar"}
               </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={enviando}
-                onClick={() => void salvar(false)}
-              >
+              <Button type="submit" data-destino="detalhes" variant="secondary" disabled={enviando}>
                 Salvar e ver detalhes
               </Button>
             </div>

@@ -1,13 +1,15 @@
 import { supabase } from "@/lib/supabase";
 import { mensagemDeErroBanco } from "@/lib/mensagensDeErroBanco";
-import { buscarTrilhaPorId, listarModulosDaTrilha } from "@/lib/catalogo";
+import { plural } from "@/lib/plural";
 import {
-  buscarTurmaDetalhada,
   listarMatriculasDaTurma,
   listarMatriculasDoAluno,
   listarTurmasDoProfessor,
+  type MatriculaDoAluno,
+  type MatriculaListagem,
+  type TurmaDoProfessor,
 } from "@/lib/selecao";
-import type { Aula, Avaliacao, StatusMatricula } from "@klass/types";
+import type { Aula, Avaliacao, Modulo, StatusMatricula, Trilha } from "@klass/types";
 
 function diario() {
   if (!supabase) throw new Error("Supabase não configurado.");
@@ -23,6 +25,23 @@ function hojeISO(): string {
   const mes = String(agora.getMonth() + 1).padStart(2, "0");
   const dia = String(agora.getDate()).padStart(2, "0");
   return `${ano}-${mes}-${dia}`;
+}
+
+/**
+ * O trigger de bloqueio pós-encerramento (notas/presenças de matrícula
+ * concluída ou reprovada) impediu a exclusão. Classe própria para a tela
+ * distinguir esse caso — a operação inteira foi desfeita, nada foi
+ * apagado — de uma falha genérica.
+ */
+export class BloqueioAlunoEncerrado extends Error {}
+
+function lancarErroDeExclusao(error: { message: string; code?: string }, oQue: string): never {
+  if (error.message.includes("Matrícula já encerrada")) {
+    throw new BloqueioAlunoEncerrado(
+      `${oQue} não foi apagada: há registro de aluno já encerrado (aprovado ou reprovado), e o histórico dele não pode mudar. Para apagar, peça à coordenação para desfazer o encerramento desse aluno.`,
+    );
+  }
+  throw new Error(mensagemDeErroBanco(error));
 }
 
 function diasEntre(dataAlvo: string, dataBase: string): number {
@@ -76,6 +95,22 @@ export async function criarAvaliacao(input: {
     .single();
   if (error) throw new Error(mensagemDeErroBanco(error));
   return data;
+}
+
+// Título e peso editáveis (policy avaliacoes_update). O select confirma
+// que a linha mudou: sob RLS, um update sem permissão não dá erro.
+export async function atualizarAvaliacao(
+  id: string,
+  patch: { titulo: string; peso: number },
+): Promise<Avaliacao> {
+  const { data, error } = await diario()
+    .from("avaliacoes")
+    .update({ titulo: patch.titulo, peso: patch.peso })
+    .eq("id", id)
+    .select("*");
+  if (error) throw new Error(mensagemDeErroBanco(error));
+  if (!data || data.length === 0) throw new Error("A avaliação não foi alterada: ela não existe mais ou você não tem permissão.");
+  return data[0];
 }
 
 export async function listarAulasDaTurma(turmaId: string): Promise<Aula[]> {
@@ -192,7 +227,19 @@ export async function criarAulasEmLote(input: {
 // encerrado, preservando o histórico fechado dele.
 export async function apagarAvaliacao(id: string): Promise<void> {
   const { error } = await diario().from("avaliacoes").delete().eq("id", id);
-  if (error) throw new Error(mensagemDeErroBanco(error));
+  if (error) lancarErroDeExclusao(error, "A avaliação");
+}
+
+// Mesma cascata da avaliação: diario.presencas.aula_id é "on delete
+// cascade", então a chamada da aula vai junto; presença de matrícula
+// encerrada bloqueia a operação inteira (BloqueioAlunoEncerrado). Existe
+// sobretudo para aula criada por engano — pronto_para_encerrar exige
+// chamada em todas as aulas, e uma aula sobrando impedia encerrar a turma.
+export async function apagarAula(id: string): Promise<void> {
+  const { data, error } = await diario().from("aulas").delete().eq("id", id).select("id");
+  if (error) lancarErroDeExclusao(error, "A aula");
+  // Sob RLS, um delete sem permissão não dá erro: só não apaga nada.
+  if (!data || data.length === 0) throw new Error("A aula não foi apagada: ela não existe mais ou você não tem permissão.");
 }
 
 export interface AlunoParaLancamento {
@@ -201,11 +248,14 @@ export interface AlunoParaLancamento {
 }
 
 /** Só os ativos (status matriculada) — é neles que dá pra lançar nota/presença. */
-export async function listarAlunosMatriculados(turmaId: string): Promise<AlunoParaLancamento[]> {
-  const matriculas = await listarMatriculasDaTurma(turmaId);
+export function filtrarAlunosMatriculados(matriculas: MatriculaListagem[]): AlunoParaLancamento[] {
   return matriculas
     .filter((m) => m.status === "matriculada")
     .map((m) => ({ matriculaId: m.id, alunoNome: m.alunoNome }));
+}
+
+export async function listarAlunosMatriculados(turmaId: string): Promise<AlunoParaLancamento[]> {
+  return filtrarAlunosMatriculados(await listarMatriculasDaTurma(turmaId));
 }
 
 export interface AlunoDoDiario {
@@ -219,20 +269,36 @@ export interface AlunoDoDiario {
  * "Alunos" continuar mostrando quem já foi aprovado/reprovado, não só
  * quem ainda está cursando.
  */
-export async function listarAlunosDoDiario(turmaId: string): Promise<AlunoDoDiario[]> {
-  const matriculas = await listarMatriculasDaTurma(turmaId);
+export function filtrarAlunosDoDiario(matriculas: MatriculaListagem[]): AlunoDoDiario[] {
   return matriculas
     .filter((m) => m.status === "matriculada" || m.status === "concluida" || m.status === "reprovada")
     .map((m) => ({ matriculaId: m.id, alunoNome: m.alunoNome, status: m.status }));
 }
 
-export async function buscarNotasDaAvaliacao(avaliacaoId: string): Promise<Map<string, number>> {
+export async function listarAlunosDoDiario(turmaId: string): Promise<AlunoDoDiario[]> {
+  return filtrarAlunosDoDiario(await listarMatriculasDaTurma(turmaId));
+}
+
+export interface NotaLancada {
+  avaliacaoId: string;
+  matriculaId: string;
+  valor: number;
+}
+
+// Notas de várias avaliações numa ida só (a grade antes fazia uma consulta
+// por avaliação).
+export async function buscarNotasDasAvaliacoes(avaliacaoIds: string[]): Promise<NotaLancada[]> {
+  if (avaliacaoIds.length === 0) return [];
   const { data, error } = await diario()
     .from("notas")
-    .select("matricula_id, valor")
-    .eq("avaliacao_id", avaliacaoId);
+    .select("avaliacao_id, matricula_id, valor")
+    .in("avaliacao_id", avaliacaoIds);
   if (error) throw new Error(mensagemDeErroBanco(error));
-  return new Map((data ?? []).map((n) => [n.matricula_id, Number(n.valor)]));
+  return (data ?? []).map((n) => ({
+    avaliacaoId: n.avaliacao_id,
+    matriculaId: n.matricula_id,
+    valor: Number(n.valor),
+  }));
 }
 
 export async function salvarNotasEmLote(
@@ -358,6 +424,8 @@ export async function reativarTurma(turmaId: string): Promise<ResumoReativacaoTu
 }
 
 export interface AvaliacaoComNota {
+  /** id da linha em diario.notas — o Realtime de DELETE só traz isso. */
+  notaId: string | null;
   id: string;
   titulo: string;
   peso: number;
@@ -371,12 +439,14 @@ export async function listarAvaliacoesComNotaDoAluno(
 ): Promise<AvaliacaoComNota[]> {
   const [avaliacoes, notasResp] = await Promise.all([
     listarAvaliacoesDaTurma(turmaId),
-    diario().from("notas").select("avaliacao_id, valor").eq("matricula_id", matriculaId),
+    diario().from("notas").select("id, avaliacao_id, valor").eq("matricula_id", matriculaId),
   ]);
   if (notasResp.error) throw new Error(mensagemDeErroBanco(notasResp.error));
 
   const notaPorAvaliacao = new Map((notasResp.data ?? []).map((n) => [n.avaliacao_id, Number(n.valor)]));
+  const idNotaPorAvaliacao = new Map((notasResp.data ?? []).map((n) => [n.avaliacao_id, n.id]));
   return avaliacoes.map((a) => ({
+    notaId: idNotaPorAvaliacao.get(a.id) ?? null,
     id: a.id,
     titulo: a.titulo,
     peso: a.peso,
@@ -432,8 +502,13 @@ export interface AulaDeHoje {
 // A tela não mostra "sala": diario.aulas não tem essa coluna (o wireframe
 // do kit mostra um dado que não existe no schema atual) — mostrar um
 // valor inventado contradiria a regra de não fingir dado que não existe.
-export async function listarAulasDeHojeDoProfessor(professorId: string): Promise<AulaDeHoje[]> {
-  const turmas = await listarTurmasDoProfessor(professorId);
+// `turmas` opcional em todas as consultas do "Hoje": a tela já tem a lista
+// em cache e a repassa — antes cada card buscava as turmas de novo.
+export async function listarAulasDeHojeDoProfessor(
+  professorId: string,
+  turmasConhecidas?: TurmaDoProfessor[],
+): Promise<AulaDeHoje[]> {
+  const turmas = turmasConhecidas ?? (await listarTurmasDoProfessor(professorId));
   if (turmas.length === 0) return [];
 
   const { data: aulas, error } = await diario()
@@ -481,8 +556,13 @@ export interface PendenciaProfessor {
   aulaId?: string;
 }
 
-export async function listarPendenciasDoProfessor(professorId: string): Promise<PendenciaProfessor[]> {
-  const turmas = await listarTurmasDoProfessor(professorId);
+export async function listarPendenciasDoProfessor(
+  professorId: string,
+  turmasConhecidas?: TurmaDoProfessor[],
+  /** Quem tem os alunos de cada turma em cache passa um leitor (roda em paralelo às demais). */
+  obterAlunos: (turmaId: string) => Promise<AlunoParaLancamento[]> = listarAlunosMatriculados,
+): Promise<PendenciaProfessor[]> {
+  const turmas = turmasConhecidas ?? (await listarTurmasDoProfessor(professorId));
   if (turmas.length === 0) return [];
   const turmaIds = turmas.map((t) => t.id);
   const hoje = hojeISO();
@@ -490,7 +570,7 @@ export async function listarPendenciasDoProfessor(professorId: string): Promise<
   const [avaliacoesResp, aulasResp, listasDeAlunos] = await Promise.all([
     diario().from("avaliacoes").select("*").in("turma_id", turmaIds),
     diario().from("aulas").select("*").in("turma_id", turmaIds),
-    Promise.all(turmas.map((t) => listarAlunosMatriculados(t.id))),
+    Promise.all(turmas.map((t) => obterAlunos(t.id))),
   ]);
   if (avaliacoesResp.error) throw new Error(mensagemDeErroBanco(avaliacoesResp.error));
   if (aulasResp.error) throw new Error(mensagemDeErroBanco(aulasResp.error));
@@ -500,14 +580,27 @@ export async function listarPendenciasDoProfessor(professorId: string): Promise<
 
   const pendencias: PendenciaProfessor[] = [];
 
-  // Avaliações sem nota completa: menos notas lançadas do que alunos ativos.
+  // Notas e presenças só dependem de avaliações/aulas: as duas consultas
+  // saem juntas, não uma depois da outra.
   const avaliacoes = avaliacoesResp.data ?? [];
   const avaliacaoIds = avaliacoes.map((a) => a.id);
-  const { data: notas, error: erroNotas } =
+  const aulasPassadas = (aulasResp.data ?? []).filter((a) => a.data < hoje);
+  const aulaIds = aulasPassadas.map((a) => a.id);
+  const [
+    { data: notas, error: erroNotas },
+    { data: presencas, error: erroPresencas },
+  ] = await Promise.all([
     avaliacaoIds.length > 0
-      ? await diario().from("notas").select("avaliacao_id, matricula_id").in("avaliacao_id", avaliacaoIds)
-      : { data: [] as Array<{ avaliacao_id: string; matricula_id: string }>, error: null };
+      ? diario().from("notas").select("avaliacao_id, matricula_id").in("avaliacao_id", avaliacaoIds)
+      : Promise.resolve({ data: [] as Array<{ avaliacao_id: string; matricula_id: string }>, error: null }),
+    aulaIds.length > 0
+      ? diario().from("presencas").select("aula_id").in("aula_id", aulaIds)
+      : Promise.resolve({ data: [] as Array<{ aula_id: string }>, error: null }),
+  ]);
   if (erroNotas) throw new Error(mensagemDeErroBanco(erroNotas));
+  if (erroPresencas) throw new Error(mensagemDeErroBanco(erroPresencas));
+
+  // Avaliações sem nota completa: menos notas lançadas do que alunos ativos.
   const notasPorAvaliacao = new Map<string, number>();
   for (const n of notas ?? []) {
     notasPorAvaliacao.set(n.avaliacao_id, (notasPorAvaliacao.get(n.avaliacao_id) ?? 0) + 1);
@@ -520,7 +613,7 @@ export async function listarPendenciasDoProfessor(professorId: string): Promise<
       const turma = turmaPorId.get(avaliacao.turma_id);
       pendencias.push({
         tipo: "avaliacao_sem_nota",
-        titulo: `${avaliacao.titulo} sem nota para ${faltam} aluno(s)`,
+        titulo: `${avaliacao.titulo} sem nota para ${plural(faltam, "aluno", "alunos")}`,
         detalhe: `${turma?.codigo ?? "—"} · ${turma?.moduloNome ?? "—"}`,
         turmaId: avaliacao.turma_id,
       });
@@ -528,13 +621,6 @@ export async function listarPendenciasDoProfessor(professorId: string): Promise<
   }
 
   // Chamadas atrasadas: aula já passou e não tem nenhuma presença registrada.
-  const aulasPassadas = (aulasResp.data ?? []).filter((a) => a.data < hoje);
-  const aulaIds = aulasPassadas.map((a) => a.id);
-  const { data: presencas, error: erroPresencas } =
-    aulaIds.length > 0
-      ? await diario().from("presencas").select("aula_id").in("aula_id", aulaIds)
-      : { data: [] as Array<{ aula_id: string }>, error: null };
-  if (erroPresencas) throw new Error(mensagemDeErroBanco(erroPresencas));
   const aulasComChamada = new Set((presencas ?? []).map((p) => p.aula_id));
   for (const aula of aulasPassadas) {
     if (aulasComChamada.has(aula.id)) continue;
@@ -555,7 +641,7 @@ export async function listarPendenciasDoProfessor(professorId: string): Promise<
     if (dias >= 0 && dias <= 7 && alunosAtivos.length > 0) {
       pendencias.push({
         tipo: "turma_terminando",
-        titulo: `Turma termina em ${dias} dia(s)`,
+        titulo: dias === 0 ? "Turma termina hoje" : `Turma termina em ${plural(dias, "dia", "dias")}`,
         detalhe: `${turma.codigo} · encerrar os alunos`,
         turmaId: turma.id,
       });
@@ -573,26 +659,25 @@ export interface AlunoQuePedeAtencao {
   valor: string;
 }
 
-// Frequência abaixo de 75% é o mínimo legal (LDB, art. 24) — fixo, não o
-// frequenciaMinimaPercentual configurável da turma (que pode ser mais
-// exigente). Média parcial usa o mínimo real da trilha.
-const FREQUENCIA_MINIMA_LEGAL = 75;
-
-export async function listarAlunosQuePedemAtencaoDoProfessor(
-  professorId: string,
-): Promise<AlunoQuePedeAtencao[]> {
-  const turmas = await listarTurmasDoProfessor(professorId);
+// Frequência comparada com a mínima configurada em cada turma (a mesma
+// que decide a aprovação no encerramento), não com 75% fixo — com um
+// número fixo, aluno abaixo da mínima de uma turma mais exigente não
+// aparecia. Média parcial usa o mínimo real da trilha.
+//
+// Função pura: quem chama já tem turmas, alunos e progresso (em cache,
+// compartilhados com o diário da turma) e só pede a classificação — antes
+// isto buscava turma por turma em sequência.
+export function identificarAlunosQuePedemAtencao(
+  turmas: TurmaDoProfessor[],
+  alunosPorTurma: Map<string, AlunoParaLancamento[]>,
+  progressoPorMatricula: Map<string, ProgressoMatricula>,
+): AlunoQuePedeAtencao[] {
   const resultado: AlunoQuePedeAtencao[] = [];
-
   for (const turma of turmas) {
-    const alunos = await listarAlunosMatriculados(turma.id);
-    if (alunos.length === 0) continue;
-    const turmaDetalhada = await buscarTurmaDetalhada(turma.id);
-    const progressos = await Promise.all(alunos.map((a) => buscarProgressoMatricula(a.matriculaId)));
-
-    alunos.forEach((aluno, i) => {
-      const p = progressos[i];
-      if (p.frequencia !== null && p.frequencia < FREQUENCIA_MINIMA_LEGAL) {
+    for (const aluno of alunosPorTurma.get(turma.id) ?? []) {
+      const p = progressoPorMatricula.get(aluno.matriculaId);
+      if (!p) continue;
+      if (p.frequencia !== null && p.frequencia < turma.frequenciaMinimaPercentual) {
         resultado.push({
           alunoNome: aluno.alunoNome,
           turmaId: turma.id,
@@ -600,7 +685,7 @@ export async function listarAlunosQuePedemAtencaoDoProfessor(
           motivo: "frequência",
           valor: `${p.frequencia.toFixed(0)}%`,
         });
-      } else if (p.media !== null && turmaDetalhada && p.media < turmaDetalhada.trilhaMediaMinima) {
+      } else if (p.media !== null && p.media < turma.trilhaMediaMinima) {
         resultado.push({
           alunoNome: aluno.alunoNome,
           turmaId: turma.id,
@@ -609,9 +694,8 @@ export async function listarAlunosQuePedemAtencaoDoProfessor(
           valor: p.media.toFixed(1),
         });
       }
-    });
+    }
   }
-
   return resultado;
 }
 
@@ -632,9 +716,12 @@ export interface ProximoPassoAluno {
 // "Trilha mais avançada em andamento": entre as trilhas onde o aluno tem
 // matrícula ativa (status matriculada), a que já acumula mais módulos
 // concluídos. Sem matrícula ativa nenhuma, não há "próximo passo" —
-// tela mostra o convite pra explorar o catálogo.
-export async function buscarProximoPassoDoAluno(alunoId: string): Promise<ProximoPassoAluno | null> {
-  const matriculas = await listarMatriculasDoAluno(alunoId);
+// tela mostra o convite pra explorar o catálogo. Separado em escolha
+// (pura) + montagem para a tela reaproveitar trilha, módulos e progresso
+// que já estão em cache.
+export function escolherMatriculaEmAndamento(
+  matriculas: MatriculaDoAluno[],
+): { matricula: MatriculaDoAluno; concluidos: number } | null {
   const emAndamento = matriculas.filter((m) => m.status === "matriculada");
   if (emAndamento.length === 0) return null;
 
@@ -648,24 +735,24 @@ export async function buscarProximoPassoDoAluno(alunoId: string): Promise<Proxim
   }
   if (!melhor) return null;
 
-  const matriculaAtual = emAndamento.find((m) => m.trilhaId === melhor!.trilhaId);
-  if (!matriculaAtual) return null;
+  const matricula = emAndamento.find((m) => m.trilhaId === melhor!.trilhaId);
+  return matricula ? { matricula, concluidos: melhor.concluidos } : null;
+}
 
-  const [trilha, modulos, progresso] = await Promise.all([
-    buscarTrilhaPorId(melhor.trilhaId),
-    listarModulosDaTrilha(melhor.trilhaId),
-    buscarProgressoMatricula(matriculaAtual.id),
-  ]);
-  if (!trilha) return null;
-
+export function montarProximoPasso(
+  escolha: { matricula: MatriculaDoAluno; concluidos: number },
+  trilha: Trilha,
+  modulos: Modulo[],
+  progresso: ProgressoMatricula,
+): ProximoPassoAluno {
   return {
     trilhaNome: trilha.nome,
     trilhaSlug: trilha.slug,
-    modulosConcluidos: melhor.concluidos,
+    modulosConcluidos: escolha.concluidos,
     totalModulos: modulos.length,
-    moduloAtualNome: matriculaAtual.moduloNome,
+    moduloAtualNome: escolha.matricula.moduloNome,
     frequenciaAtual: progresso.frequencia,
-    frequenciaMinima: matriculaAtual.frequenciaMinimaPercentual,
+    frequenciaMinima: escolha.matricula.frequenciaMinimaPercentual,
   };
 }
 
@@ -678,8 +765,11 @@ export interface NovidadeAluno {
 // Deriva dos mesmos dados que já alimentam o Realtime do boletim (notas e
 // mudanças de matrícula) — sem tabela nova, só uma leitura ordenada por
 // data, limitada às 5 mais recentes.
-export async function listarNovidadesDoAluno(alunoId: string): Promise<NovidadeAluno[]> {
-  const matriculas = await listarMatriculasDoAluno(alunoId);
+export async function listarNovidadesDoAluno(
+  alunoId: string,
+  matriculasConhecidas?: MatriculaDoAluno[],
+): Promise<NovidadeAluno[]> {
+  const matriculas = matriculasConhecidas ?? (await listarMatriculasDoAluno(alunoId));
   if (matriculas.length === 0) return [];
   const matriculaIds = matriculas.map((m) => m.id);
   const matriculaPorId = new Map(matriculas.map((m) => [m.id, m]));
@@ -709,8 +799,13 @@ export async function listarNovidadesDoAluno(alunoId: string): Promise<NovidadeA
     };
   });
 
+  // deferido_em sozinho não quer dizer "confirmada": o banco também o
+  // preenche ao REJEITAR, e uma matrícula devolvida para "inscrita" (ex.:
+  // reaberta pela coordenação) mantém a data antiga — a Carla via
+  // "Matrícula confirmada" de uma inscrição que o Boletim mostrava "Em
+  // análise". Só conta quem está (ou esteve) de fato matriculado.
   const eventosMatricula: NovidadeAluno[] = matriculas
-    .filter((m) => m.deferidoEm !== null)
+    .filter((m) => m.deferidoEm !== null && m.status !== "inscrita" && m.status !== "rejeitada")
     .map((m) => ({
       texto: `Matrícula confirmada em ${m.turmaCodigo}`,
       detalhe: m.moduloNome,
