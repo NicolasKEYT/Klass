@@ -243,6 +243,20 @@ export function Inicio() {
           {/* Os gráficos ficam numa tela própria (Acompanhamento): aqui
               ficam só os três números do relance, para o Início não virar
               um relatório. */}
+          <div className="mb-6">
+            <Titulo nivel="secao" className="mb-3">
+              Relatórios
+            </Titulo>
+            <div className="flex flex-wrap gap-2">
+              <LinkBotao to="/coordenacao/indicadores" variant="secondary">
+                Ver indicadores
+              </LinkBotao>
+              <LinkBotao to="/coordenacao/exports" variant="secondary" className="max-md:hidden">
+                Exportar dados
+              </LinkBotao>
+            </div>
+          </div>
+
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <Titulo nivel="secao">Indicadores</Titulo>
             <LinkBotao to="/coordenacao/acompanhamento" variant="secondary">

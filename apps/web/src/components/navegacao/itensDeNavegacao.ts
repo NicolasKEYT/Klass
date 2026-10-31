@@ -2,7 +2,6 @@ import {
   Award,
   BookOpen,
   Calendar,
-  Download,
   FileText,
   Home,
   Layers,
@@ -14,6 +13,8 @@ import {
 import type { Papel } from "@klass/types";
 
 // D3 (klass-uikit.pdf) — "cada papel vê só o que usa, no máximo 5 itens".
+// Indicadores e Exports não têm item próprio: entram pelo bloco "Relatórios"
+// do Início da coordenação e se ligam entre si.
 // Fonte única para barra lateral (desktop) e barra inferior (mobile), que
 // usam subconjuntos desta mesma lista — evita duas listas divergirem.
 export interface ItemNav {
@@ -46,7 +47,6 @@ const COORDENACAO: ItemNav[] = [
   // Ordem da pág. 7 do UI Kit: Pessoas antes de Certificados.
   { para: "/coordenacao/pessoas", texto: "Pessoas", Icone: Users },
   { para: "/coordenacao/certificados", texto: "Certificados", Icone: Award },
-  { para: "/coordenacao/exports", texto: "Exports", Icone: Download },
 ];
 
 // Barra inferior do professor (pág. 7 do UI Kit): Hoje · Turmas · Perfil.

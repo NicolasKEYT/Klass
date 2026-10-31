@@ -1,12 +1,14 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Download } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
+import { ChartLine, Download } from "lucide-react";
 import { Aviso } from "@/components/Aviso";
 import { Button } from "@/components/Button";
 import { CampoData } from "@/components/CampoData";
 import { Card } from "@/components/Card";
 import { ErroConsulta, mensagemDoErro } from "@/components/ErroConsulta";
 import { EsqueletoTabela } from "@/components/Esqueleto";
+import { LinkBotao } from "@/components/LinkBotao";
 import { PaginaAutenticada } from "@/components/PaginaAutenticada";
 import { useTrilhas } from "@/lib/consultas/catalogo";
 import {
@@ -22,6 +24,7 @@ import {
   type AbaXlsx,
   type ColunaTipada,
 } from "@/lib/csv";
+import { lerFiltroRelatorio, paramsDoFiltro, type FiltroRelatorio as FiltroUrl } from "@/lib/filtroRelatorio";
 import { formatarData, formatarDecimal } from "@/lib/formato";
 import {
   COLUNAS_RELATORIO,
@@ -85,9 +88,26 @@ export function Exports() {
   const trilhas = useTrilhas();
 
   const [conjunto, setConjunto] = useState<ConjuntoRelatorio>("alunos");
-  const [inicio, setInicio] = useState("");
-  const [fim, setFim] = useState("");
-  const [trilhaId, setTrilhaId] = useState("");
+  // Período e trilha moram na URL, no mesmo formato dos Indicadores. Sem
+  // nada na URL, Exports mostra tudo (como antes de existir o link).
+  const [params, setParams] = useSearchParams();
+  const filtroUrl = lerFiltroRelatorio(params, "tudo");
+  const inicio = filtroUrl.inicio ?? "";
+  const fim = filtroUrl.fim ?? "";
+  const trilhaId = filtroUrl.trilhaId ?? "";
+  // Data digitada à mão vira intervalo livre (de/ate); sem datas, "tudo".
+  function gravarFiltro(novo: { inicio: string; fim: string; trilhaId: string }) {
+    const f: FiltroUrl = {
+      periodo: novo.inicio || novo.fim ? null : "tudo",
+      inicio: novo.inicio || undefined,
+      fim: novo.fim || undefined,
+      trilhaId: novo.trilhaId || undefined,
+    };
+    setParams(paramsDoFiltro(f), { replace: true });
+  }
+  const setInicio = (v: string) => gravarFiltro({ inicio: v, fim, trilhaId });
+  const setFim = (v: string) => gravarFiltro({ inicio, fim: v, trilhaId });
+  const setTrilhaId = (v: string) => gravarFiltro({ inicio, fim, trilhaId: v });
   const [status, setStatus] = useState("");
   const [pagina, setPagina] = useState(0);
   const [gerando, setGerando] = useState<"csv" | "xlsx" | "tudo" | null>(null);
@@ -159,6 +179,11 @@ export function Exports() {
     <PaginaAutenticada
       titulo="Exports"
       acoes={
+        <>
+        <LinkBotao to={`/coordenacao/indicadores?${paramsDoFiltro(filtroUrl).toString()}`} variant="secondary">
+          <ChartLine className="h-4 w-4" aria-hidden />
+          Ver indicadores
+        </LinkBotao>
         <Button
           type="button"
           disabled={ocupado || periodoInvertido}
@@ -167,6 +192,7 @@ export function Exports() {
           <Download className="h-4 w-4" aria-hidden />
           {gerando === "tudo" ? "Gerando…" : "Exportar tudo (XLSX)"}
         </Button>
+        </>
       }
     >
       <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

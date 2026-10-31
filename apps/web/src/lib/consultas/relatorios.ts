@@ -56,6 +56,6 @@ export function usePaginaRelatorio<C extends ConjuntoRelatorio>(
   return useQuery({ ...opcoesRelatorios.pagina(conjunto, filtros, pagina, tamanho), placeholderData: keepPreviousData });
 }
 
-export function useIndicadoresCoordenacao(filtros: FiltrosIndicadores) {
-  return useQuery(opcoesRelatorios.indicadores(filtros));
+export function useIndicadoresCoordenacao(filtros: FiltrosIndicadores, habilitado = true) {
+  return useQuery({ ...opcoesRelatorios.indicadores(filtros), enabled: habilitado });
 }

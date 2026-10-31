@@ -33,9 +33,11 @@ export function LayoutAutenticado() {
   // conteúdo — a tela continua existindo, só não é usável do celular.
   // Acompanhamento (gráficos, só leitura) também fica liberado: é o
   // "acompanhar" que o Início oferece no celular, um toque adiante.
+  // Indicadores também é só leitura (KPIs e gráficos), liberado pelo mesmo
+  // motivo; Exports segue só no computador (baixar planilha é tarefa de mesa).
   // /perfil: é por ele que a coordenação no celular chega ao seletor de
   // tema (avatar da faixa superior).
-  const LIBERADAS_NO_MOBILE = ["/", "/coordenacao/acompanhamento", "/perfil"];
+  const LIBERADAS_NO_MOBILE = ["/", "/coordenacao/acompanhamento", "/coordenacao/indicadores", "/perfil"];
   const bloqueadoNoMobile =
     papel === "coordenacao" && ehMobile && !LIBERADAS_NO_MOBILE.includes(location.pathname);
 

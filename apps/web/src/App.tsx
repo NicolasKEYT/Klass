@@ -17,6 +17,7 @@ import { Acompanhamento } from "@/pages/coordenacao/Acompanhamento";
 import { Certificados as CertificadosDoAluno } from "@/pages/aluno/Certificados";
 import { Certificados as CertificadosDaCoordenacao } from "@/pages/coordenacao/Certificados";
 import { Exports } from "@/pages/coordenacao/Exports";
+import { Indicadores } from "@/pages/coordenacao/Indicadores";
 import { DetalheTurma as DetalheTurmaCoordenacao } from "@/pages/coordenacao/DetalheTurma";
 import { EditarTurma } from "@/pages/coordenacao/EditarTurma";
 import { NovaTrilha } from "@/pages/coordenacao/NovaTrilha";
@@ -76,7 +77,9 @@ export default function App() {
             <Route path="/coordenacao/turmas/:id" element={<DetalheTurmaCoordenacao />} />
             <Route path="/coordenacao/turmas/:id/editar" element={<EditarTurma />} />
             <Route path="/coordenacao/certificados" element={<CertificadosDaCoordenacao />} />
+            {/* Sem item no menu (D3, 5 itens): entram pelo bloco "Relatórios" do Início. */}
             <Route path="/coordenacao/exports" element={<Exports />} />
+            <Route path="/coordenacao/indicadores" element={<Indicadores />} />
             <Route path="/coordenacao/pessoas" element={<Pessoas />} />
             {/* D11 — gráficos de acompanhamento; entrada pelo Início. */}
             <Route path="/coordenacao/acompanhamento" element={<Acompanhamento />} />
