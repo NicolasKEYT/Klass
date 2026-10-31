@@ -1,5 +1,4 @@
 import { useSearchParams } from "react-router-dom";
-import { Download } from "lucide-react";
 import { Aviso } from "@/components/Aviso";
 import { ErroConsulta } from "@/components/ErroConsulta";
 import { GraficoBarras, type ItemGrafico } from "@/components/graficos/GraficoBarras";
@@ -7,8 +6,6 @@ import { GraficoColunas } from "@/components/graficos/GraficoColunas";
 import { GraficoLinha, type PontoGrafico } from "@/components/graficos/GraficoLinha";
 import { completarMeses, rotuloDoMes } from "@/components/graficos/escalaGrafico";
 import { KpiCartao, type VariacaoKpi } from "@/components/graficos/KpiCartao";
-import { LinkBotao } from "@/components/LinkBotao";
-import { PaginaAutenticada } from "@/components/PaginaAutenticada";
 import { useTrilhas } from "@/lib/consultas/catalogo";
 import { useIndicadoresCoordenacao } from "@/lib/consultas/relatorios";
 import {
@@ -22,9 +19,9 @@ import {
 import { formatarData, formatarDecimal, formatarMedia, formatarPercentual } from "@/lib/formato";
 import type { IndicadoresCoordenacao } from "@/lib/relatorios";
 
-const PADRAO: PeriodoPredefinido = "ano";
+/** Abertura sem parâmetros: o ano corrente. */
+export const PADRAO_RELATORIO: PeriodoPredefinido = "ano";
 const FREQUENCIA_MINIMA = 75;
-const MAX_TURMAS = 15;
 
 const classeSelect =
   "h-12 sm:h-10 rounded-klass-control border border-controle bg-surface px-3 text-klass-md text-text-primary";
@@ -41,15 +38,15 @@ interface DefinicaoKpi {
 }
 
 const KPIS: DefinicaoKpi[] = [
-  { chave: "alunos_ativos", rotulo: "Alunos ativos", formatar: String, unidade: "" },
+  { chave: "alunos_ativos", rotulo: "Alunos com matrícula ativa", formatar: String, unidade: "" },
   { chave: "matriculas_ativas", rotulo: "Matrículas ativas", formatar: String, unidade: "" },
   { chave: "inscricoes_pendentes", rotulo: "Inscrições pendentes", apoio: "aguardando deferimento", formatar: String, unidade: "" },
-  { chave: "taxa_conclusao", rotulo: "Taxa de conclusão", apoio: "das matrículas encerradas", formatar: formatarPercentual, unidade: " p.p." },
-  { chave: "taxa_evasao", rotulo: "Taxa de evasão", apoio: "canceladas ou reprovadas", formatar: formatarPercentual, unidade: " p.p." },
-  { chave: "frequencia_media", rotulo: "Frequência média", apoio: `mínimo ${FREQUENCIA_MINIMA}%`, formatar: formatarPercentual, unidade: " p.p." },
-  { chave: "nota_media", rotulo: "Nota média", apoio: "de 0 a 10", formatar: formatarMedia, unidade: "" },
-  { chave: "certificados_periodo", rotulo: "Certificados no período", formatar: String, unidade: "" },
-  { chave: "ocupacao_media", rotulo: "Ocupação média das turmas", apoio: "vagas preenchidas", formatar: formatarPercentual, unidade: " p.p." },
+  { chave: "taxa_conclusao", rotulo: "Conclusão das encerradas", apoio: "matrículas concluídas ou reprovadas", formatar: formatarPercentual, unidade: " p.p." },
+  { chave: "taxa_evasao", rotulo: "Evasão das encerradas", apoio: "canceladas ou reprovadas", formatar: formatarPercentual, unidade: " p.p." },
+  { chave: "frequencia_media", rotulo: "Frequência de quem cursa", apoio: `mínimo ${FREQUENCIA_MINIMA}%`, formatar: formatarPercentual, unidade: " p.p." },
+  { chave: "nota_media", rotulo: "Nota média das matrículas", apoio: "de 0 a 10", formatar: formatarMedia, unidade: "" },
+  { chave: "certificados_periodo", rotulo: "Certificados emitidos", formatar: String, unidade: "" },
+  { chave: "ocupacao_media", rotulo: "Ocupação das turmas abertas", apoio: "matriculadas sobre vagas", formatar: formatarPercentual, unidade: " p.p." },
 ];
 
 function variacaoDo(def: DefinicaoKpi, atual: number | null, anterior: number | null | undefined): VariacaoKpi | undefined {
@@ -66,10 +63,10 @@ function variacaoDo(def: DefinicaoKpi, atual: number | null, anterior: number | 
 const ordenarPorValor = <T extends ItemGrafico>(itens: T[]) =>
   [...itens].sort((a, b) => b.valor - a.valor || a.rotulo.localeCompare(b.rotulo, "pt-BR"));
 
-export function Indicadores() {
+export function RelatorioDoPeriodo() {
   const [params, setParams] = useSearchParams();
   const trilhas = useTrilhas();
-  const filtro = lerFiltroRelatorio(params, PADRAO);
+  const filtro = lerFiltroRelatorio(params, PADRAO_RELATORIO);
   const anterior = periodoAnterior(filtro);
 
   const consulta = useIndicadoresCoordenacao({ inicio: filtro.inicio, fim: filtro.fim, trilhaId: filtro.trilhaId });
@@ -82,8 +79,6 @@ export function Indicadores() {
   function aplicar(novo: FiltroRelatorio) {
     setParams(paramsDoFiltro(novo), { replace: true });
   }
-
-  const noExports = `/coordenacao/exports?${paramsDoFiltro(filtro).toString()}`;
 
   const trilhaNome = (id: string) => trilhas.data?.find((t) => t.id === id)?.nome;
   const rotuloPeriodo = filtro.periodo
@@ -118,58 +113,17 @@ export function Indicadores() {
   );
   const maxAlunos = Math.max(4, ...alunosPorTrilha.map((i) => i.valor));
 
-  const aprovacao = ordenarPorValor<ItemGrafico & { concluidas: number; reprovadas: number }>(
-    (dados?.desempenho_por_trilha ?? [])
-      .filter((t) => t.taxa_aprovacao !== null)
-      .map((t) => ({
-        id: t.trilha_id,
-        rotulo: t.trilha_nome,
-        valor: t.taxa_aprovacao ?? 0,
-        textoValor: formatarPercentual(t.taxa_aprovacao ?? 0),
-        detalhes: [`${t.concluidas} concluídas, ${t.reprovadas} reprovadas`],
-        concluidas: t.concluidas,
-        reprovadas: t.reprovadas,
-      })),
-  );
-  const evasao = ordenarPorValor<ItemGrafico & { canceladas: number; reprovadas: number }>(
-    (dados?.desempenho_por_trilha ?? [])
-      .filter((t) => t.taxa_evasao !== null)
-      .map((t) => ({
-        id: t.trilha_id,
-        rotulo: t.trilha_nome,
-        valor: t.taxa_evasao ?? 0,
-        textoValor: formatarPercentual(t.taxa_evasao ?? 0),
-        detalhes: [`${t.canceladas} canceladas, ${t.reprovadas} reprovadas`],
-        canceladas: t.canceladas,
-        reprovadas: t.reprovadas,
-      })),
-  );
-  const semBase = (dados?.desempenho_por_trilha.length ?? 0) - aprovacao.length;
-
-  const frequencias = (dados?.frequencia_por_turma ?? []).slice(0, MAX_TURMAS).map<ItemGrafico & { trilha: string }>((t) => ({
-    id: t.turma_id,
-    rotulo: t.turma_codigo,
-    valor: t.frequencia,
-    textoValor: formatarPercentual(t.frequencia),
-    detalhes: [t.trilha_nome],
-    meta: FREQUENCIA_MINIMA,
-    alerta: t.frequencia < FREQUENCIA_MINIMA ? `Abaixo de ${FREQUENCIA_MINIMA}%` : undefined,
-    trilha: t.trilha_nome,
-  }));
-  const turmasOcultas = (dados?.frequencia_por_turma.length ?? 0) - frequencias.length;
-
   const carregando = consulta.isPending;
 
   return (
-    <PaginaAutenticada
-      titulo="Indicadores"
-      acoes={
-        <LinkBotao to={noExports} variant="secondary" className="max-md:hidden">
-          <Download className="h-4 w-4" aria-hidden />
-          Exportar dados
-        </LinkBotao>
-      }
-    >
+    <section aria-labelledby="titulo-relatorio" className="mt-10">
+      <h2 id="titulo-relatorio" className="text-klass-xl text-text-primary">
+        Relatório do período
+      </h2>
+      <p className="mb-4 text-body-sm text-text-secondary">
+        Período e trilha valem só para esta seção; o panorama acima não muda com eles.
+      </p>
+
       <div className="mb-6 flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1.5">
           <span className="text-label font-medium text-text-secondary">Período</span>
@@ -177,7 +131,7 @@ export function Indicadores() {
             value={filtro.periodo ?? "livre"}
             onChange={(e) =>
               aplicar({
-                ...lerFiltroRelatorio(new URLSearchParams({ periodo: e.target.value }), PADRAO),
+                ...lerFiltroRelatorio(new URLSearchParams({ periodo: e.target.value }), PADRAO_RELATORIO),
                 trilhaId: filtro.trilhaId,
               })
             }
@@ -306,55 +260,9 @@ export function Indicadores() {
               nomeCsv={["indicadores", "distribuicao-de-notas"]}
               carregando={carregando}
             />
-            <GraficoBarras
-              titulo="Aprovação por trilha"
-              descricao="Concluídas sobre concluídas e reprovadas, por trilha."
-              itens={aprovacao}
-              nota={semBase > 0 ? `${semBase} trilha(s) sem matrícula encerrada ficam de fora.` : undefined}
-              vazio="Nenhuma matrícula encerrada neste período."
-              colunasTabela={[
-                { titulo: "Trilha", valor: (i) => i.rotulo },
-                { titulo: "Aprovação (%)", valor: (i) => Math.round(i.valor * 10) / 10 },
-                { titulo: "Concluídas", valor: (i) => i.concluidas },
-                { titulo: "Reprovadas", valor: (i) => i.reprovadas },
-              ]}
-              nomeCsv={["indicadores", "aprovacao-por-trilha"]}
-              carregando={carregando}
-            />
-            <GraficoBarras
-              titulo="Evasão por trilha"
-              descricao="Canceladas ou reprovadas sobre as matrículas encerradas, por trilha."
-              itens={evasao}
-              vazio="Nenhuma matrícula encerrada neste período."
-              colunasTabela={[
-                { titulo: "Trilha", valor: (i) => i.rotulo },
-                { titulo: "Evasão (%)", valor: (i) => Math.round(i.valor * 10) / 10 },
-                { titulo: "Canceladas", valor: (i) => i.canceladas },
-                { titulo: "Reprovadas", valor: (i) => i.reprovadas },
-              ]}
-              nomeCsv={["indicadores", "evasao-por-trilha"]}
-              carregando={carregando}
-            />
-            <div className="min-w-0 lg:col-span-2">
-              <GraficoBarras
-                titulo="Frequência por turma"
-                descricao="Frequência média de cada turma, das piores para as melhores."
-                itens={frequencias}
-                legendaMeta={`Mínimo de ${FREQUENCIA_MINIMA}%`}
-                nota={turmasOcultas > 0 ? `Mostrando as ${MAX_TURMAS} piores; mais ${turmasOcultas} turma(s) acima.` : undefined}
-                vazio="Nenhuma turma com frequência registrada neste período."
-                colunasTabela={[
-                  { titulo: "Turma", valor: (i) => i.rotulo },
-                  { titulo: "Trilha", valor: (i) => i.trilha },
-                  { titulo: "Frequência (%)", valor: (i) => Math.round(i.valor * 10) / 10 },
-                ]}
-                nomeCsv={["indicadores", "frequencia-por-turma"]}
-                carregando={carregando}
-              />
-            </div>
           </div>
         </>
       )}
-    </PaginaAutenticada>
+    </section>
   );
 }

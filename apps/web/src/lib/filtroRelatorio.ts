@@ -1,6 +1,6 @@
 import { paraDataLocal, paraIsoLocal } from "@/lib/formato";
 
-// Período e trilha na query string, no mesmo formato nas telas de Indicadores
+// Período e trilha na query string, no mesmo formato nas telas de Acompanhamento
 // e de Exports: `?periodo=30d|semestre|ano|tudo&trilha=<id>`. Intervalo livre
 // (digitado em Exports) vai como `de` e `ate` (AAAA-MM-DD) no lugar de `periodo`.
 

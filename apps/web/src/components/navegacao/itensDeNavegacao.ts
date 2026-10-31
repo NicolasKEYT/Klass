@@ -13,7 +13,7 @@ import {
 import type { Papel } from "@klass/types";
 
 // D3 (klass-uikit.pdf) — "cada papel vê só o que usa, no máximo 5 itens".
-// Indicadores e Exports não têm item próprio: entram pelo bloco "Relatórios"
+// Acompanhamento (gráficos) e Exports não têm item próprio: entram por botões
 // do Início da coordenação e se ligam entre si.
 // Fonte única para barra lateral (desktop) e barra inferior (mobile), que
 // usam subconjuntos desta mesma lista — evita duas listas divergirem.

@@ -88,7 +88,7 @@ export function Exports() {
   const trilhas = useTrilhas();
 
   const [conjunto, setConjunto] = useState<ConjuntoRelatorio>("alunos");
-  // Período e trilha moram na URL, no mesmo formato dos Indicadores. Sem
+  // Período e trilha moram na URL, no mesmo formato do Acompanhamento. Sem
   // nada na URL, Exports mostra tudo (como antes de existir o link).
   const [params, setParams] = useSearchParams();
   const filtroUrl = lerFiltroRelatorio(params, "tudo");
@@ -180,9 +180,9 @@ export function Exports() {
       titulo="Exports"
       acoes={
         <>
-        <LinkBotao to={`/coordenacao/indicadores?${paramsDoFiltro(filtroUrl).toString()}`} variant="secondary">
+        <LinkBotao to={`/coordenacao/acompanhamento?${paramsDoFiltro(filtroUrl).toString()}`} variant="secondary">
           <ChartLine className="h-4 w-4" aria-hidden />
-          Ver indicadores
+          Ver acompanhamento
         </LinkBotao>
         <Button
           type="button"

@@ -259,8 +259,12 @@ siga o artigo (cliente).
   `ocupacao_acumulada_percentual`).
 - **Menu da coordenação tem 5 itens** (regra D3 do UI Kit: Início, Turmas,
   Trilhas, Pessoas, Certificados). Tela nova da coordenação não ganha item de
-  menu: entra por um link do Início (bloco "Relatórios") e se liga às irmãs.
-  Gráficos de `components/graficos/` são SVG próprio, com tabela alternativa e CSV.
+  menu: entra por botão do Início. **Acompanhamento é a tela única de gráficos**
+  (`/coordenacao/acompanhamento`): panorama D11 (sem filtro) e "Relatório do
+  período" (`RelatorioDoPeriodo.tsx`, filtros na URL, só gráficos que o panorama
+  não tem). `/coordenacao/indicadores` só redireciona para ele. Gráficos de
+  `components/graficos/` são SVG/HTML próprio, com tabela alternativa e CSV;
+  rótulo de barra vai em até duas linhas, com o nome completo no `title`.
 
 ### Onde a regra de negócio mora
 

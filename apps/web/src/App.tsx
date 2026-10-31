@@ -1,5 +1,5 @@
 import { lazy } from "react";
-import { Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AuthProvider, Autenticado } from "@/auth";
 import { LayoutAutenticado } from "@/components/LayoutAutenticado";
 import { carregarEditarTrilha } from "@/lib/consultas/prefetch";
@@ -17,7 +17,6 @@ import { Acompanhamento } from "@/pages/coordenacao/Acompanhamento";
 import { Certificados as CertificadosDoAluno } from "@/pages/aluno/Certificados";
 import { Certificados as CertificadosDaCoordenacao } from "@/pages/coordenacao/Certificados";
 import { Exports } from "@/pages/coordenacao/Exports";
-import { Indicadores } from "@/pages/coordenacao/Indicadores";
 import { DetalheTurma as DetalheTurmaCoordenacao } from "@/pages/coordenacao/DetalheTurma";
 import { EditarTurma } from "@/pages/coordenacao/EditarTurma";
 import { NovaTrilha } from "@/pages/coordenacao/NovaTrilha";
@@ -33,6 +32,11 @@ import { Turmas as TurmasDoProfessor } from "@/pages/professor/Turmas";
 // módulos). As demais ficam no pacote principal — carregá-las sob demanda
 // poria um download no meio de cada navegação. O hover em "Editar" já
 // baixa este código (ver prefetch.ts).
+function IndicadoresParaAcompanhamento() {
+  const { search } = useLocation();
+  return <Navigate to={`/coordenacao/acompanhamento${search}`} replace />;
+}
+
 const EditarTrilha = lazy(() => carregarEditarTrilha().then((m) => ({ default: m.EditarTrilha })));
 
 export default function App() {
@@ -77,9 +81,10 @@ export default function App() {
             <Route path="/coordenacao/turmas/:id" element={<DetalheTurmaCoordenacao />} />
             <Route path="/coordenacao/turmas/:id/editar" element={<EditarTurma />} />
             <Route path="/coordenacao/certificados" element={<CertificadosDaCoordenacao />} />
-            {/* Sem item no menu (D3, 5 itens): entram pelo bloco "Relatórios" do Início. */}
+            {/* Sem item no menu (D3, 5 itens): entra por botão do Início. */}
             <Route path="/coordenacao/exports" element={<Exports />} />
-            <Route path="/coordenacao/indicadores" element={<Indicadores />} />
+            {/* Rota da primeira versão do dashboard; os filtros da URL seguem valendo. */}
+            <Route path="/coordenacao/indicadores" element={<IndicadoresParaAcompanhamento />} />
             <Route path="/coordenacao/pessoas" element={<Pessoas />} />
             {/* D11 — gráficos de acompanhamento; entrada pelo Início. */}
             <Route path="/coordenacao/acompanhamento" element={<Acompanhamento />} />

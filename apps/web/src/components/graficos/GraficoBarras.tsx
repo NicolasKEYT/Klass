@@ -16,6 +16,9 @@ import type { ColunaCsv } from "@/lib/csv";
 // Nada depende só de cor: abaixo da meta ganha ícone e texto, e a meta
 // está na legenda, no tooltip e na tabela.
 //
+// Rótulo em até duas linhas (nome completo no title e na tabela): cortar numa
+// linha só deixava "Ciência de Dados Aplicada" e "… — Nível 2" iguais.
+//
 // HTML + CSS, sem biblioteca de gráficos: só barras horizontais, que o
 // próprio layout desenha.
 
@@ -122,7 +125,7 @@ export function GraficoBarras<T extends ItemGrafico>({
               e deixa 4,5rem à direita para o valor no fim da barra. */}
           <div
             aria-hidden
-            className="pointer-events-none absolute inset-y-0 left-28 right-[4.5rem] sm:left-48"
+            className="pointer-events-none absolute inset-y-0 left-32 right-[4.5rem] sm:left-48"
           >
             {TICKS.map((t) => (
               <div key={t} className="absolute inset-y-0 w-px bg-border" style={{ left: `${t}%` }} />
@@ -146,7 +149,7 @@ export function GraficoBarras<T extends ItemGrafico>({
                   role="listitem"
                   tabIndex={i === foco ? 0 : -1}
                   aria-label={descricaoAcessivel}
-                  className="group relative flex h-5 items-center rounded-sm outline-offset-2"
+                  className="group relative flex min-h-5 items-center rounded-sm py-px outline-offset-2"
                   onMouseEnter={() => setAtivo(i)}
                   onMouseLeave={() => setAtivo((a) => (a === i ? null : a))}
                   onFocus={() => {
@@ -157,13 +160,13 @@ export function GraficoBarras<T extends ItemGrafico>({
                   onKeyDown={(e) => aoTeclar(e, i)}
                 >
                   <span
-                    className="w-28 shrink-0 truncate pr-3 text-label text-text-primary sm:w-48"
+                    className="line-clamp-2 w-32 shrink-0 break-words pr-3 text-label leading-tight text-text-primary sm:w-48"
                     title={item.rotulo}
                   >
                     {item.rotulo}
                   </span>
-                  <div className="relative h-full flex-1 pr-[4.5rem]">
-                    <div className="relative h-full">
+                  <div className="relative h-5 flex-1 pr-[4.5rem]">
+                    <div className="relative h-5">
                       <div
                         className={`h-full rounded-r-[4px] bg-text-primary transition-opacity ${
                           ativo !== null && ativo !== i ? "opacity-60" : ""
@@ -213,7 +216,7 @@ export function GraficoBarras<T extends ItemGrafico>({
           </div>
 
           {/* Eixo: só os rótulos dos quartos, discretos. */}
-          <div aria-hidden className="relative ml-28 mr-[4.5rem] mt-1 h-5 sm:ml-48">
+          <div aria-hidden className="relative ml-32 mr-[4.5rem] mt-1 h-5 sm:ml-48">
             {TICKS.map((t) => (
               // No celular só 0, 50 e 100: os cinco rótulos se encostavam.
               <span

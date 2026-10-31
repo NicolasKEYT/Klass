@@ -1,11 +1,16 @@
+import { useSearchParams } from "react-router-dom";
+import { Download } from "lucide-react";
 import { ErroConsulta } from "@/components/ErroConsulta";
 import { GraficoBarras, type ItemGrafico } from "@/components/graficos/GraficoBarras";
+import { LinkBotao } from "@/components/LinkBotao";
 import { PaginaAutenticada } from "@/components/PaginaAutenticada";
 import { useFrequenciasCoordenacao, useLinhasDasViews } from "@/lib/consultas/painelCoordenacao";
 import { useTurmasDaCoordenacao } from "@/lib/consultas/selecao";
+import { lerFiltroRelatorio, paramsDoFiltro } from "@/lib/filtroRelatorio";
 import { formatarPercentual } from "@/lib/formato";
 import { montarTurmasEmAndamento, semestreAtual } from "@/lib/painelCoordenacao";
 import { plural } from "@/lib/plural";
+import { PADRAO_RELATORIO, RelatorioDoPeriodo } from "./RelatorioDoPeriodo";
 
 // Acompanhamento da coordenação: os quatro gráficos de D11, numa tela
 // própria e não no Início. O Início é para o relance do dia ("Precisa de
@@ -13,6 +18,10 @@ import { plural } from "@/lib/plural";
 // por trilha/turma o transformariam num relatório comprido. A barra
 // lateral já tem os 5 itens que D3 permite, então a entrada é o botão
 // "Ver gráficos de acompanhamento" no Início.
+//
+// É a tela única de gráficos da coordenação. Duas seções: o panorama (D11,
+// sem filtro, estado de hoje) e o relatório do período (filtros na URL, os
+// mesmos do Exports). Só entram no relatório gráficos que o panorama não tem.
 //
 // Dados: as duas views do artigo (vw_desempenho_por_trilha,
 // vw_taxa_evasao) linha a linha; frequência por turma e lista de turmas
@@ -49,6 +58,8 @@ function ordenar<T extends ItemGrafico>(itens: T[]): T[] {
 const umaCasa = (v: number) => Math.round(v * 10) / 10;
 
 export function Acompanhamento() {
+  const [params] = useSearchParams();
+  const noExports = `/coordenacao/exports?${paramsDoFiltro(lerFiltroRelatorio(params, PADRAO_RELATORIO)).toString()}`;
   const consultaViews = useLinhasDasViews();
   const consultaFrequencias = useFrequenciasCoordenacao();
   const consultaTurmas = useTurmasDaCoordenacao();
@@ -139,6 +150,12 @@ export function Acompanhamento() {
       sobrelinha={`Semestre ${semestreAtual()}`}
       titulo="Acompanhamento"
       voltar={{ seSemHistorico: "/", rotulo: "Início" }}
+      acoes={
+        <LinkBotao to={noExports} variant="secondary" className="max-md:hidden">
+          <Download className="h-4 w-4" aria-hidden />
+          Exportar dados
+        </LinkBotao>
+      }
     >
       {erro && (
         <ErroConsulta
@@ -149,6 +166,10 @@ export function Acompanhamento() {
         />
       )}
 
+      <h2 className="text-klass-xl text-text-primary">Panorama da instituição</h2>
+      <p className="mb-4 text-body-sm text-text-secondary">
+        Todas as trilhas e turmas, como estão hoje. Não muda com os filtros do relatório abaixo.
+      </p>
       <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
         <GraficoBarras
           titulo="Aprovação por trilha"
@@ -223,6 +244,8 @@ export function Acompanhamento() {
           ]}
         />
       </div>
+
+      <RelatorioDoPeriodo />
     </PaginaAutenticada>
   );
 }
