@@ -252,7 +252,11 @@ siga o artigo (cliente).
   sensível; o único dado pessoal além do nome é o e-mail do aluno. Filtros
   (período, trilha) vivem na URL (`lib/filtroRelatorio.ts`) e são os mesmos
   nas duas telas. O XLSX é gerado sob demanda (`import()` dinâmico de
-  `write-excel-file` em `lib/csv.ts`), fora do carregamento inicial.
+  `write-excel-file` em `lib/csv.ts`), fora do carregamento inicial. Mesmo nome,
+  mesma regra do Início: frequência média é só de quem está cursando e ocupação é
+  matriculadas sobre vagas; outro escopo tem nome próprio
+  (`frequencia_media_encerradas`, `frequencia_media_matriculas`,
+  `ocupacao_acumulada_percentual`).
 - **Menu da coordenação tem 5 itens** (regra D3 do UI Kit: Início, Turmas,
   Trilhas, Pessoas, Certificados). Tela nova da coordenação não ganha item de
   menu: entra por um link do Início (bloco "Relatórios") e se liga às irmãs.

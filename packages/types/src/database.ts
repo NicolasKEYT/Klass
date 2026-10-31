@@ -942,7 +942,7 @@ export type Database = {
           aluno_id: string
           cadastrado_em: string
           email: string
-          frequencia_media: number
+          frequencia_media_matriculas: number
           matriculas_ativas: number
           nome: string
           nota_media: number
@@ -1208,6 +1208,7 @@ export type Database = {
           inscritas: number
           matriculadas: number
           modulo_nome: string
+          ocupacao_acumulada_percentual: number
           ocupacao_percentual: number
           periodo_fim: string
           periodo_inicio: string

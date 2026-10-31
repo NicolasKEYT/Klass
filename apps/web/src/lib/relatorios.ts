@@ -38,7 +38,7 @@ type Retorno<S extends keyof Database, F extends keyof Database[S]["Functions" &
 type ComNulos<T, K extends keyof T> = Omit<T, K> & { [C in K]: T[C] | null };
 
 export interface LinhasRelatorio {
-  alunos: ComNulos<Retorno<"identidade", "relatorio_alunos">, "email" | "frequencia_media" | "nota_media">;
+  alunos: ComNulos<Retorno<"identidade", "relatorio_alunos">, "email" | "frequencia_media_matriculas" | "nota_media">;
   docentes: Retorno<"identidade", "relatorio_docentes">;
   trilhas: ComNulos<
     Retorno<"catalogo", "relatorio_trilhas">,
@@ -158,7 +158,10 @@ export interface IndicadoresCoordenacao {
     /** Percentuais e médias ficam nulos quando não há base para calcular. */
     taxa_conclusao: number | null;
     taxa_evasao: number | null;
+    /** Mesma regra do Início: só quem está cursando. */
     frequencia_media: number | null;
+    /** Outro escopo: matrículas concluídas e reprovadas das turmas do período. */
+    frequencia_media_encerradas: number | null;
     nota_media: number | null;
     certificados_periodo: number;
     ocupacao_media: number | null;
@@ -323,7 +326,7 @@ export const COLUNAS_RELATORIO: Colunas = {
     { titulo: "Cadastrado em", tipo: "data", valor: (l) => l.cadastrado_em },
     { titulo: "Matrículas ativas", tipo: "inteiro", valor: (l) => l.matriculas_ativas },
     { titulo: "Trilhas concluídas", tipo: "inteiro", valor: (l) => l.trilhas_concluidas },
-    { titulo: "Frequência média (%)", tipo: "decimal", valor: (l) => l.frequencia_media },
+    { titulo: "Frequência média das matrículas (%)", tipo: "decimal", valor: (l) => l.frequencia_media_matriculas },
     { titulo: "Nota média", tipo: "decimal", valor: (l) => l.nota_media },
   ],
   docentes: [
@@ -358,6 +361,7 @@ export const COLUNAS_RELATORIO: Colunas = {
     { titulo: "Concluídas", tipo: "inteiro", valor: (l) => l.concluidas },
     { titulo: "Reprovadas", tipo: "inteiro", valor: (l) => l.reprovadas },
     { titulo: "Ocupação (%)", tipo: "decimal", valor: (l) => l.ocupacao_percentual },
+    { titulo: "Ocupação acumulada (%)", tipo: "decimal", valor: (l) => l.ocupacao_acumulada_percentual },
     { titulo: "Situação", tipo: "texto", valor: (l) => rotuloStatus(l.status) },
   ],
   matriculas: [

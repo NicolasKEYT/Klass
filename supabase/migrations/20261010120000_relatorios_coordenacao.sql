@@ -118,7 +118,9 @@ $$;
 
 -- Média e frequência de cada matrícula que aparece no diário. Mesmas regras de
 -- diario.progresso_da_turma (aula sem nenhuma presença não conta; avaliação sem
--- nota não entra na média), para toda a instituição numa consulta só.
+-- nota não entra na média), para toda a instituição numa consulta só. É número
+-- por matrícula: a frequência média de turma ou da instituição, a mesma do
+-- Início, vem de diario.indicadores_por_turma (só quem está cursando).
 create or replace function diario.fonte_desempenho()
 returns table (matricula_id uuid, media numeric, frequencia numeric)
 language sql
@@ -187,6 +189,8 @@ revoke execute on function certificacao.fonte_certificados() from public, anon, 
 -- Alunos. Período = data de cadastro. Trilha limita os números ao que o aluno
 -- fez nela (e tira da lista quem não tem matrícula nela). Status = alunos com
 -- ao menos uma matrícula naquele status.
+-- frequencia_media_matriculas é a média de todas as matrículas do aluno, também
+-- as encerradas; o sufixo a separa da "frequência média" do Início (só cursando).
 create or replace function identidade.relatorio_alunos(
   p_inicio date default null,
   p_fim date default null,
@@ -200,7 +204,7 @@ returns table (
   cadastrado_em timestamptz,
   matriculas_ativas integer,
   trilhas_concluidas integer,
-  frequencia_media numeric,
+  frequencia_media_matriculas numeric,
   nota_media numeric
 )
 language plpgsql
@@ -403,9 +407,10 @@ $$;
 -- Turmas. Período = turma com dias dentro do intervalo. Status = situação,
 -- com a mesma regra de situacaoDaTurma (apps/web/src/lib/selecao.ts); não há
 -- coluna de estado da turma no banco.
--- Ocupação conta quem ocupou lugar (inscrita, matriculada, concluída,
--- reprovada), não só as vagas tomadas agora: quem concluiu libera a vaga, e
--- turma encerrada apareceria vazia.
+-- ocupacao_percentual é a mesma ocupação do Início e do Acompanhamento:
+-- matriculadas sobre vagas. Como quem concluiu libera a vaga, turma encerrada
+-- dá 0 nela; ocupacao_acumulada_percentual conta também concluídas e reprovadas,
+-- para mostrar quanto a turma encheu.
 create or replace function selecao.relatorio_turmas(
   p_inicio date default null,
   p_fim date default null,
@@ -429,6 +434,7 @@ returns table (
   concluidas integer,
   reprovadas integer,
   ocupacao_percentual numeric,
+  ocupacao_acumulada_percentual numeric,
   status text
 )
 language plpgsql
@@ -462,7 +468,8 @@ begin
            o.matriculadas,
            o.concluidas,
            o.reprovadas,
-           round((o.inscritas + o.matriculadas + o.concluidas + o.reprovadas) * 100.0 / t.vagas_total, 1),
+           round(o.matriculadas * 100.0 / t.vagas_total, 1),
+           round((o.matriculadas + o.concluidas + o.reprovadas) * 100.0 / t.vagas_total, 1),
            case
              when t.periodo_inicio > v_hoje then 'futura'
              when t.periodo_fim >= v_hoje then 'em_andamento'
@@ -670,6 +677,15 @@ $$;
 -- Taxas seguem as views do artigo: evasão como vw_taxa_evasao (cancelada ou
 -- reprovada sobre as encerradas); conclusão é o complemento. taxa_aprovacao
 -- por trilha como vw_desempenho_por_trilha (só concluída e reprovada).
+-- Frequência e ocupação têm a regra do Início (painelCoordenacao.ts):
+--   * frequencia_media e frequencia_por_turma saem de diario.indicadores_por_turma
+--     (só cursando; turma sem aluno cursando não tem valor). Cortadas em 1 casa,
+--     não arredondadas: a tela trunca o percentual, e arredondar antes faria
+--     89,96 aparecer como 90% aqui e 89% no Início;
+--   * frequencia_media_encerradas é outro escopo: matrículas concluídas e
+--     reprovadas das turmas do período;
+--   * ocupacao_media é a média de matriculadas sobre vagas das turmas não
+--     encerradas, as que a tabela do Início lista. Turma encerrada daria sempre 0.
 create or replace function selecao.relatorio_indicadores(
   p_inicio date default null,
   p_fim date default null,
@@ -714,9 +730,16 @@ begin
   ),
   ocupacao as (
     select tp.turma_id,
-           (o.inscritas + o.matriculadas + o.concluidas + o.reprovadas) * 100.0 / tp.vagas_total as percentual
+           o.matriculadas * 100.0 / tp.vagas_total as percentual
     from turmas_periodo tp
     join selecao.ocupacao_turmas(null) o on o.turma_id = tp.turma_id
+    where tp.periodo_fim >= diario.hoje() or o.inscritas + o.matriculadas > 0
+  ),
+  frequencia_turmas as (
+    select tp.turma_id, tp.codigo, tp.trilha_nome, i.alunos_com_frequencia, i.frequencia_media
+    from turmas_periodo tp
+    join diario.indicadores_por_turma() i on i.turma_id = tp.turma_id
+    where i.alunos_com_frequencia > 0
   ),
   certificados as (
     select c.emitido_em
@@ -750,7 +773,11 @@ begin
         'taxa_evasao', round(
           100.0 * count(*) filter (where m.status in ('cancelada', 'reprovada'))
             / nullif(count(*) filter (where m.status in ('concluida', 'reprovada', 'cancelada')), 0), 1),
-        'frequencia_media', round(avg(m.frequencia), 1),
+        'frequencia_media', (
+          select trunc(sum(f.frequencia_media * f.alunos_com_frequencia) / sum(f.alunos_com_frequencia), 1)
+          from frequencia_turmas f
+        ),
+        'frequencia_media_encerradas', round(avg(m.frequencia) filter (where m.status in ('concluida', 'reprovada')), 1),
         'nota_media', round(avg(m.media), 2),
         'certificados_periodo', (select count(*) from certificados),
         'ocupacao_media', (select round(avg(o.percentual), 1) from ocupacao o)
@@ -809,11 +836,8 @@ begin
                'trilha_nome', s.trilha_nome, 'frequencia', s.frequencia
              ) order by s.frequencia, s.codigo)
       from (
-        select tp.turma_id, tp.codigo, tp.trilha_nome, round(avg(m.frequencia), 1) as frequencia
-        from turmas_periodo tp
-        join mats m on m.turma_id = tp.turma_id
-        where m.frequencia is not null
-        group by tp.turma_id, tp.codigo, tp.trilha_nome
+        select f.turma_id, f.codigo, f.trilha_nome, trunc(f.frequencia_media, 1) as frequencia
+        from frequencia_turmas f
       ) s
     ), '[]'::jsonb),
     'certificados_por_mes', coalesce((
