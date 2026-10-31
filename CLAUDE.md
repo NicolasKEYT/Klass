@@ -246,6 +246,18 @@ siga o artigo (cliente).
 - **Banco local:** ver "Banco local" no README (`supabase start`, `db reset`
   com o seed de demonstração). Teste nunca no Supabase hospedado.
 
+- **Relatórios da coordenação** (Exports e Indicadores). As funções
+  `*.relatorio_*` (migration `20261010120000`) são só da coordenação: quem
+  não é recebe erro `42501`, não lista vazia. Nenhum export traz CPF nem dado
+  sensível; o único dado pessoal além do nome é o e-mail do aluno. Filtros
+  (período, trilha) vivem na URL (`lib/filtroRelatorio.ts`) e são os mesmos
+  nas duas telas. O XLSX é gerado sob demanda (`import()` dinâmico de
+  `write-excel-file` em `lib/csv.ts`), fora do carregamento inicial.
+- **Menu da coordenação tem 5 itens** (regra D3 do UI Kit: Início, Turmas,
+  Trilhas, Pessoas, Certificados). Tela nova da coordenação não ganha item de
+  menu: entra por um link do Início (bloco "Relatórios") e se liga às irmãs.
+  Gráficos de `components/graficos/` são SVG próprio, com tabela alternativa e CSV.
+
 ### Onde a regra de negócio mora
 
 Regra que precisa ser sempre verdadeira, independentemente de quem chama,

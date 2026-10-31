@@ -160,6 +160,16 @@ frontend que depende delas, nesta ordem:
 | `20261007120000_diario_materiais_turma` | materiais da turma (bucket privado `materiais`) |
 | `20261010120000_relatorios_coordenacao` | funções de relatório e indicadores da coordenação (exports e dashboard) |
 
+### Ordem de publicação
+
+1. `supabase db push` com as migrations acima (por quem tem acesso ao projeto
+   hospedado), na ordem da tabela.
+2. Só depois, o push na `main`: ele publica o site (Pages) na hora, e as telas
+   novas (Exports e Indicadores da coordenação) chamam funções que só existem
+   depois da migration `20261010120000`. Com o site no ar antes dela, as duas
+   telas mostram erro.
+3. O Worker (`wrangler deploy`) é independente e manual; esta fase não o altera.
+
 ## Ambiente de produção
 
 - **Pages (frontend):** https://klass-91y.pages.dev
