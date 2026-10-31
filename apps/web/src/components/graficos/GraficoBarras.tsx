@@ -53,6 +53,8 @@ interface GraficoBarrasProps<T extends ItemGrafico> {
   vazio: string;
   colunasTabela: ColunaCsv<T>[];
   nomeCsv: string[];
+  /** Nível do título na página: h3 quando o cartão está dentro de uma seção h2. */
+  nivelTitulo?: "h2" | "h3";
   carregando?: boolean;
 }
 
@@ -69,6 +71,7 @@ export function GraficoBarras<T extends ItemGrafico>({
   vazio,
   colunasTabela,
   nomeCsv,
+  nivelTitulo: Titulo = "h2",
   carregando = false,
 }: GraficoBarrasProps<T>) {
   const idTitulo = useId();
@@ -98,9 +101,9 @@ export function GraficoBarras<T extends ItemGrafico>({
     // tabela aberta ("Ver como tabela") e estouraria a tela no celular; assim
     // a tabela rola dentro do próprio contêiner (overflow-x-auto abaixo).
     <Card className="flex min-w-0 flex-col">
-      <h2 id={idTitulo} className="text-klass-lg text-text-primary">
+      <Titulo id={idTitulo} className="text-klass-lg text-text-primary">
         {titulo}
-      </h2>
+      </Titulo>
       <p className="mb-3 text-label text-text-muted">{descricao}</p>
       {legendaMeta && itens.length > 0 && (
         <p className="mb-3 flex items-center gap-2 text-label text-text-secondary">

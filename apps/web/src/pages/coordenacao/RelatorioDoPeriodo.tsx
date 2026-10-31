@@ -217,6 +217,7 @@ export function RelatorioDoPeriodo() {
                 { titulo: "Matrículas", valor: (p) => p.valor },
               ]}
               nomeCsv={["indicadores", "matriculas-por-mes"]}
+              nivelTitulo="h3"
               carregando={carregando}
             />
             <GraficoColunas
@@ -230,6 +231,7 @@ export function RelatorioDoPeriodo() {
                 { titulo: "Certificados", valor: (p) => p.valor },
               ]}
               nomeCsv={["indicadores", "certificados-por-mes"]}
+              nivelTitulo="h3"
               carregando={carregando}
             />
             <GraficoBarras
@@ -244,6 +246,7 @@ export function RelatorioDoPeriodo() {
                 { titulo: "Alunos", valor: (i) => i.valor },
               ]}
               nomeCsv={["indicadores", "alunos-por-trilha"]}
+              nivelTitulo="h3"
               carregando={carregando}
             />
             <GraficoColunas
@@ -258,6 +261,7 @@ export function RelatorioDoPeriodo() {
                 { titulo: "Notas", valor: (p) => p.valor },
               ]}
               nomeCsv={["indicadores", "distribuicao-de-notas"]}
+              nivelTitulo="h3"
               carregando={carregando}
             />
           </div>

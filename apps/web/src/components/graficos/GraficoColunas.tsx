@@ -14,6 +14,8 @@ interface GraficoColunasProps {
   nomeCsv: string[];
   /** Histograma: colunas coladas, sem a folga entre barras. */
   histograma?: boolean;
+  /** Nível do título na página: h3 quando o cartão está dentro de uma seção h2. */
+  nivelTitulo?: "h2" | "h3";
   carregando?: boolean;
 }
 
@@ -32,6 +34,7 @@ export function GraficoColunas({
   colunasTabela,
   nomeCsv,
   histograma = false,
+  nivelTitulo: Titulo = "h2",
   carregando = false,
 }: GraficoColunasProps) {
   const topo = topoDoEixo(Math.max(0, ...pontos.map((p) => p.valor)));
@@ -47,7 +50,7 @@ export function GraficoColunas({
 
   return (
     <Card className="flex min-w-0 flex-col">
-      <h2 className="text-klass-lg text-text-primary">{titulo}</h2>
+      <Titulo className="text-klass-lg text-text-primary">{titulo}</Titulo>
       <p className="mb-3 text-label text-text-muted">{descricao}</p>
       {carregando && <div aria-hidden className="h-40 animate-pulse rounded bg-surface-subtle" />}
       {!carregando && pontos.length === 0 && <p className="text-body-sm text-text-secondary">{vazio}</p>}

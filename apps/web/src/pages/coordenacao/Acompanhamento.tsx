@@ -175,6 +175,7 @@ export function Acompanhamento() {
           titulo="Aprovação por trilha"
           descricao="Aprovados sobre matrículas encerradas (aprovadas ou reprovadas) em cada trilha."
           itens={itensAprovacao}
+          nivelTitulo="h3"
           carregando={carregandoViews}
           vazio="Nenhuma trilha tem matrícula encerrada ainda."
           nota={
@@ -195,6 +196,7 @@ export function Acompanhamento() {
           titulo="Evasão por semestre"
           descricao="Matrículas canceladas ou reprovadas sobre as encerradas, pelo semestre de início da turma."
           itens={itensEvasao}
+          nivelTitulo="h3"
           carregando={carregandoViews}
           vazio="Nenhuma matrícula encerrada ainda."
           nomeCsv={["evasao-por-semestre"]}
@@ -211,6 +213,7 @@ export function Acompanhamento() {
           descricao="Média da frequência dos alunos cursando, nas aulas com chamada feita."
           legendaMeta="Traço: frequência mínima da turma"
           itens={itensFrequencia}
+          nivelTitulo="h3"
           carregando={carregandoTurmas}
           vazio="Nenhuma turma em andamento tem chamada registrada."
           nota={
@@ -232,6 +235,7 @@ export function Acompanhamento() {
           titulo="Ocupação por turma"
           descricao="Alunos cursando sobre o total de vagas, nas turmas que ainda não foram encerradas."
           itens={itensOcupacao}
+          nivelTitulo="h3"
           carregando={carregandoTurmas}
           vazio="Nenhuma turma em andamento."
           nomeCsv={["ocupacao-por-turma"]}
