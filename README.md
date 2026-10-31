@@ -158,6 +158,7 @@ frontend que depende delas, nesta ordem:
 | `20261005120100_diario_avaliacoes_do_modelo` | turma nova nasce com as avaliações do modelo |
 | `20261006120000_turma_turno_aula_sala` | turno da turma e sala da aula |
 | `20261007120000_diario_materiais_turma` | materiais da turma (bucket privado `materiais`) |
+| `20261010120000_relatorios_coordenacao` | funções de relatório e indicadores da coordenação (exports e dashboard) |
 
 ## Ambiente de produção
 

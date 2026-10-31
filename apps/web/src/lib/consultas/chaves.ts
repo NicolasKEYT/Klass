@@ -5,6 +5,22 @@
 // avaliações, aulas e notas daquela turma). Chaves dependem só de ids —
 // nunca do objeto `usuario` — para a revalidação de sessão do Supabase ao
 // focar a aba não disparar busca nenhuma.
+interface FiltrosDaChave {
+  inicio?: string;
+  fim?: string;
+  trilhaId?: string;
+  status?: string;
+}
+
+function filtrosDaChave(filtros: FiltrosDaChave) {
+  return [
+    filtros.inicio ?? null,
+    filtros.fim ?? null,
+    filtros.trilhaId ?? null,
+    filtros.status ?? null,
+  ] as const;
+}
+
 export const chaves = {
   catalogo: {
     tudo: () => ["catalogo"] as const,
@@ -101,5 +117,17 @@ export const chaves = {
     linhasDasViews: () => ["painel-coordenacao", "views", "linhas"] as const,
     chamadasAtrasadas: () => ["painel-coordenacao", "chamadas-atrasadas"] as const,
     inscricoesRecentes: () => ["painel-coordenacao", "inscricoes-recentes"] as const,
+  },
+  // Exports e dashboard de indicadores da coordenação (lê os cinco contextos).
+  relatorios: {
+    tudo: () => ["relatorios"] as const,
+    contagem: (conjunto: string, filtros: FiltrosDaChave) =>
+      ["relatorios", conjunto, "contagem", ...filtrosDaChave(filtros)] as const,
+    pagina: (conjunto: string, filtros: FiltrosDaChave, pagina: number, tamanho: number) =>
+      ["relatorios", conjunto, "pagina", ...filtrosDaChave(filtros), pagina, tamanho] as const,
+    completo: (conjunto: string, filtros: FiltrosDaChave) =>
+      ["relatorios", conjunto, "completo", ...filtrosDaChave(filtros)] as const,
+    indicadores: (filtros: FiltrosDaChave) =>
+      ["relatorios", "indicadores", ...filtrosDaChave(filtros)] as const,
   },
 };

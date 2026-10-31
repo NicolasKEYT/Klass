@@ -20,6 +20,7 @@ export const invalidar = {
       chaves.selecao.tudo(),
       chaves.certificacao.tudo(),
       chaves.painelCoordenacao.tudo(),
+      chaves.relatorios.tudo(),
     ]),
 
   /**
@@ -39,6 +40,7 @@ export const invalidar = {
       // Turmas, matrículas e certificados mostram o nome do módulo.
       chaves.selecao.tudo(),
       chaves.painelCoordenacao.tudo(),
+      chaves.relatorios.tudo(),
     ]),
 
   /**
@@ -50,6 +52,7 @@ export const invalidar = {
     invalidarTudo(qc, [
       chaves.catalogo.preRequisitosDaTrilha(trilhaId),
       ["catalogo", "pre-requisitos", "modulo"],
+      chaves.relatorios.tudo(),
     ]),
 
   /** Avaliação criada, editada, apagada ou restaurada (apagar leva as notas junto, em cascata). */
@@ -59,6 +62,7 @@ export const invalidar = {
       chaves.diario.progressos(),
       chaves.diario.notasDosAlunos(),
       chaves.diario.paineisDeProfessor(),
+      chaves.relatorios.tudo(),
     ]),
 
   /** Aula criada, gerada em lote, editada ou apagada. */
@@ -69,6 +73,7 @@ export const invalidar = {
       chaves.diario.progressos(),
       chaves.diario.paineisDeProfessor(),
       chaves.painelCoordenacao.tudo(),
+      chaves.relatorios.tudo(),
     ]),
 
   /** Nota lançada/alterada (a grade já atualiza a própria célula no cache). */
@@ -78,6 +83,7 @@ export const invalidar = {
       // Progresso em lote das turmas (a matrícula está numa delas).
       ["diario", "progresso", "turma"],
       chaves.diario.paineisDeProfessor(),
+      chaves.relatorios.tudo(),
     ]),
 
   /** Coordenação liberou a chamada de uma aula fora do prazo. */
@@ -88,6 +94,7 @@ export const invalidar = {
       chaves.diario.aula(aulaId),
       chaves.diario.paineisDeProfessor(),
       chaves.painelCoordenacao.tudo(),
+      chaves.relatorios.tudo(),
     ]),
 
   /** Chamada salva. */
@@ -97,6 +104,7 @@ export const invalidar = {
       chaves.diario.progressos(),
       chaves.diario.paineisDeProfessor(),
       chaves.painelCoordenacao.tudo(),
+      chaves.relatorios.tudo(),
     ]),
 
   /**
@@ -117,6 +125,7 @@ export const invalidar = {
       chaves.diario.progressos(),
       chaves.diario.paineisDeProfessor(),
       chaves.painelCoordenacao.tudo(),
+      chaves.relatorios.tudo(),
       chaves.certificacao.tudo(),
     ]),
 
@@ -127,6 +136,7 @@ export const invalidar = {
       chaves.selecao.listas(),
       chaves.diario.paineisDeProfessor(),
       chaves.painelCoordenacao.tudo(),
+      chaves.relatorios.tudo(),
     ]),
 
   /**
@@ -134,7 +144,7 @@ export const invalidar = {
    * professores (seleção de professor da turma) e a busca de alunos do
    * painel dependem do papel.
    */
-  papel: (qc: QueryClient) => invalidarTudo(qc, [chaves.identidade.tudo()]),
+  papel: (qc: QueryClient) => invalidarTudo(qc, [chaves.identidade.tudo(), chaves.relatorios.tudo()]),
 
   /** Inscrição do próprio aluno numa turma. */
   inscricao: (qc: QueryClient, alunoId: string) =>
