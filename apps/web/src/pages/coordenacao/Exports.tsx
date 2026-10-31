@@ -65,7 +65,7 @@ function CartaoConjunto({
       type="button"
       onClick={aoEscolher}
       aria-pressed={selecionado}
-      className={`rounded-klass-card border p-4 text-left transition-colors ${
+      className={`flex flex-col items-start justify-start rounded-klass-card border p-4 text-left transition-colors ${
         selecionado ? "border-primary bg-neutral-subtle" : "border-border bg-surface hover:bg-neutral-subtle"
       }`}
     >
