@@ -1,4 +1,4 @@
-import { queryOptions, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, queryOptions, useQuery } from "@tanstack/react-query";
 import {
   buscarIndicadores,
   buscarPaginaRelatorio,
@@ -52,7 +52,8 @@ export function usePaginaRelatorio<C extends ConjuntoRelatorio>(
   pagina: number,
   tamanho: number,
 ) {
-  return useQuery(opcoesRelatorios.pagina(conjunto, filtros, pagina, tamanho));
+  // Mantém a página anterior na tela enquanto a próxima carrega: a tabela não pisca.
+  return useQuery({ ...opcoesRelatorios.pagina(conjunto, filtros, pagina, tamanho), placeholderData: keepPreviousData });
 }
 
 export function useIndicadoresCoordenacao(filtros: FiltrosIndicadores) {

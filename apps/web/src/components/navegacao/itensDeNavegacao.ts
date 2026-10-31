@@ -2,6 +2,7 @@ import {
   Award,
   BookOpen,
   Calendar,
+  Download,
   FileText,
   Home,
   Layers,
@@ -45,6 +46,7 @@ const COORDENACAO: ItemNav[] = [
   // Ordem da pág. 7 do UI Kit: Pessoas antes de Certificados.
   { para: "/coordenacao/pessoas", texto: "Pessoas", Icone: Users },
   { para: "/coordenacao/certificados", texto: "Certificados", Icone: Award },
+  { para: "/coordenacao/exports", texto: "Exports", Icone: Download },
 ];
 
 // Barra inferior do professor (pág. 7 do UI Kit): Hoje · Turmas · Perfil.

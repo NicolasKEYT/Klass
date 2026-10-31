@@ -1,6 +1,7 @@
 import type { Database } from "@klass/types";
 import { supabase } from "@/lib/supabase";
 import { mensagemDeErroBanco } from "@/lib/mensagensDeErroBanco";
+import type { ColunaTipada } from "@/lib/csv";
 
 // Relatórios da coordenação (tela de exports e dashboard de indicadores). Os
 // dados vêm de funções nomeadas do banco, uma por conjunto, no schema dono de
@@ -196,3 +197,198 @@ export async function buscarIndicadores(filtros: FiltrosIndicadores): Promise<In
   // O banco devolve jsonb, que o gerador de tipos só conhece como Json.
   return data as unknown as IndicadoresCoordenacao;
 }
+
+// --- Apresentação dos conjuntos (tela de exports) -------------------------
+// Uma definição de colunas por conjunto serve à prévia, ao CSV e ao XLSX: o
+// arquivo diz o que a tela diz. Nenhum conjunto tem CPF; o e-mail só existe
+// em "alunos" (decisão do Gabriel, 30/10).
+
+export const CONJUNTOS: ConjuntoRelatorio[] = [
+  "alunos",
+  "docentes",
+  "trilhas",
+  "turmas",
+  "matriculas",
+  "notasFrequencia",
+  "certificados",
+];
+
+export interface InfoConjunto {
+  titulo: string;
+  /** Nome do arquivo e da aba no "Exportar tudo". */
+  slug: string;
+  descricao: string;
+  /** O que o filtro de período recorta neste conjunto (ver a migration). */
+  periodo: string;
+  status: { valor: string; rotulo: string }[];
+}
+
+const STATUS_MATRICULA = [
+  { valor: "inscrita", rotulo: "Inscrita" },
+  { valor: "matriculada", rotulo: "Matriculada" },
+  { valor: "concluida", rotulo: "Concluída" },
+  { valor: "reprovada", rotulo: "Reprovada" },
+  { valor: "rejeitada", rotulo: "Rejeitada" },
+  { valor: "cancelada", rotulo: "Cancelada" },
+];
+
+const STATUS_TURMA = [
+  { valor: "futura", rotulo: "Futura" },
+  { valor: "em_andamento", rotulo: "Em andamento" },
+  { valor: "aguardando_encerramento", rotulo: "Aguardando encerramento" },
+  { valor: "encerrada", rotulo: "Encerrada" },
+];
+
+export const INFO_CONJUNTO: Record<ConjuntoRelatorio, InfoConjunto> = {
+  alunos: {
+    titulo: "Alunos",
+    slug: "alunos",
+    descricao: "Cadastro, matrículas ativas, trilhas concluídas, frequência e nota médias.",
+    periodo: "Período do cadastro do aluno.",
+    status: STATUS_MATRICULA,
+  },
+  docentes: {
+    titulo: "Docentes",
+    slug: "docentes",
+    descricao: "Professores com número de turmas e de alunos ativos.",
+    periodo: "Período das turmas do docente.",
+    status: STATUS_TURMA,
+  },
+  trilhas: {
+    titulo: "Trilhas",
+    slug: "trilhas",
+    descricao: "Trilhas com seus módulos, carga horária e pré-requisitos.",
+    periodo: "Período das turmas do módulo.",
+    status: [
+      { valor: "publicada", rotulo: "Publicada" },
+      { valor: "rascunho", rotulo: "Rascunho" },
+    ],
+  },
+  turmas: {
+    titulo: "Turmas",
+    slug: "turmas",
+    descricao: "Turmas com docente, vagas, ocupação e situação.",
+    periodo: "Período de realização da turma.",
+    status: STATUS_TURMA,
+  },
+  matriculas: {
+    titulo: "Matrículas",
+    slug: "matriculas",
+    descricao: "Cada inscrição com sua situação e datas.",
+    periodo: "Data da inscrição.",
+    status: STATUS_MATRICULA,
+  },
+  notasFrequencia: {
+    titulo: "Notas e frequência",
+    slug: "notas-frequencia",
+    descricao: "Nota média e frequência de cada matrícula.",
+    periodo: "Período da turma.",
+    status: STATUS_MATRICULA,
+  },
+  certificados: {
+    titulo: "Certificados",
+    slug: "certificados",
+    descricao: "Certificados emitidos, com código de verificação.",
+    periodo: "Data de emissão.",
+    status: [
+      { valor: "valido", rotulo: "Válido" },
+      { valor: "revogado", rotulo: "Revogado" },
+    ],
+  },
+};
+
+const ROTULO_STATUS = new Map(
+  [...STATUS_MATRICULA, ...STATUS_TURMA, ...INFO_CONJUNTO.trilhas.status, ...INFO_CONJUNTO.certificados.status].map(
+    (s) => [s.valor, s.rotulo],
+  ),
+);
+const rotuloStatus = (valor: string) => ROTULO_STATUS.get(valor) ?? valor;
+
+const NIVEIS = new Map([
+  ["iniciante", "Iniciante"],
+  ["intermediario", "Intermediário"],
+  ["avancado", "Avançado"],
+]);
+const TIPOS_CERTIFICADO = new Map([
+  ["modulo", "Módulo"],
+  ["trilha", "Trilha"],
+]);
+
+type Colunas = { [C in ConjuntoRelatorio]: ColunaTipada<LinhasRelatorio[C]>[] };
+
+export const COLUNAS_RELATORIO: Colunas = {
+  alunos: [
+    { titulo: "Nome", tipo: "texto", valor: (l) => l.nome },
+    { titulo: "E-mail", tipo: "texto", valor: (l) => l.email },
+    { titulo: "Cadastrado em", tipo: "data", valor: (l) => l.cadastrado_em },
+    { titulo: "Matrículas ativas", tipo: "inteiro", valor: (l) => l.matriculas_ativas },
+    { titulo: "Trilhas concluídas", tipo: "inteiro", valor: (l) => l.trilhas_concluidas },
+    { titulo: "Frequência média (%)", tipo: "decimal", valor: (l) => l.frequencia_media },
+    { titulo: "Nota média", tipo: "decimal", valor: (l) => l.nota_media },
+  ],
+  docentes: [
+    { titulo: "Nome", tipo: "texto", valor: (l) => l.nome },
+    { titulo: "Cadastrado em", tipo: "data", valor: (l) => l.cadastrado_em },
+    { titulo: "Turmas", tipo: "inteiro", valor: (l) => l.turmas },
+    { titulo: "Turmas em andamento", tipo: "inteiro", valor: (l) => l.turmas_em_andamento },
+    { titulo: "Alunos ativos", tipo: "inteiro", valor: (l) => l.alunos_ativos },
+  ],
+  trilhas: [
+    { titulo: "Trilha", tipo: "texto", valor: (l) => l.trilha_nome },
+    { titulo: "Situação", tipo: "texto", valor: (l) => rotuloStatus(l.status_publicacao) },
+    { titulo: "Carga horária da trilha (h)", tipo: "inteiro", valor: (l) => l.carga_horaria_trilha },
+    { titulo: "Ordem do módulo", tipo: "inteiro", valor: (l) => l.modulo_ordem },
+    { titulo: "Módulo", tipo: "texto", valor: (l) => l.modulo_nome },
+    { titulo: "Nível", tipo: "texto", valor: (l) => (l.modulo_nivel ? (NIVEIS.get(l.modulo_nivel) ?? l.modulo_nivel) : null) },
+    { titulo: "Carga horária do módulo (h)", tipo: "inteiro", valor: (l) => l.carga_horaria_modulo },
+    { titulo: "Pré-requisitos", tipo: "texto", valor: (l) => l.pre_requisitos },
+    { titulo: "Turmas", tipo: "inteiro", valor: (l) => l.turmas },
+  ],
+  turmas: [
+    { titulo: "Código", tipo: "texto", valor: (l) => l.codigo },
+    { titulo: "Trilha", tipo: "texto", valor: (l) => l.trilha_nome },
+    { titulo: "Módulo", tipo: "texto", valor: (l) => l.modulo_nome },
+    { titulo: "Turno", tipo: "texto", valor: (l) => l.turno },
+    { titulo: "Docente", tipo: "texto", valor: (l) => l.docente_nome },
+    { titulo: "Início", tipo: "data", valor: (l) => l.periodo_inicio },
+    { titulo: "Fim", tipo: "data", valor: (l) => l.periodo_fim },
+    { titulo: "Vagas", tipo: "inteiro", valor: (l) => l.vagas_total },
+    { titulo: "Inscritas", tipo: "inteiro", valor: (l) => l.inscritas },
+    { titulo: "Matriculadas", tipo: "inteiro", valor: (l) => l.matriculadas },
+    { titulo: "Concluídas", tipo: "inteiro", valor: (l) => l.concluidas },
+    { titulo: "Reprovadas", tipo: "inteiro", valor: (l) => l.reprovadas },
+    { titulo: "Ocupação (%)", tipo: "decimal", valor: (l) => l.ocupacao_percentual },
+    { titulo: "Situação", tipo: "texto", valor: (l) => rotuloStatus(l.status) },
+  ],
+  matriculas: [
+    { titulo: "Aluno", tipo: "texto", valor: (l) => l.aluno_nome },
+    { titulo: "Trilha", tipo: "texto", valor: (l) => l.trilha_nome },
+    { titulo: "Módulo", tipo: "texto", valor: (l) => l.modulo_nome },
+    { titulo: "Turma", tipo: "texto", valor: (l) => l.turma_codigo },
+    { titulo: "Situação", tipo: "texto", valor: (l) => rotuloStatus(l.status) },
+    { titulo: "Inscrito em", tipo: "data", valor: (l) => l.inscrito_em },
+    { titulo: "Deferido em", tipo: "data", valor: (l) => l.deferido_em },
+    { titulo: "Encerrada em", tipo: "data", valor: (l) => l.encerrada_em },
+  ],
+  notasFrequencia: [
+    { titulo: "Aluno", tipo: "texto", valor: (l) => l.aluno_nome },
+    { titulo: "Trilha", tipo: "texto", valor: (l) => l.trilha_nome },
+    { titulo: "Módulo", tipo: "texto", valor: (l) => l.modulo_nome },
+    { titulo: "Turma", tipo: "texto", valor: (l) => l.turma_codigo },
+    { titulo: "Situação", tipo: "texto", valor: (l) => rotuloStatus(l.status) },
+    { titulo: "Nota média", tipo: "decimal", valor: (l) => l.nota_media },
+    { titulo: "Frequência (%)", tipo: "decimal", valor: (l) => l.frequencia_percentual },
+    { titulo: "Frequência mínima (%)", tipo: "inteiro", valor: (l) => l.frequencia_minima_percentual },
+  ],
+  certificados: [
+    { titulo: "Aluno", tipo: "texto", valor: (l) => l.aluno_nome },
+    { titulo: "Trilha", tipo: "texto", valor: (l) => l.trilha_nome },
+    { titulo: "Módulo", tipo: "texto", valor: (l) => l.modulo_nome },
+    { titulo: "Turma", tipo: "texto", valor: (l) => l.turma_codigo },
+    { titulo: "Tipo", tipo: "texto", valor: (l) => TIPOS_CERTIFICADO.get(l.tipo) ?? l.tipo },
+    { titulo: "Emitido em", tipo: "data", valor: (l) => l.emitido_em },
+    { titulo: "Código de verificação", tipo: "texto", valor: (l) => l.codigo_verificacao },
+    { titulo: "Situação", tipo: "texto", valor: (l) => rotuloStatus(l.status) },
+    { titulo: "Revogado em", tipo: "data", valor: (l) => l.revogado_em },
+  ],
+};
