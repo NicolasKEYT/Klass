@@ -162,13 +162,15 @@ frontend que depende delas, nesta ordem:
 
 ### Ordem de publicação
 
-1. `supabase db push` com as migrations acima (por quem tem acesso ao projeto
+1. O envio do código desta fase para a `main` vai com `[skip ci]`, sem deploy:
+   as telas novas (Exports e o Relatório do período do Acompanhamento) chamam
+   funções que só existem depois da migration `20261010120000`. Com o site no ar
+   antes dela, as duas telas mostram erro.
+2. `supabase db push` com as migrations acima (por quem tem acesso ao projeto
    hospedado), na ordem da tabela.
-2. Só depois, o push na `main`: ele publica o site (Pages) na hora, e as telas
-   novas (Exports e Indicadores da coordenação) chamam funções que só existem
-   depois da migration `20261010120000`. Com o site no ar antes dela, as duas
-   telas mostram erro.
-3. O Worker (`wrangler deploy`) é independente e manual; esta fase não o altera.
+3. Só depois de a migration `20261010120000` estar em produção, publique o site:
+   um commit sem `[skip ci]` na `main` ou um novo deploy no Pages.
+4. O Worker (`wrangler deploy`) é independente e manual; esta fase não o altera.
 
 ## Ambiente de produção
 
