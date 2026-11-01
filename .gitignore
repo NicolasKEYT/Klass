@@ -24,3 +24,7 @@ apps/workers/.dev.vars
 *.log
 .vscode/*
 !.vscode/extensions.json
+
+# Testes (Playwright)
+apps/web/test-results/
+apps/web/playwright-report/

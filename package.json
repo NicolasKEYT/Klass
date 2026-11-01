@@ -1,6 +1,7 @@
 {
   "name": "klass",
   "private": true,
+  "license": "Apache-2.0",
   "description": "ERP educacional open source para automação da jornada acadêmica.",
   "engines": {
     "node": ">=20"

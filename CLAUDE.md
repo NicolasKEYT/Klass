@@ -8,6 +8,7 @@ Universidade Presbiteriana Mackenzie.
 Ricardo Carvalho Paixão Brandão.
 **Orientação:** Prof. MSc. Thiago Graziani Traue.
 **Repositório:** https://github.com/NicolasKEYT/Klass
+**Licença:** Apache License 2.0 (`LICENSE`, `NOTICE`; campo `license` nos `package.json`).
 
 ---
 
@@ -22,6 +23,12 @@ define os fundamentos (DDD, arquitetura orientada a eventos, BaaS,
 segurança por RLS/JWT/RBAC, certificação nativa). Esse artigo é a **fonte
 de verdade** do projeto. Ver "Fidelidade ao artigo" antes de decidir
 qualquer coisa de arquitetura.
+
+O artigo do TCC 2 (versão atualizada de 29/10/2026) descreve o sistema
+**como foi implementado**, com os desvios em relação ao TCC 1 e as
+limitações assumidas. Ele cita fatos que mudam com o código (contagem de
+migrations, paleta e contrastes, modos de certificação, como cada camada é
+publicada); ver "Artigo do TCC 2" ao final.
 
 ## Arquitetura
 
@@ -58,8 +65,9 @@ A sigla `MS` vem do artigo e é mantida por rastreabilidade, mas significa
 
 Um contexto não lê tabela de outro diretamente. Quando precisa de dado
 alheio, chama uma função nomeada do schema dono daquele dado. A
-comunicação entre contextos é por evento (trigger + Database Webhook), não
-por acoplamento de tabela.
+comunicação entre contextos é por evento (trigger no banco; quando a
+reação sai do banco, chamada HTTP via `pg_net`), não por acoplamento de
+tabela.
 
 ### Stack
 
@@ -69,7 +77,7 @@ por acoplamento de tabela.
 | Núcleo | **Supabase** | Postgres, Auth, RLS, PostgREST, Realtime, Storage, lógica em funções/triggers |
 | Integrações | **Cloudflare Workers** (TypeScript) | E-mail, webhooks, cron, geração de PDF |
 | E-mail transacional | **Resend** | Confirmações e avisos de status |
-| Repositório e CI | **GitHub** → deploy automático para Cloudflare | |
+| Repositório e CI | **GitHub** (CI: `typecheck` + `build`) → o push na `main` publica só o frontend (Pages); Worker e migrations são manuais (ver "Operação e publicação") | |
 
 ### Onde cada coisa vive
 
@@ -85,10 +93,11 @@ funcionalidade, decida onde ela mora por esta tabela.
 | Validar pré-requisitos antes de matricular | **Supabase** | Função Postgres (RPC), chamada do frontend |
 | Calcular progresso, frequência, taxa de aprovação | **Supabase** | Função ou view |
 | Relatórios e BI em modo leitura | **Supabase** | View / Materialized View |
-| Enviar e-mail transacional | **Worker** | Recebe webhook do Supabase, chama Resend |
-| Reagir a evento fora do banco | **Worker** | Endpoint que recebe Database Webhook |
-| Tarefa agendada | **Worker** | Cron trigger |
-| Gerar o PDF do certificado | **Worker** ou frontend | Ver seção Certificação |
+| Enviar e-mail transacional | **Worker** | Recebe a chamada HTTP do trigger (`pg_net`), chama Resend |
+| Reagir a evento fora do banco | **Worker** | Endpoint que recebe a chamada do trigger (hoje: `/webhooks/matricula-deferida` e `/webhooks/certificado-emitido`) |
+| Tarefa agendada | **Worker** | Cron trigger (declarado, **nenhuma tarefa implementada**) |
+| Arquivos (materiais da turma) | **Supabase Storage, direto do frontend** | Bucket privado `materiais` + políticas por turma |
+| Gerar o PDF do certificado | **Frontend** (react-pdf) | Ver seção Certificação |
 
 **Regra de ouro:** se o Supabase resolve — com PostgREST, RLS, função,
 view ou trigger —, resolva no Supabase. Só use um Worker quando a tarefa
@@ -100,10 +109,26 @@ BaaS do artigo.
 ### Comunicação entre contextos
 
 Coreografia orientada a eventos, como o artigo define. Triggers nativos do
-PostgreSQL detectam mudanças de estado relevantes e disparam Database
-Webhooks. Quando a reação é dentro do banco, o próprio trigger resolve.
-Quando a reação sai do banco (um e-mail de confirmação de matrícula, por
-exemplo), o webhook chama um Worker.
+PostgreSQL detectam mudanças de estado relevantes. Quando a reação é dentro
+do banco, o próprio trigger resolve (por exemplo, `matriculas_emitir_certificado`
+cria o certificado quando a matrícula é concluída). Quando a reação sai do
+banco, o trigger faz uma chamada HTTP com `net.http_post` (extensão `pg_net`)
+a um Worker.
+
+**Desvio do artigo do TCC 1:** o artigo fala em Database Webhooks do
+painel do Supabase. Neste projeto o schema interno `supabase_functions`
+nunca foi provisionado e o recurso falha, então o mesmo padrão
+(trigger → HTTP → Worker) é feito por triggers próprios, versionados em
+migration (`20260917001912_webhooks_via_pg_net.sql`). Hoje há dois:
+`matriculas_notifica_deferimento` (matrícula passa de `inscrita` para
+`matriculada`) e `certificados_notifica_emissao` (certificado inserido). A
+chamada leva `Authorization: Bearer <segredo>`, lido do Supabase Vault
+(nome `webhook_secret`, mesmo valor do `WEBHOOK_SECRET` do Worker); o
+segredo nunca entra em migration.
+
+Limites conhecidos: a chamada `pg_net` é assíncrona e **não é reenviada**;
+se o Worker ou o Resend falharem, o e-mail pode se perder. Há só esses dois
+pontos de integração.
 
 O frontend recebe atualizações em tempo real via Supabase Realtime, sem
 polling.
@@ -122,6 +147,16 @@ Não há orquestrador. Não há fila externa. Não há mensageria.
 - A **API key do Resend** vive apenas nos Workers.
 - A autorização por papel (RBAC) é aplicada pela RLS, a partir do papel no
   JWT do usuário. É a garantia final e fica no banco, não no cliente.
+- Funções `SECURITY DEFINER` (que ignoram a RLS) **verificam quem as
+  chama** e não são executáveis por `anon`; as de emissão e revogação de
+  certificado e os cálculos internos (`diario.calcular_*`) ficam fechadas à
+  API. O status final da matrícula (`concluida`/`reprovada`) só é definido
+  pelo encerramento do diário, nunca por UPDATE direto do professor.
+- O `service_role` das integrações tem permissão de leitura nos schemas de
+  domínio (migration `20260917002613`); sem ela a integração falha em
+  silêncio.
+- O webhook do banco para o Worker é autenticado por segredo no Vault (ver
+  "Comunicação entre contextos").
 
 ## Fidelidade ao artigo
 
@@ -139,7 +174,8 @@ primeiro.
   CRUD. O frontend consome o banco diretamente; não há backend intermediário
   para operações de domínio.
 - Arquitetura orientada a eventos: triggers do PostgreSQL detectam
-  mudanças relevantes e disparam Database Webhooks.
+  mudanças relevantes e disparam a chamada ao Worker (no artigo, "Database
+  Webhooks"; na implementação, `pg_net` — ver desvio abaixo).
 - Segurança por **RLS + JWT + RBAC**, configurada desde o início.
 - Realtime via WebSockets para atualizar a interface sem polling —
   especificamente, a tela do aluno reage instantaneamente a uma nota nova.
@@ -165,13 +201,16 @@ Intencionais e acordados. Não reverta.
 | n8n como middleware ETL e e-mail | **Cloudflare Workers + Resend** | O papel de e-mail transacional e integração externa passa para Workers; n8n descartado |
 | Vocabulário "microsserviços" | **Monólito modular** | Os contextos compartilham banco e deploy; a nomenclatura anterior não descrevia o sistema com precisão |
 | Hospedagem não especificada | **Cloudflare Pages + Workers** | Adição, não conflito |
-| MS5 gera PDF no cliente (react-pdf) | **A definir: cliente ou Worker** | Ver seção Certificação; decisão pendente, não é conflito |
+| Database Webhooks do painel do Supabase | **Triggers com `pg_net` + segredo no Vault** | O schema `supabase_functions` nunca foi provisionado neste projeto; mesmo padrão (trigger → HTTP → Worker), versionado em migration |
+| MS5 gera PDF no cliente (react-pdf) | **Cliente (react-pdf), como no artigo** | Decidido: o registro do certificado nasce no banco; o PDF é renderizado no navegador ao baixar. Não há geração no Worker |
 
 ### Coisas que NÃO existem neste projeto
 
 Não introduza nenhuma delas, mesmo que pareçam melhorias:
 
-- Docker, containers, `docker-compose`, Dockerfile
+- Docker, containers, `docker-compose`, Dockerfile **no produto** (a CLI do
+  Supabase precisa de um runtime de containers só para o banco local de
+  desenvolvimento; ver "Banco local" no README)
 - Orquestrador de workflow (Camunda, Temporal, implementação própria)
 - n8n
 - Microsserviços distribuídos, mensageria, filas
@@ -194,16 +233,27 @@ coordenação vê tudo da instituição.
 
 ## Certificação (MS5)
 
-O artigo especifica geração do PDF no cliente, com react-pdf, disparada
-quando o progresso do aluno atinge 100% (o Supabase avisa via Realtime, o
-frontend libera a interface de conclusão). Esse é o comportamento padrão.
+Decidido: o PDF é gerado **no cliente**, com react-pdf, como o artigo
+especifica. Não há geração no Worker. O certificado é gerado **pelo próprio
+sistema**, sem plataforma externa de credenciamento (o Klass não implementa
+Open Badges nem ELM).
 
-Com Cloudflare Workers disponível, existe a alternativa de gerar o PDF em
-um Worker — mais robusto para certificados complexos e centraliza o
-template no servidor. Qualquer que seja a escolha, o certificado é gerado
-**pelo próprio sistema**, sem plataforma externa de credenciamento. A
-decisão entre cliente e Worker fica para a fase de certificação; até lá,
-siga o artigo (cliente).
+Como funciona hoje:
+
+- O **registro** do certificado é criado no banco, por trigger
+  (`matriculas_emitir_certificado`), quando a matrícula é concluída. O PDF é
+  renderizado no navegador quando o aluno o baixa. A emissão não é
+  executável por usuário pela API; só o caminho controlado pelo banco.
+- O tipo de certificação é configurado por **trilha**
+  (`catalogo.tipo_certificacao`): `modulo`, `trilha` ou `modulo_e_trilha`
+  (os dois; o da trilha só quando todos os módulos fecham).
+- Cada certificado tem **código único** consultável publicamente, sem
+  login (`certificacao.verificar_por_hash`, tela `/verificar/<código>`).
+- **Revogação:** desfazer um encerramento (ou reativar a turma) exige motivo,
+  revoga os certificados da matrícula e fica em `diario.historico_encerramentos`.
+  A verificação pública informa o certificado revogado. As unicidades
+  (aluno × módulo, aluno × trilha) contam só os não revogados.
+- A inserção de um certificado dispara o e-mail de emissão (Worker).
 
 ## Convenções de código
 
@@ -244,7 +294,17 @@ siga o artigo (cliente).
   `diario.materiais` só entra se o objeto existe. Ao apagar, sai primeiro o
   arquivo e depois o registro.
 - **Banco local:** ver "Banco local" no README (`supabase start`, `db reset`
-  com o seed de demonstração). Teste nunca no Supabase hospedado.
+  com o seed de demonstração). Teste nunca no Supabase hospedado (rodadas
+  simultâneas de teste já contaminaram dados de produção).
+- **Testes automatizados** rodam só no banco local e estão no repositório:
+  testes SQL em pgTAP (`supabase/tests/database/`, 276 asserções em 9
+  arquivos, `supabase test db`) que assumem os papéis `authenticated` e
+  `anon` com `request.jwt.claims` forjadas, cada arquivo dentro de
+  `begin … rollback`, e 4 roteiros Playwright (`apps/web/e2e/`, 5 casos,
+  `apps/web/e2e/rodar.sh`) para os fluxos da interface. Regra nova ou
+  alterada no banco ganha asserção no arquivo do contexto; ao mudar um número
+  aqui, atualize o artigo. Não há testes de carga nem avaliação de
+  usabilidade com usuários externos, e a cobertura não é medida.
 
 - **Relatórios da coordenação** (Exports e Indicadores). As funções
   `*.relatorio_*` (migration `20261010120000`) são só da coordenação: quem
@@ -270,7 +330,12 @@ siga o artigo (cliente).
 
 Regra que precisa ser sempre verdadeira, independentemente de quem chama,
 vive **no banco** como `check` constraint ou trigger: nota dentro da faixa
-válida, matrícula não duplicada, vaga nunca negativa.
+válida, matrícula não duplicada, vaga nunca negativa. Hoje também estão no
+banco: inscrição recusada em turma com período encerrado; pré-requisito de
+módulo (inclusive de outra trilha, com checagem de ciclo); média mínima por
+trilha e frequência mínima (padrão de 75% na trilha, herdada pela turma);
+encerramento que exige diário completo; trava de edição de nota e presença
+após o encerramento; prazo da chamada.
 
 Lógica de domínio que consulta e decide — validar pré-requisitos contra o
 histórico, calcular progresso — vive **no banco como função** (RPC),
@@ -300,17 +365,72 @@ apps/
   web/                  Frontend React + TypeScript (Cloudflare Pages)
   workers/              Cloudflare Workers em TypeScript (integrações)
     src/
-      email/            Envio via Resend, disparado por webhook
-      webhooks/         Recebedores de Database Webhooks do Supabase
-      cron/             Tarefas agendadas
-      certificado/      Geração de PDF, se optar por gerar no Worker
+      email/            Envio via Resend
+      webhooks/         Recebedores das chamadas HTTP dos triggers (pg_net)
+      cron/             Tarefas agendadas (ainda sem nenhuma tarefa)
       shared/           Cliente Supabase (service key), utilitários
 packages/
   types/                Tipos de domínio compartilhados entre web e workers
 supabase/
   migrations/           Schemas dos cinco contextos, RLS, funções, triggers, views
-  seed/                 Dados de demonstração
+  seed.sql              Dados de demonstração (só no banco local)
+docs/, diagramas/       Wireframes, UI Kit e diagramas (caso de uso, classe, sequência)
 ```
+
+## Operação e publicação
+
+Cada camada é publicada de um jeito; só o frontend é automático.
+
+- **Frontend (Cloudflare Pages):** o push na `main` publica. O CI do GitHub
+  só roda `pnpm typecheck` e `pnpm build`. Commit com `[skip ci]` no começo
+  da mensagem não publica.
+- **Migrations:** aplicadas à mão, por quem tem acesso ao projeto hospedado,
+  com `supabase db push` (antes, `--dry-run` e conferência de que só aparecem
+  as pendentes esperadas). Antes de aplicar, backup dos cinco schemas com
+  `pg_dump` (schema e dados), guardado **fora do repositório**. As migrations
+  vão **antes** do frontend que depende delas; o inverso quebra telas. Estado
+  em 31/10/2026: 49 migrations no repositório, todas aplicadas (a
+  `20261010120000_relatorios_coordenacao` entrou em 31/10; o site com as telas
+  de Exports e Relatório do período deve ser publicado em seguida, ver README,
+  "Ordem de publicação").
+- **Worker (Cloudflare Workers):** `npx wrangler deploy` em `apps/workers`;
+  não publica sozinho no push. Segredos do Worker: service role, API key do
+  Resend, `WEBHOOK_SECRET` e `EMAIL_REMETENTE`.
+- **E-mail (Resend):** enquanto o domínio próprio não for verificado, o
+  remetente é o de teste do Resend, que só entrega ao dono da conta.
+- **Tipos:** depois de mudar o schema, regerar os tipos
+  (`supabase gen types typescript`, ver README) e commitar.
+
+## Artigo do TCC 2
+
+A versão atualizada do artigo (29/10/2026) afirma coisas que dependem do
+estado do código. **Ao mudar qualquer uma, atualize o artigo:**
+
+- contagem de migrations (49, todas aplicadas) e o fluxo "migrations manuais com backup";
+- paleta e contrastes (tema claro: texto secundário `#61635C`, discreto
+  `#6D6F68`; só o discreto sobre `#E3E4DE` fica abaixo de 4,5:1, em 4,0:1),
+  tema escuro, sombras só em modal e dica de gráfico, alvo de toque de 48 px
+  no celular e 40 px no computador;
+- os três modos de certificação, a revogação e o histórico de encerramentos;
+- a publicação (Pages automático; Worker e migrations manuais);
+- `pg_net` no lugar de Database Webhooks, com segredo no Vault e sem
+  reenvio, e os dois pontos de integração;
+- Storage (`materiais`), views de acompanhamento (`vw_desempenho_por_trilha`,
+  `vw_taxa_evasao`) e cache TanStack Query;
+- a licença (Apache-2.0), citada em 2.8 e 4.6, com a referência da Apache Software Foundation;
+- contagem de testes (276 asserções SQL em 9 arquivos; 4 roteiros Playwright,
+  5 casos) e a forma de rodá-los;
+- relatórios da coordenação: exports em CSV e XLSX (`write-excel-file`,
+  carregado sob demanda), relatório do período no Acompanhamento e as funções
+  `*.relatorio_*`, só da coordenação (erro `42501` para os demais), sem CPF nos
+  exports; o menu da coordenação continua com 5 itens.
+
+Limitações que o artigo assume, e que o código não deve contradizer em
+silêncio: sistema monolocatário; sem testes de carga; sem avaliação de
+usabilidade com usuários externos; sem avaliação de conformidade com ISO/IEC
+27001 nem LGPD; restauração do backup fora do Supabase não testada (o dump
+não inclui Auth nem Storage); decisão D7 do UI Kit (publicar notas após
+revisão) não implementada; cron sem tarefas; domínio do Resend pendente.
 
 ## Como trabalhar neste projeto
 
@@ -326,3 +446,5 @@ supabase/
   manual no painel do Supabase.
 - **Ao desviar do artigo, sinalize.** Um comentário curto com o motivo
   economiza horas na redação final do TCC 2.
+- **Não aplique migration em produção nem rode `db push` sem o dono do
+  projeto pedir**, e nunca imprima senha, chave ou connection string.

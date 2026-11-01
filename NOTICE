@@ -1,0 +1,10 @@
+Klass
+Copyright 2026 Gabriel Neman Silva, Nicolas Gonçalves, Erik Salomão Almeida
+e Ricardo Carvalho Paixão Brandão
+
+Projeto desenvolvido como Trabalho de Conclusão de Curso na Faculdade de
+Computação e Informática da Universidade Presbiteriana Mackenzie, sob
+orientação do Prof. MSc. Thiago Graziani Traue.
+
+Este produto inclui software desenvolvido por terceiros, distribuído sob suas
+próprias licenças (ver as dependências em package.json e pnpm-lock.yaml).

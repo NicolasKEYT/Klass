@@ -1,6 +1,7 @@
 {
   "name": "@klass/types",
   "private": true,
+  "license": "Apache-2.0",
   "version": "0.0.0",
   "description": "Tipos de domínio compartilhados entre apps/web e apps/workers, organizados pelos cinco bounded contexts.",
   "type": "module",

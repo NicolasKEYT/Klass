@@ -137,6 +137,42 @@ recusada (401) e nenhum e-mail sai — mesmo assim, nunca grave o
 `webhook_secret` real no banco local. Nunca rode `supabase link`/`db push`
 apontando para produção a partir de um teste local.
 
+## Licença
+
+Distribuído sob a [Apache License 2.0](LICENSE). Os avisos de autoria estão em
+[NOTICE](NOTICE). Fontes, ícones e imagens de terceiros mantêm as licenças
+originais; antes de incluir um novo recurso gráfico, confira se a licença
+permite redistribuição.
+
+## Testes automatizados
+
+Os testes rodam **só no banco local** (ver "Banco local" acima); nunca no Supabase
+hospedado, onde rodadas simultâneas de teste já contaminaram dados de produção.
+
+**Testes SQL (pgTAP)** — `supabase/tests/database/`, 9 arquivos e 276 asserções:
+RLS e privilégios, identidade, catálogo, seleção, diário (chamada e notas,
+encerramento, materiais), certificação e relatórios da coordenação. Cada arquivo
+é uma transação que termina em `rollback`, monta o próprio cenário e assume os
+papéis `authenticated` e `anon` com `request.jwt.claims` forjadas.
+
+```bash
+supabase start -x studio,imgproxy,edge-runtime,logflare,vector,supavisor
+supabase test db
+```
+
+**Roteiros Playwright** — `apps/web/e2e/`, 4 roteiros (5 casos) que percorrem a
+interface com os três papéis: inscrição e aprovação, chamada e nota (com a nota
+chegando ao aluno em tempo real), encerramento e certificado (com verificação
+pública e revogação) e relatórios/exports da coordenação. O script recria o banco
+local (`supabase db reset`), sobe o Vite apontado para ele e roda os roteiros; a
+configuração recusa qualquer URL que não seja local.
+
+```bash
+apps/web/e2e/rodar.sh          # precisa de psql no PATH (brew install libpq)
+```
+
+A cobertura não é medida. Os testes não substituem avaliação com usuários.
+
 ## Migrations pendentes de aplicação em produção
 
 Estas migrations estão no repositório e precisam ser aplicadas no projeto
