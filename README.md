@@ -1,52 +1,121 @@
 # Klass
 
-ERP educacional open source para automação da jornada acadêmica — da
-inscrição em uma trilha até a emissão do certificado em PDF.
+[![Licença: Apache 2.0](https://img.shields.io/badge/licen%C3%A7a-Apache%202.0-blue.svg)](LICENSE)
+
+ERP educacional **gratuito e de código aberto** que automatiza a jornada
+acadêmica, da inscrição em uma trilha até a emissão do certificado em PDF.
+Pensado para instituições de ensino de pequeno e médio porte, que hoje
+costumam depender de planilhas ou de sistemas pesados.
 
 Trabalho de Conclusão de Curso da Faculdade de Computação e Informática,
-Universidade Presbiteriana Mackenzie. Arquitetura, stack e convenções do
-projeto estão documentadas em [`CLAUDE.md`](./CLAUDE.md) — leia antes de
-mexer em qualquer coisa de domínio ou infraestrutura.
+Universidade Presbiteriana Mackenzie. As decisões de arquitetura e as
+convenções do projeto estão em [`CLAUDE.md`](./CLAUDE.md); leia antes de mexer
+em qualquer coisa de domínio ou de infraestrutura.
 
-> Os cinco bounded contexts estão implementados: MS1 (Identidade),
-> MS2 (Catálogo), MS3 (Motor de Seleção), MS4 (Diário de Classe) e
-> MS5 (Certificação) — da autenticação e do catálogo ao fluxo de
-> inscrição/matrícula, lançamento de notas/frequência e emissão do
-> certificado em PDF com verificação pública.
+> **Estágio do projeto.** O Klass é um protótipo. Os três fluxos principais
+> (inscrição, notas e frequência, conclusão com certificação) estão
+> implementados para os três perfis e foram exercitados pela equipe, com dados
+> de teste e testes automatizados locais. Não houve testes de carga, avaliação
+> de usabilidade com usuários externos nem auditoria de conformidade com a LGPD.
+> Veja "Limitações conhecidas".
+
+## O que o Klass faz
+
+Três perfis, cada um com a sua navegação:
+
+| Perfil | Papel | O que faz |
+| --- | --- | --- |
+| Aluno | `aluno` | Explora o catálogo, se inscreve em turmas, acompanha notas e frequência em tempo real e baixa o certificado |
+| Professor | `professor` | Lança aulas, chamada e avaliações das turmas que leciona |
+| Coordenação | `coordenacao` | Administra trilhas, módulos, turmas, docentes e alunos, defere inscrições, encerra turmas e acompanha indicadores |
+
+- **Inscrição com regras no banco:** vaga disponível, matrícula duplicada,
+  período da turma e pré-requisitos (inclusive entre trilhas, com checagem de
+  ciclo).
+- **Notas e frequência:** média ponderada por modelo de avaliações do módulo,
+  média mínima por trilha, frequência mínima (padrão de 75%, herdada pela
+  turma), prazo de 7 dias para a chamada e trava de edição após o encerramento.
+- **Certificação:** certificado por módulo, por trilha ou por ambos, com código
+  único consultável sem login (`/verificar/<código>`), revogação com motivo e
+  histórico de encerramentos. O registro nasce no banco; o PDF é gerado no
+  navegador.
+- **Coordenação:** acompanhamento com gráficos (panorama e relatório do
+  período) e exportação de listas em CSV e XLSX, sem CPF.
+- **Materiais da turma** em bucket privado do Supabase Storage.
+- **E-mails** de matrícula deferida e de certificado emitido, enviados pelo
+  Resend.
+- **Tema claro e escuro.**
+
+## Arquitetura
+
+Monólito modular sobre BaaS. O Supabase é o núcleo: persistência,
+autenticação, regras de acesso, tempo real e a maior parte da lógica, que vive
+perto do dado como funções e triggers do Postgres. Os cinco contextos
+delimitados (inspirados em Domain-Driven Design) são schemas do mesmo banco e
+são publicados juntos. Não são microsserviços.
+
+| Sigla | Contexto | Schema | Responsabilidade |
+| --- | --- | --- | --- |
+| MS1 | Identidade e Acesso | `identidade` | Perfis, RBAC, autorização |
+| MS2 | Catálogo Curricular | `catalogo` | Trilhas, módulos, pré-requisitos |
+| MS3 | Motor de Seleção | `selecao` | Inscrição, validação de pré-requisitos, matrícula |
+| MS4 | Diário de Classe | `diario` | Notas, frequência, progresso |
+| MS5 | Certificação | `certificacao` | Emissão e verificação do certificado |
+
+Um contexto não lê tabela de outro diretamente: chama uma função nomeada do
+schema dono do dado. As regras de negócio ficam no banco (`check`, trigger,
+função) e o acesso é controlado por Row Level Security, JWT e papel.
+
+O frontend fala direto com o Supabase para tudo que é dado de domínio. Os
+Cloudflare Workers existem só para o que o banco não faz sozinho: enviar
+e-mail, receber as chamadas dos triggers e (no futuro) rodar tarefas
+agendadas. Quando uma mudança de estado precisa avisar o mundo externo, um
+trigger do banco faz uma chamada HTTP assíncrona (`pg_net`) ao Worker.
 
 ## Stack
 
 | Camada | Tecnologia |
 | --- | --- |
 | Frontend | React 18 + TypeScript + Vite + Tailwind, em Cloudflare Pages |
-| Núcleo de dados | Supabase (Postgres, Auth, RLS, PostgREST, Realtime) |
-| Integrações | Cloudflare Workers (TypeScript) — e-mail, webhooks, cron |
+| Leitura de dados | TanStack Query sobre o cliente do Supabase; Realtime invalida o cache |
+| Núcleo de dados | Supabase (Postgres, Auth, RLS, PostgREST, Realtime, Storage, Vault) |
+| Integrações | Cloudflare Workers (TypeScript, roteador [Hono](https://hono.dev)): e-mail e webhooks |
 | E-mail transacional | Resend, acessado só pelos Workers |
-| Tipos compartilhados | `packages/types`, consumido por web e workers |
-
-`apps/workers` usa [Hono](https://hono.dev) como roteador — não está no
-`CLAUDE.md`, mas é só isso: roteamento e middleware (CORS) dentro do
-Worker, não um backend de CRUD na frente do Supabase.
+| PDF do certificado | `@react-pdf/renderer`, no navegador |
+| Tipos compartilhados | `packages/types`, gerados do banco e consumidos por web e workers |
+| Testes | pgTAP (SQL) e Playwright, só no banco local |
 
 ## Estrutura do repositório
 
 ```
 apps/
   web/                  Frontend React (Cloudflare Pages)
+    e2e/                Roteiros Playwright
   workers/              Cloudflare Workers (integrações)
+    src/email/          Envio via Resend
+    src/webhooks/       Recebedores das chamadas HTTP dos triggers
+    src/cron/           Tarefas agendadas (declarado, sem nenhuma tarefa ainda)
+    src/shared/         Cliente Supabase (service key), CORS, ambiente
 packages/
   types/                Tipos de domínio compartilhados
 supabase/
-  migrations/           Schemas identidade, catalogo, selecao, diario, certificacao — RLS, triggers, funções
-  seed.sql              Dados de demonstração (usuários, trilhas, turmas, matrículas)
-docs/design/             SVGs de design (fonte dos tokens do Tailwind)
+  migrations/           Schemas dos cinco contextos, RLS, funções, triggers, views
+  tests/database/       Testes SQL (pgTAP)
+  seed.sql              Dados de demonstração (só no banco local)
+docs/                   Wireframes e SVGs de design (fonte dos tokens do Tailwind)
+  ia/                   Prompts do desenvolvimento assistido por IA
+diagramas/              Casos de uso, classes, sequência e UI Kit
 ```
 
 ## Pré-requisitos
 
-- Node.js 20+ (versão fixada em [`.nvmrc`](./.nvmrc))
+- Node.js 20 ou superior; o projeto usa a versão 22, fixada em
+  [`.nvmrc`](./.nvmrc) e usada pelo CI
 - [pnpm](https://pnpm.io) 9 — se não tiver instalado globalmente, use
   `corepack enable` ou `npx pnpm@9` no lugar de `pnpm` nos comandos abaixo
+- Para o banco local e os testes: a [CLI do Supabase](https://supabase.com/docs/guides/cli)
+  e um runtime de containers na máquina de desenvolvimento (Docker Desktop,
+  OrbStack ou Colima). O produto em si não usa containers.
 
 ## Instalação
 
@@ -62,13 +131,17 @@ Copie o exemplo e preencha com os valores do seu projeto Supabase/Resend:
 cp .env.example .env
 ```
 
-- **Frontend** (`VITE_*`, públicas): lidas direto do `.env` pelo Vite.
+- **Frontend** (`VITE_*`, públicas): lidas direto do `.env` pelo Vite. A chave
+  publicável do Supabase é pública por design; quem protege os dados é a RLS.
 - **Workers** (secretas): não vivem num `.env` consumido em runtime.
   - Em desenvolvimento local, copie as mesmas linhas para
-    `apps/workers/.dev.vars` (já no `.gitignore`) — o `wrangler dev` lê
-    esse arquivo automaticamente.
+    `apps/workers/.dev.vars` (já no `.gitignore`); o `wrangler dev` lê esse
+    arquivo automaticamente.
   - Em produção, configure cada uma com `wrangler secret put <NOME>`
-    (passo a passo na seção de deploy).
+    (passo a passo na seção de publicação).
+
+A **service role key** ignora a RLS: ela fica só nos Workers e nunca entra no
+frontend. A API key do Resend também fica só nos Workers.
 
 ## Rodando em desenvolvimento
 
@@ -85,8 +158,9 @@ Com os dois no ar, `GET http://localhost:8787/health` deve responder
 
 ## Usuários de demonstração
 
-Criados pelo `supabase/seed.sql` (e-mails `@klass.dev` são reservados, só
-para teste). Senha de todos abaixo: a indicada.
+Criados pelo `supabase/seed.sql` **no banco local** (e-mails `@klass.dev` são
+reservados, só para teste). Não rode o seed em um ambiente real: ele cria
+contas com senha conhecida.
 
 | Papel | E-mail | Senha |
 | --- | --- | --- |
@@ -99,7 +173,7 @@ para teste). Senha de todos abaixo: a indicada.
 
 Ana, Bruno e Carla estão matriculados na turma **EST-2026-1** com dados de
 diário variados (Ana com tudo lançado, Bruno com nota parcial, Carla sem
-nada) — servem para testar a visão do professor.
+nada); servem para testar a visão do professor.
 
 ## Build e typecheck
 
@@ -108,12 +182,12 @@ pnpm typecheck
 pnpm build
 ```
 
-## Banco local (opcional)
+O CI do GitHub roda só essas duas verificações.
 
-Para desenvolver e testar migrations sem tocar no Supabase de produção, use a
-pilha local oficial da CLI do Supabase (precisa de um runtime de containers na
-máquina de desenvolvimento, como Docker Desktop, OrbStack ou Colima — o projeto
-em si continua sem containers):
+## Banco local
+
+Para desenvolver e testar migrations sem tocar no Supabase hospedado, use a
+pilha local oficial da CLI do Supabase:
 
 ```bash
 supabase start -x studio,imgproxy,edge-runtime,logflare,vector,supavisor
@@ -124,6 +198,8 @@ supabase gen types typescript --local \
 supabase stop
 ```
 
+Depois de mudar o schema, regere os tipos como acima e versione o resultado.
+
 Para o app usar o banco local sem mexer no `.env`, passe as variáveis no
 comando (a chave publicável local aparece em `supabase status`):
 
@@ -132,22 +208,15 @@ VITE_SUPABASE_URL=http://127.0.0.1:54321 VITE_SUPABASE_PUBLISHABLE_KEY=<chave lo
 ```
 
 Atenção: os triggers de webhook (`20260917001912_webhooks_via_pg_net.sql`)
-chamam o Worker de produção. Sem o segredo no Vault local, a chamada é
-recusada (401) e nenhum e-mail sai — mesmo assim, nunca grave o
-`webhook_secret` real no banco local. Nunca rode `supabase link`/`db push`
-apontando para produção a partir de um teste local.
-
-## Licença
-
-Distribuído sob a [Apache License 2.0](LICENSE). Os avisos de autoria estão em
-[NOTICE](NOTICE). Fontes, ícones e imagens de terceiros mantêm as licenças
-originais; antes de incluir um novo recurso gráfico, confira se a licença
-permite redistribuição.
+chamam um Worker publicado. Sem o segredo no Vault local, a chamada é recusada
+(401) e nenhum e-mail sai. Nunca grave o `webhook_secret` real no banco local e
+nunca rode `supabase link` ou `db push` apontando para um ambiente real a
+partir de um teste local.
 
 ## Testes automatizados
 
-Os testes rodam **só no banco local** (ver "Banco local" acima); nunca no Supabase
-hospedado, onde rodadas simultâneas de teste já contaminaram dados de produção.
+Os testes rodam **só no banco local** (ver "Banco local" acima), nunca no
+Supabase hospedado, onde rodadas simultâneas de teste já contaminaram dados.
 
 **Testes SQL (pgTAP)** — `supabase/tests/database/`, 9 arquivos e 276 asserções:
 RLS e privilégios, identidade, catálogo, seleção, diário (chamada e notas,
@@ -173,47 +242,31 @@ apps/web/e2e/rodar.sh          # precisa de psql no PATH (brew install libpq)
 
 A cobertura não é medida. Os testes não substituem avaliação com usuários.
 
-## Migrations pendentes de aplicação em produção
+## Publicação
 
-Estas migrations estão no repositório e precisam ser aplicadas no projeto
-hospedado (por quem tem acesso, com `supabase db push`) **antes** de publicar o
-frontend que depende delas, nesta ordem:
+Cada camada é publicada de um jeito; só o frontend é automático.
 
-| Migration | O que faz |
-|---|---|
-| `20261003120000_catalogo_tipo_certificacao_combinado` | modo de certificação "por módulo e da trilha" |
-| `20261003120100_seguranca_funcoes_definer` | fecha funções SECURITY DEFINER à API; status final só pelo encerramento |
-| `20261003120200_certificacao_turma_revogacao_combinado` | turma no certificado, revogação, verificação pública com tipo |
-| `20261003120300_diario_historico_encerramentos` | histórico de encerramentos; desfazer/reativar com motivo |
-| `20261004120000_diario_prazo_chamada` | prazo de 7 dias para a chamada, liberação pela coordenação |
-| `20261004120100_catalogo_frequencia_minima_trilha` | frequência mínima padrão na trilha |
-| `20261004120200_selecao_inscricao_periodo_e_ocupacao` | inscrição fecha com o período; ocupação real |
-| `20261004120300_diario_agregados` | progresso da turma e indicadores agregados no banco |
-| `20261004120400_realtime_avaliacoes_aulas` | avaliações e aulas no Realtime |
-| `20261005120000_catalogo_avaliacoes_modelo` | modelo de avaliações por módulo |
-| `20261005120100_diario_avaliacoes_do_modelo` | turma nova nasce com as avaliações do modelo |
-| `20261006120000_turma_turno_aula_sala` | turno da turma e sala da aula |
-| `20261007120000_diario_materiais_turma` | materiais da turma (bucket privado `materiais`) |
-| `20261010120000_relatorios_coordenacao` | funções de relatório e indicadores da coordenação (exports e dashboard) |
+| Camada | Como publica |
+| --- | --- |
+| Frontend (Cloudflare Pages) | Automático: o push na `main` publica. Um commit com `[skip ci]` no início da mensagem não publica |
+| Migrations (Supabase) | Manual, com `supabase db push` |
+| Worker (Cloudflare Workers) | Manual, com `npx wrangler deploy` em `apps/workers` |
 
-### Ordem de publicação
+### Migrations
 
-1. O envio do código desta fase para a `main` vai com `[skip ci]`, sem deploy:
-   as telas novas (Exports e o Relatório do período do Acompanhamento) chamam
-   funções que só existem depois da migration `20261010120000`. Com o site no ar
-   antes dela, as duas telas mostram erro.
-2. `supabase db push` com as migrations acima (por quem tem acesso ao projeto
-   hospedado), na ordem da tabela.
-3. Só depois de a migration `20261010120000` estar em produção, publique o site:
-   um commit sem `[skip ci]` na `main` ou um novo deploy no Pages.
-4. O Worker (`wrangler deploy`) é independente e manual; esta fase não o altera.
+O repositório tem 49 migrations versionadas. Toda alteração de schema é uma
+migration; nada é alterado à mão no painel do Supabase. Para aplicar em um
+projeto hospedado:
 
-## Ambiente de produção
+1. Faça backup dos schemas de domínio (`identidade`, `catalogo`, `selecao`,
+   `diario`, `certificacao`) com `pg_dump`, schema e dados, e guarde **fora do
+   repositório**. O dump não inclui Auth nem Storage.
+2. Rode `supabase db push --dry-run` e confira que só aparecem as migrations
+   pendentes esperadas.
+3. Rode `supabase db push`.
 
-- **Pages (frontend):** https://klass-91y.pages.dev
-- **Worker (integrações):** https://klass-workers.nicolasbr56.workers.dev
-
-## Deploy no Cloudflare
+As migrations vão **antes** do frontend que depende delas; a ordem inversa
+quebra telas.
 
 ### 1. `apps/web` no Cloudflare Pages
 
@@ -223,8 +276,8 @@ frontend que depende delas, nesta ordem:
    - **Framework preset:** Vite
    - **Build command:** `pnpm --filter @klass/web build`
    - **Build output directory:** `apps/web/dist`
-   - **Root directory:** `/` (raiz do monorepo — o comando acima já
-     filtra o workspace certo)
+   - **Root directory:** `/` (raiz do monorepo; o comando acima já filtra o
+     workspace certo)
 3. Em **Settings → Environment variables**, adicione `VITE_SUPABASE_URL`,
    `VITE_SUPABASE_PUBLISHABLE_KEY` e `VITE_WORKERS_URL` (a URL pública do
    Worker publicado no passo 2) para os ambientes de produção e preview.
@@ -238,7 +291,7 @@ npx wrangler secret put SUPABASE_URL
 npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
 npx wrangler secret put RESEND_API_KEY
 npx wrangler secret put ALLOWED_ORIGIN   # URL do Pages em produção
-npx wrangler secret put WEBHOOK_SECRET   # string aleatória longa — ver seção de webhook abaixo
+npx wrangler secret put WEBHOOK_SECRET   # string aleatória longa — ver passo 3
 npx wrangler secret put EMAIL_REMETENTE  # opcional: "Klass <no-reply@seu-dominio>"
 npx wrangler deploy
 ```
@@ -246,40 +299,52 @@ npx wrangler deploy
 **Remetente dos e-mails.** Sem `EMAIL_REMETENTE`, o Worker usa
 `Klass <onboarding@resend.dev>`, o remetente de teste do Resend, que **só
 entrega para o e-mail dono da conta Resend**. Para os alunos receberem os
-e-mails, verifique um domínio em resend.com/domains, defina
-`EMAIL_REMETENTE` com um endereço desse domínio e publique o Worker de novo.
+e-mails, verifique um domínio em resend.com/domains, defina `EMAIL_REMETENTE`
+com um endereço desse domínio e publique o Worker de novo.
 
-Depois do primeiro deploy, volte ao passo 1 e atualize
-`VITE_WORKERS_URL` no Pages com a URL que o `wrangler deploy` imprimiu.
+Depois do primeiro deploy, volte ao passo 1 e atualize `VITE_WORKERS_URL` no
+Pages com a URL que o `wrangler deploy` imprimiu.
 
-### 3. Database Webhook do MS3 (e-mail de matrícula aprovada)
+### 3. Webhooks do banco para o Worker (`pg_net` + Vault)
 
-O Supabase não tem API pública pra Webhooks — é configuração manual,
-uma vez, pelo painel:
+Dois eventos saem do banco para o Worker, por triggers versionados na migration
+`20260917001912_webhooks_via_pg_net.sql`:
 
-1. Gere uma string aleatória longa para `WEBHOOK_SECRET` (ex.:
-   `openssl rand -hex 32`) e configure com `wrangler secret put
-   WEBHOOK_SECRET` (passo 2 acima) — guarde o mesmo valor, você vai
-   usá-lo no passo 4.
-2. No painel do Supabase: **Database → Webhooks → Create a new hook**.
-3. Configure:
-   - **Table:** `matriculas` (schema `selecao`)
-   - **Events:** `Update`
-   - **Type:** `HTTP Request`
-   - **URL:** `https://<seu-worker>.workers.dev/webhooks/matricula-deferida`
-     (em desenvolvimento, veja abaixo como expor o Worker local)
-   - **HTTP Headers:** adicione `Authorization: Bearer <WEBHOOK_SECRET>`
-     — o mesmo valor do passo 1.
+| Trigger | Quando dispara | Endpoint do Worker |
+| --- | --- | --- |
+| `matriculas_notifica_deferimento` | matrícula passa de `inscrita` para `matriculada` | `/webhooks/matricula-deferida` |
+| `certificados_notifica_emissao` | certificado é inserido | `/webhooks/certificado-emitido` |
 
-**Testando localmente**: o Supabase Cloud não alcança `localhost`, então
-para testar o webhook em desenvolvimento é preciso expor o Worker local
-publicamente. Duas opções:
+Em vez dos "Database Webhooks" do painel do Supabase, o projeto faz o mesmo
+padrão (trigger → HTTP → Worker) com `net.http_post`, porque o schema interno
+`supabase_functions` nunca foi provisionado no projeto da equipe e o recurso do
+painel falhava. A chamada leva `Authorization: Bearer <segredo>`, lido do
+Supabase Vault. Para a sua instalação:
 
-- `npx wrangler dev --remote` roda o Worker num endereço `*.workers.dev`
-  de verdade (não local), que o Supabase consegue chamar — aponte o
-  webhook do painel pra essa URL enquanto testa.
-- Ou pule o webhook: chame o endpoint direto com `curl` simulando o
-  payload do Supabase, pra testar só a lógica do Worker:
+1. **Gere o segredo** (ex.: `openssl rand -hex 32`) e configure no Worker com
+   `npx wrangler secret put WEBHOOK_SECRET` (passo 2).
+2. **Guarde o mesmo valor no Vault**, uma única vez, no SQL Editor do Supabase,
+   com o nome exato `webhook_secret`:
+   ```sql
+   select vault.create_secret('<mesmo valor do WEBHOOK_SECRET>', 'webhook_secret');
+   ```
+   O segredo nunca entra em migration.
+3. **Aponte os triggers para o seu Worker.** A migration traz fixa a URL do
+   Worker da equipe (`url := 'https://…/webhooks/…'`, nas duas funções). Antes de
+   aplicar as migrations em uma instalação sua, troque essa URL pela do seu
+   Worker, ou crie uma migration nova que recrie as duas funções com a sua URL.
+   Sem isso, os eventos da sua instituição seriam enviados ao Worker da equipe.
+
+Limite conhecido: a chamada `pg_net` é assíncrona e **não é reenviada**; se o
+Worker ou o Resend falharem, o e-mail pode se perder.
+
+**Testando o Worker localmente.** O Supabase hospedado não alcança `localhost`.
+Duas opções:
+
+- `npx wrangler dev --remote` roda o Worker num endereço `*.workers.dev` de
+  verdade, que o banco consegue chamar.
+- Ou chame o endpoint direto com `curl`, simulando o payload, para testar só a
+  lógica do Worker:
   ```bash
   curl -X POST http://localhost:8787/webhooks/matricula-deferida \
     -H "Authorization: Bearer $WEBHOOK_SECRET" \
@@ -292,33 +357,77 @@ publicamente. Duas opções:
       "record": { "id": "...", "aluno_id": "...", "turma_id": "...", "status": "matriculada" }
     }'
   ```
-- Para ver os logs do Worker publicado em tempo real (produção ou
-  `--remote`), use `npx wrangler tail`.
+- Para ver os logs do Worker publicado em tempo real, use `npx wrangler tail`.
 
-### 4. Database Webhook do MS5 (e-mail de certificado emitido)
+## Ambiente de teste da equipe
 
-Segundo webhook, mesma sequência do MS3 — reusa o **mesmo** `WEBHOOK_SECRET`,
-nenhum secret novo. Aponta para o endpoint `/webhooks/certificado-emitido`
-do Worker, que envia o e-mail de conclusão via Resend quando um certificado
-é inserido.
+Usado só pela equipe, com dados de teste; nenhuma instituição o adotou até aqui.
 
-1. No painel do Supabase: **Database → Webhooks → Create a new hook**.
-2. Configure:
-   - **Name:** `certificado_emitido`
-   - **Schema:** `certificacao`
-   - **Table:** `certificados`
-   - **Events:** só `Insert`
-   - **Type:** `HTTP Request`
-   - **URL:** `https://<seu-worker>.workers.dev/webhooks/certificado-emitido`
-   - **HTTP Headers:** `Authorization: Bearer <WEBHOOK_SECRET>` — o mesmo
-     valor do webhook do MS3.
+- **Pages (frontend):** https://klass-91y.pages.dev
+- **Worker (integrações):** https://klass-workers.nicolasbr56.workers.dev
 
-> O endpoint só existe no Worker publicado após um `npx wrangler deploy`
-> com o código do MS5 (o Worker não faz deploy automático no push — só o
-> Pages faz). Redeploy o Worker antes de criar/testar este webhook.
+No plano gratuito do Supabase, o projeto é pausado depois de um período de
+inatividade e só volta pelo painel ("Restore project").
+
+## Limitações conhecidas
+
+- Sistema monolocatário: cada instalação atende a uma instituição.
+- Sem testes de carga; o comportamento com muitos usuários simultâneos é
+  desconhecido. O plano gratuito do Supabase tem limites de escala.
+- Sem avaliação de usabilidade com usuários externos e sem auditoria formal de
+  conformidade com a LGPD ou com a ISO/IEC 27001. O projeto não declara
+  conformidade.
+- A restauração do backup fora do Supabase não foi testada (autenticação,
+  Realtime, Storage e Vault são recursos do Supabase).
+- O envio de e-mail a destinatários externos depende de um domínio verificado no
+  Resend, e a chamada do banco ao Worker não é reenviada em caso de falha.
+- A publicação do Worker e a aplicação das migrations são manuais, e o cron do
+  Worker está declarado, mas sem nenhuma tarefa.
+- O sistema não registra quem exporta uma lista.
+- Não há módulo financeiro nem ambiente virtual de aprendizagem.
 
 ## Design system
 
-Os tokens em `apps/web/tailwind.config.ts` foram extraídos diretamente
-dos SVGs em `docs/design/` — cada grupo de tokens tem um comentário
-indicando de qual tela ele veio.
+Os tokens em `apps/web/tailwind.config.ts` foram extraídos diretamente dos SVGs
+em `docs/design/`; cada grupo de tokens tem um comentário indicando de qual tela
+ele veio. As cores são variáveis CSS em `apps/web/src/index.css`, nos temas
+claro e escuro.
+
+## Equipe
+
+Gabriel Neman Silva, Nicolas Gonçalves, Erik Salomão Almeida e Ricardo Carvalho
+Paixão Brandão, sob orientação do Prof. MSc. Thiago Graziani Traue.
+
+O desenvolvimento contou com assistentes de IA generativa, sob supervisão da
+equipe, que definiu a arquitetura, o escopo e as regras de negócio e revisou
+cada entrega. Os prompts numerados que foram preservados estão em
+[`docs/ia`](docs/ia) (faltam o 02 e o 04, e as respostas do agente não foram
+guardadas).
+
+Novidades do projeto no Instagram:
+[@klasserpacademico](https://www.instagram.com/klasserpacademico/).
+
+## Licença
+
+O Klass é distribuído sob a **[Apache License 2.0](LICENSE)**. Os avisos de
+autoria estão em [NOTICE](NOTICE), e o campo `license` dos `package.json` é
+`Apache-2.0`.
+
+Em resumo, você pode usar, modificar e redistribuir o código, inclusive em uso
+comercial, desde que:
+
+- mantenha o aviso de copyright, o arquivo `LICENSE` e o `NOTICE` nas cópias
+  que distribuir;
+- indique as alterações que fizer nos arquivos modificados.
+
+A licença inclui a concessão de patentes dos contribuidores e **não dá garantia
+de nenhum tipo**: o software é fornecido "como está". Este resumo não substitui
+o texto da licença.
+
+Salvo declaração em contrário, contribuições enviadas ao repositório são
+licenciadas sob os mesmos termos (seção 5 da licença). Fontes, ícones, imagens
+e dependências de terceiros mantêm as licenças originais; antes de incluir um
+novo recurso, confira se a licença permite redistribuição.
+
+Copyright 2026 Gabriel Neman Silva, Nicolas Gonçalves, Erik Salomão Almeida e
+Ricardo Carvalho Paixão Brandão.
