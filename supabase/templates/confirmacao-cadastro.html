@@ -1,0 +1,136 @@
+<!doctype html>
+<!--
+  E-mail de confirmação de cadastro (Supabase Auth, modelo "Confirm signup").
+
+  Onde isto vale:
+  - Local: o config.toml aponta para este arquivo, e o e-mail aparece no Inbucket.
+  - Hospedado: o Supabase NÃO lê este arquivo. Cole o conteúdo, a partir da
+    linha que começa com <html lang="pt-BR">, em Authentication → Emails →
+    Templates → "Confirm signup", com o assunto "Confirme seu e-mail no Klass".
+    Fica só no painel; ver README.
+
+  Decisões:
+  - O corpo (da tag <html> em diante) é ASCII puro: acentos são entidades HTML
+    (&aacute;, &ccedil;...). Motivo: copiar com pbcopy sem locale UTF-8 grava
+    "á" como "√°" na área de transferência, e o erro já foi para o painel uma
+    vez. Em ASCII, nenhuma cópia ou colagem consegue estragar o texto. Ao
+    editar, mantenha assim.
+  - Sem imagem: o logo é o mesmo quadrado preto com "K" da barra lateral, feito
+    em HTML. Não depende de hospedagem nem de o cliente liberar imagens.
+  - Padrão claro, declarado em color-scheme. Quem respeita isso (Apple Mail)
+    mostra como está aqui.
+  - O Outlook faz inversão própria no modo escuro: clareia fundos escuros e
+    deixa texto claro como está, o que torna o botão e o logo (fundo preto,
+    texto branco) ilegíveis. O background-image em degradê, no logo e no botão,
+    é o truque conhecido para o Outlook não inverter o fundo desses dois: eles
+    continuam pretos com texto branco, sobre o cartão que o Outlook escurece.
+    Já tentamos regras [data-ogsc]/[data-ogsb] com paleta escura própria e
+    elas não pegaram no Outlook para Mac; não as reintroduza sem testar nele.
+    Se o truque do degradê também falhar, a saída segura é botão com fundo
+    claro e texto escuro (inverte junto, sem ficar ilegível).
+  - Cores são as de apps/web/src/index.css (e-mail não lê variável CSS), do
+    tema claro.
+  - Não usa o nome do usuário: ele vem do formulário público de cadastro, e
+    colocá-lo aqui deixaria alguém escrever texto num e-mail enviado a outra
+    pessoa.
+  - Variáveis do Supabase: {{ .ConfirmationURL }} e {{ .Email }}.
+-->
+<html lang="pt-BR">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <meta name="supported-color-schemes" content="light" />
+    <title>Confirme seu e-mail no Klass</title>
+    <style>
+      :root { color-scheme: light; supported-color-schemes: light; }
+      @media only screen and (max-width: 520px) {
+        .cartao { padding: 28px 20px !important; }
+        .botao a { display: block !important; }
+      }
+    </style>
+  </head>
+  <body class="fundo" bgcolor="#F3F3F1" style="margin:0; padding:0; background-color:#F3F3F1;">
+    <!-- Previa na lista da caixa de entrada; fica invisivel dentro do e-mail. -->
+    <div style="display:none; max-height:0; overflow:hidden; opacity:0; font-size:1px; line-height:1px; color:#F3F3F1;">
+      Falta s&oacute; um passo: confirme este e-mail para ativar sua conta.
+    </div>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="fundo" bgcolor="#F3F3F1" style="background-color:#F3F3F1;">
+      <tr>
+        <td align="center" style="padding:32px 16px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;">
+
+            <!-- Marca -->
+            <tr>
+              <td style="padding:0 4px 20px 4px;">
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                  <tr>
+                    <td class="marca" width="32" height="32" align="center" valign="middle" bgcolor="#1A1A17"
+                        style="width:32px; height:32px; background-color:#1A1A17; background-image:linear-gradient(#1A1A17,#1A1A17); border-radius:8px; color:#FFFFFF; font-family:'IBM Plex Sans', -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; font-size:16px; font-weight:600; line-height:32px;">
+                      K
+                    </td>
+                    <td class="t-principal" style="padding-left:10px; color:#1A1A17; font-family:'IBM Plex Sans', -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; font-size:18px; font-weight:600;">
+                      Klass
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <!-- Cartao -->
+            <tr>
+              <td class="cartao" bgcolor="#FFFFFF" style="background-color:#FFFFFF; border:1px solid #D8D9D3; border-radius:12px; padding:36px 32px;">
+                <h1 class="t-principal" style="margin:0 0 12px 0; color:#1A1A17; font-family:'IBM Plex Sans', -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; font-size:24px; line-height:1.25; font-weight:600;">
+                  Confirme seu e-mail
+                </h1>
+                <p class="t-secundario" style="margin:0 0 24px 0; color:#61635C; font-family:'IBM Plex Sans', -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; font-size:16px; line-height:1.55;">
+                  Ol&aacute;! Para ativar sua conta no Klass, confirme que este e-mail &eacute; seu. Depois &eacute; s&oacute; entrar e explorar o cat&aacute;logo de trilhas.
+                </p>
+
+                <!-- Botao -->
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 28px 0;">
+                  <tr>
+                    <td class="botao" align="center" bgcolor="#1A1A17" style="background-color:#1A1A17; background-image:linear-gradient(#1A1A17,#1A1A17); border-radius:8px;">
+                      <a href="{{ .ConfirmationURL }}"
+                         style="display:inline-block; padding:14px 28px; color:#FFFFFF; font-family:'IBM Plex Sans', -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; font-size:16px; font-weight:600; line-height:1.2; text-decoration:none; border-radius:8px;">
+                        Confirmar e-mail
+                      </a>
+                    </td>
+                  </tr>
+                </table>
+
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                  <tr>
+                    <td class="linha" style="border-top:1px solid #D8D9D3; padding-top:20px;">
+                      <p class="t-secundario" style="margin:0 0 8px 0; color:#61635C; font-family:'IBM Plex Sans', -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; font-size:14px; line-height:1.5;">
+                        Se o bot&atilde;o n&atilde;o abrir, copie e cole este endere&ccedil;o no navegador:
+                      </p>
+                      <p class="caixa-link t-secundario" style="margin:0; padding:10px 12px; background-color:#E3E4DE; border-radius:8px; color:#61635C; font-family:'IBM Plex Mono', Menlo, Consolas, monospace; font-size:12px; line-height:1.5; word-break:break-all;">
+                        <a href="{{ .ConfirmationURL }}" style="color:#61635C; text-decoration:underline;">{{ .ConfirmationURL }}</a>
+                      </p>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <!-- Rodape -->
+            <tr>
+              <td style="padding:20px 4px 0 4px;">
+                <p class="t-discreto" style="margin:0 0 6px 0; color:#6D6F68; font-family:'IBM Plex Sans', -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; font-size:13px; line-height:1.5;">
+                  Voc&ecirc; recebeu este e-mail porque {{ .Email }} foi usado para criar uma conta no Klass. Se n&atilde;o foi voc&ecirc;, ignore esta mensagem: nada ser&aacute; ativado.
+                </p>
+                <p class="t-discreto" style="margin:0; color:#6D6F68; font-family:'IBM Plex Sans', -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; font-size:13px; line-height:1.5;">
+                  Klass &middot; ERP educacional de c&oacute;digo aberto
+                </p>
+              </td>
+            </tr>
+
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

@@ -131,7 +131,7 @@ insert into selecao.turmas (id, modulo_id, codigo, professor_id, periodo_inicio,
   (pg_temp.id('t4'), pg_temp.id('m1'), 'PGT-D1', pg_temp.id('prof1'), pg_temp.hoje() - 60, pg_temp.hoje() - 30, 2);
 
 
-select plan(31);
+select plan(32);
 
 -- RLS habilitada em tudo, anônimo sem acesso e funções privilegiadas fechadas à API.
 
@@ -229,6 +229,8 @@ select is((select tgenabled::text from pg_trigger where tgname = 'matriculas_not
   'trigger de e-mail de matrícula deferida está ativo');
 select is((select tgenabled::text from pg_trigger where tgname = 'certificados_notifica_emissao'), 'O',
   'trigger de e-mail de certificado emitido está ativo');
+select is((select tgenabled::text from pg_trigger where tgname = 'matriculas_notifica_inscricao'), 'O',
+  'trigger de e-mail de inscrição recebida está ativo');
 
 -- O bucket de materiais é privado.
 select is((select public from storage.buckets where id = 'materiais'), false,

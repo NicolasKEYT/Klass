@@ -131,7 +131,7 @@ insert into selecao.turmas (id, modulo_id, codigo, professor_id, periodo_inicio,
   (pg_temp.id('t4'), pg_temp.id('m1'), 'PGT-D1', pg_temp.id('prof1'), pg_temp.hoje() - 60, pg_temp.hoje() - 30, 2);
 
 
-select plan(32);
+select plan(33);
 
 -- Contexto Motor de Seleção: inscrição, regras de matrícula e deferimento.
 
@@ -148,6 +148,15 @@ select throws_like($$select selecao.inscrever_aluno('e3000000-0000-4000-8000-000
 select throws_like($$select selecao.inscrever_aluno('e3000000-0000-4000-8000-000000000003')$$,
   '%matrícula ativa neste módulo%', 'segunda inscrição ativa no mesmo módulo, em outra turma, é recusada');
 select pg_temp.volta();
+
+-- A inscrição enfileira o aviso ao Worker (e-mail de inscrição recebida). Lido
+-- como dono do banco: a fila do pg_net não é da API. A fila é da transação,
+-- então o rollback do arquivo a descarta e nada chega a ser enviado. As duas
+-- inscrições recusadas acima não podem ter enfileirado nada: o total é 1.
+select is((select count(*)::int from net.http_request_queue
+           where url like '%/webhooks/inscricao-recebida'
+             and convert_from(body, 'utf8')::jsonb -> 'record' ->> 'aluno_id' = 'b1000000-0000-4000-8000-000000000001'),
+  1, 'a inscrição enfileira exatamente uma chamada ao Worker, e as recusadas nenhuma');
 
 -- Quem se inscreve não consegue se aprovar nem inscrever outra pessoa.
 select pg_temp.como('al1');

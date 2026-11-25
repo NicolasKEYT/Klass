@@ -207,8 +207,8 @@ comando (a chave publicável local aparece em `supabase status`):
 VITE_SUPABASE_URL=http://127.0.0.1:54321 VITE_SUPABASE_PUBLISHABLE_KEY=<chave local> pnpm dev
 ```
 
-Atenção: os triggers de webhook (`20260917001912_webhooks_via_pg_net.sql`)
-chamam um Worker publicado. Sem o segredo no Vault local, a chamada é recusada
+Atenção: os triggers de webhook (`20260917001912_webhooks_via_pg_net.sql` e
+`20261124120000_webhook_inscricao_recebida.sql`) chamam um Worker publicado. Sem o segredo no Vault local, a chamada é recusada
 (401) e nenhum e-mail sai. Nunca grave o `webhook_secret` real no banco local e
 nunca rode `supabase link` ou `db push` apontando para um ambiente real a
 partir de um teste local.
@@ -218,7 +218,7 @@ partir de um teste local.
 Os testes rodam **só no banco local** (ver "Banco local" acima), nunca no
 Supabase hospedado, onde rodadas simultâneas de teste já contaminaram dados.
 
-**Testes SQL (pgTAP)** — `supabase/tests/database/`, 9 arquivos e 276 asserções:
+**Testes SQL (pgTAP)** — `supabase/tests/database/`, 9 arquivos e 278 asserções:
 RLS e privilégios, identidade, catálogo, seleção, diário (chamada e notas,
 encerramento, materiais), certificação e relatórios da coordenação. Cada arquivo
 é uma transação que termina em `rollback`, monta o próprio cenário e assume os
@@ -254,7 +254,7 @@ Cada camada é publicada de um jeito; só o frontend é automático.
 
 ### Migrations
 
-O repositório tem 49 migrations versionadas. Toda alteração de schema é uma
+O repositório tem 50 migrations versionadas. Toda alteração de schema é uma
 migration; nada é alterado à mão no painel do Supabase. Para aplicar em um
 projeto hospedado:
 
@@ -290,7 +290,7 @@ npx wrangler login
 npx wrangler secret put SUPABASE_URL
 npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
 npx wrangler secret put RESEND_API_KEY
-npx wrangler secret put ALLOWED_ORIGIN   # URL do Pages em produção
+npx wrangler secret put ALLOWED_ORIGIN   # origem do frontend (ex.: https://seu-dominio), sem barra no final; vai nos links dos e-mails
 npx wrangler secret put WEBHOOK_SECRET   # string aleatória longa — ver passo 3
 npx wrangler secret put EMAIL_REMETENTE  # opcional: "Klass <no-reply@seu-dominio>"
 npx wrangler deploy
@@ -300,18 +300,32 @@ npx wrangler deploy
 `Klass <onboarding@resend.dev>`, o remetente de teste do Resend, que **só
 entrega para o e-mail dono da conta Resend**. Para os alunos receberem os
 e-mails, verifique um domínio em resend.com/domains, defina `EMAIL_REMETENTE`
-com um endereço desse domínio e publique o Worker de novo.
+com um endereço desse domínio e publique o Worker de novo. O ambiente da equipe
+já usa `Klass <no-reply@klass.digital>`, com o domínio verificado (SPF, DKIM e
+DMARC no DNS).
+
+**E-mail de confirmação de cadastro.** Este não sai do Worker: é do Supabase
+Auth. Para ele sair do seu domínio, em Authentication → Emails → SMTP Settings
+ligue o SMTP próprio com o Resend (host `smtp.resend.com`, porta `465`, usuário
+`resend`, senha = uma API key do Resend só com permissão de envio no seu
+domínio) e, em Templates → Confirm signup, cole o modelo de
+[`supabase/templates/confirmacao-cadastro.html`](supabase/templates/confirmacao-cadastro.html)
+(a partir da linha `<html lang="pt-BR">`) com o assunto "Confirme seu e-mail no
+Klass". Essas duas configurações ficam só no painel; o `config.toml` só vale
+para o banco local.
 
 Depois do primeiro deploy, volte ao passo 1 e atualize `VITE_WORKERS_URL` no
 Pages com a URL que o `wrangler deploy` imprimiu.
 
 ### 3. Webhooks do banco para o Worker (`pg_net` + Vault)
 
-Dois eventos saem do banco para o Worker, por triggers versionados na migration
-`20260917001912_webhooks_via_pg_net.sql`:
+Três eventos saem do banco para o Worker, por triggers versionados nas migrations
+`20260917001912_webhooks_via_pg_net.sql` e
+`20261124120000_webhook_inscricao_recebida.sql`:
 
 | Trigger | Quando dispara | Endpoint do Worker |
 | --- | --- | --- |
+| `matriculas_notifica_inscricao` | matrícula é criada como `inscrita` | `/webhooks/inscricao-recebida` |
 | `matriculas_notifica_deferimento` | matrícula passa de `inscrita` para `matriculada` | `/webhooks/matricula-deferida` |
 | `certificados_notifica_emissao` | certificado é inserido | `/webhooks/certificado-emitido` |
 
@@ -329,10 +343,11 @@ Supabase Vault. Para a sua instalação:
    select vault.create_secret('<mesmo valor do WEBHOOK_SECRET>', 'webhook_secret');
    ```
    O segredo nunca entra em migration.
-3. **Aponte os triggers para o seu Worker.** A migration traz fixa a URL do
-   Worker da equipe (`url := 'https://…/webhooks/…'`, nas duas funções). Antes de
-   aplicar as migrations em uma instalação sua, troque essa URL pela do seu
-   Worker, ou crie uma migration nova que recrie as duas funções com a sua URL.
+3. **Aponte os triggers para o seu Worker.** As migrations trazem fixa a URL do
+   Worker da equipe (`url := 'https://…/webhooks/…'`, nas três funções, em dois
+   arquivos). Antes de aplicar as migrations em uma instalação sua, troque essa
+   URL pela do seu Worker, ou crie uma migration nova que recrie as três
+   funções com a sua URL.
    Sem isso, os eventos da sua instituição seriam enviados ao Worker da equipe.
 
 Limite conhecido: a chamada `pg_net` é assíncrona e **não é reenviada**; se o
@@ -363,7 +378,7 @@ Duas opções:
 
 Usado só pela equipe, com dados de teste; nenhuma instituição o adotou até aqui.
 
-- **Pages (frontend):** https://klass-91y.pages.dev
+- **Site:** https://klass.digital (também em https://klass-91y.pages.dev)
 - **Worker (integrações):** https://klass-workers.nicolasbr56.workers.dev
 
 No plano gratuito do Supabase, o projeto é pausado depois de um período de
@@ -380,7 +395,13 @@ inatividade e só volta pelo painel ("Restore project").
 - A restauração do backup fora do Supabase não foi testada (autenticação,
   Realtime, Storage e Vault são recursos do Supabase).
 - O envio de e-mail a destinatários externos depende de um domínio verificado no
-  Resend, e a chamada do banco ao Worker não é reenviada em caso de falha.
+  Resend (o da equipe, `klass.digital`, está verificado, mas por ser novo pode
+  cair no lixo eletrônico de alguns provedores no início), e a chamada do banco
+  ao Worker não é reenviada em caso de falha. A matrícula rejeitada não gera
+  e-mail.
+- O cadastro é aberto: qualquer pessoa cria uma conta de aluno. Não há convite,
+  nem lista prévia de alunos, nem vínculo do aluno com uma instituição além da
+  própria instalação.
 - A publicação do Worker e a aplicação das migrations são manuais, e o cron do
   Worker está declarado, mas sem nenhuma tarefa.
 - O sistema não registra quem exporta uma lista.
