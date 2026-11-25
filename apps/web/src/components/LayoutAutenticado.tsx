@@ -1,9 +1,10 @@
-import { Suspense, useEffect } from "react";
+import { Suspense, useEffect, type ReactNode } from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
 import { Monitor } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Papel } from "@klass/types";
 import { useAuth } from "@/auth";
+import { LimiteDeErro } from "@/components/LimiteDeErro";
 import { EsqueletoPagina } from "@/components/Esqueleto";
 import { PaginaAutenticada } from "@/components/PaginaAutenticada";
 import { BarraInferior } from "@/components/navegacao/BarraInferior";
@@ -20,7 +21,9 @@ import { useEhMobile } from "@/lib/useEhMobile";
 // faixa superior e barra inferior continuam montadas, sem piscar. D3
 // (klass-uikit.pdf) trocou o cabeçalho horizontal por barra lateral no
 // desktop + barra inferior no celular (aluno/professor).
-export function LayoutAutenticado() {
+// `children`: só a rota "*" (página não encontrada) usa, para mostrar a
+// página dentro da casca sem passar pela guarda de login.
+export function LayoutAutenticado({ children }: { children?: ReactNode } = {}) {
   const { usuario, profile } = useAuth();
   const location = useLocation();
   const ehMobile = useEhMobile();
@@ -70,7 +73,10 @@ export function LayoutAutenticado() {
               </PaginaAutenticada>
             }
           >
-            <Outlet />
+            {/* key: trocar de rota descarta o erro da tela anterior. */}
+            <LimiteDeErro key={location.pathname}>
+              {children ?? <Outlet />}
+            </LimiteDeErro>
           </Suspense>
         )}
       </div>
