@@ -12,12 +12,12 @@
   },
   "dependencies": {
     "@klass/types": "workspace:*",
-    "@supabase/supabase-js": "^2.112.4",
-    "hono": "^4.13.5"
+    "@supabase/supabase-js": "^2.119.2",
+    "hono": "^4.13.22"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20260831.1",
+    "@cloudflare/workers-types": "^5.20261125.1",
     "typescript": "^5.9.3",
-    "wrangler": "^4.127.1"
+    "wrangler": "^4.168.0"
   }
 }

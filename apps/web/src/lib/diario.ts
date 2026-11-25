@@ -195,7 +195,7 @@ export async function criarAula(input: {
       descricao: input.descricao || null,
       sala: input.sala?.trim() || null,
     })
-    .select("*")
+    .select(COLUNAS_AULA)
     .single();
   if (error) throw new Error(mensagemDeErroBanco(error));
   return data;
@@ -216,7 +216,7 @@ export async function atualizarAula(
       sala: patch.sala?.trim() || null,
     })
     .eq("id", id)
-    .select("*")
+    .select(COLUNAS_AULA)
     .single();
   if (error) throw new Error(mensagemDeErroBanco(error));
   return data;
