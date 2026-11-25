@@ -7,11 +7,6 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "14.5"
-  }
   catalogo: {
     Tables: {
       avaliacoes_modelo: {
@@ -24,6 +19,7 @@ export type Database = {
           peso: number
           titulo: string
         }
+        ComputedFields: never
         Insert: {
           atualizado_em?: string
           criado_em?: string
@@ -65,6 +61,7 @@ export type Database = {
           ordem: number
           trilha_id: string
         }
+        ComputedFields: never
         Insert: {
           atualizado_em?: string
           carga_horaria_horas: number
@@ -111,6 +108,7 @@ export type Database = {
           modulo_id: string
           pre_requisito_id: string
         }
+        ComputedFields: never
         Insert: {
           modulo_id: string
           pre_requisito_id: string
@@ -152,6 +150,7 @@ export type Database = {
           slug: string
           tipo_certificacao: Database["catalogo"]["Enums"]["tipo_certificacao"]
         }
+        ComputedFields: never
         Insert: {
           atualizado_em?: string
           carga_horaria_total?: number
@@ -191,9 +190,10 @@ export type Database = {
           taxa_aprovacao_percentual: number | null
           total_aprovados: number | null
           total_encerrados: number | null
-          trilha_id: string | null
-          trilha_nome: string | null
+          trilha_id: string
+          trilha_nome: string
         }
+        ComputedFields: never
         Relationships: []
       }
       vw_taxa_evasao: {
@@ -203,6 +203,7 @@ export type Database = {
           total_encerrados: number | null
           total_evadidos: number | null
         }
+        ComputedFields: never
         Relationships: []
       }
     }
@@ -357,6 +358,7 @@ export type Database = {
           trilha_nome: string
           turma_codigo: string | null
         }
+        ComputedFields: never
         Insert: {
           aluno_id: string
           aluno_nome: string
@@ -493,6 +495,7 @@ export type Database = {
           chamada_aberta_ate: string | null
           situacao_chamada: string | null
         }
+        ComputedFields: "chamada_aberta_ate" | "situacao_chamada"
         Insert: {
           atualizada_em?: string
           chamada_liberada_ate?: string | null
@@ -532,6 +535,7 @@ export type Database = {
           titulo: string
           turma_id: string
         }
+        ComputedFields: never
         Insert: {
           atualizado_em?: string
           criado_em?: string
@@ -569,6 +573,7 @@ export type Database = {
           status_novo: Database["selecao"]["Enums"]["status_matricula"]
           turma_id: string
         }
+        ComputedFields: never
         Insert: {
           acao: Database["diario"]["Enums"]["acao_encerramento"]
           certificados_revogados?: number
@@ -611,6 +616,7 @@ export type Database = {
           titulo: string
           turma_id: string
         }
+        ComputedFields: never
         Insert: {
           caminho: string
           enviado_em?: string
@@ -644,6 +650,7 @@ export type Database = {
           matricula_id: string
           valor: number
         }
+        ComputedFields: never
         Insert: {
           avaliacao_id: string
           id?: string
@@ -679,6 +686,7 @@ export type Database = {
           registrada_em: string
           registrada_por: string
         }
+        ComputedFields: never
         Insert: {
           aula_id: string
           id?: string
@@ -727,7 +735,12 @@ export type Database = {
         Returns: boolean
       }
       chamada_aberta_ate: {
-        Args: { a: Database["diario"]["Tables"]["aulas"]["Row"] }
+        Args: {
+          a: Omit<
+            Database["diario"]["Tables"]["aulas"]["Row"],
+            Database["diario"]["Tables"]["aulas"]["ComputedFields"]
+          >
+        }
         Returns: string
       }
       chamada_pela_api: { Args: Record<PropertyKey, never>; Returns: boolean }
@@ -827,7 +840,12 @@ export type Database = {
         }[]
       }
       situacao_chamada: {
-        Args: { a: Database["diario"]["Tables"]["aulas"]["Row"] }
+        Args: {
+          a: Omit<
+            Database["diario"]["Tables"]["aulas"]["Row"],
+            Database["diario"]["Tables"]["aulas"]["ComputedFields"]
+          >
+        }
         Returns: string
       }
       situacao_chamada_em: {
@@ -886,6 +904,7 @@ export type Database = {
           nome_completo: string
           papel: Database["identidade"]["Enums"]["papel"]
         }
+        ComputedFields: never
         Insert: {
           atualizado_em?: string
           criado_em?: string
@@ -1011,6 +1030,7 @@ export type Database = {
           status: Database["selecao"]["Enums"]["status_matricula"]
           turma_id: string
         }
+        ComputedFields: never
         Insert: {
           aluno_id: string
           atualizado_em?: string
@@ -1063,6 +1083,7 @@ export type Database = {
           turno: string | null
           vagas_total: number
         }
+        ComputedFields: never
         Insert: {
           atualizado_em?: string
           codigo: string
@@ -1267,12 +1288,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1294,13 +1315,12 @@ export type Tables<
 
 export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema["Tables"]
-    | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+    keyof DefaultSchema["Tables"] | { schema: keyof DatabaseWithoutInternals },
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1319,13 +1339,12 @@ export type TablesInsert<
 
 export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema["Tables"]
-    | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+    keyof DefaultSchema["Tables"] | { schema: keyof DatabaseWithoutInternals },
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1344,13 +1363,12 @@ export type TablesUpdate<
 
 export type Enums<
   DefaultSchemaEnumNameOrOptions extends
-    | keyof DefaultSchema["Enums"]
-    | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    keyof DefaultSchema["Enums"] | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1363,11 +1381,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
