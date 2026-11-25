@@ -31,4 +31,3 @@ Antes de abrir o pull request, rode também `pnpm typecheck` e `pnpm build`.
 - Regra nova no banco ganha asserção pgTAP no arquivo do contexto.
 - Toda tabela nova nasce com RLS habilitada.
 - Identificadores de domínio e comentários em português.
-- Problema de segurança não vai em issue pública: veja o [SECURITY.md](SECURITY.md).
