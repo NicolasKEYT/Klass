@@ -42,8 +42,8 @@ Três perfis, cada um com a sua navegação:
 - **Coordenação:** acompanhamento com gráficos (panorama e relatório do
   período) e exportação de listas em CSV e XLSX, sem CPF.
 - **Materiais da turma** em bucket privado do Supabase Storage.
-- **E-mails** de matrícula deferida e de certificado emitido, enviados pelo
-  Resend.
+- **E-mails** de inscrição recebida, matrícula deferida e certificado emitido,
+  enviados pelo Worker via Resend (a confirmação de cadastro é do Supabase Auth).
 - **Tema claro e escuro.**
 
 ## Arquitetura
@@ -68,8 +68,8 @@ função) e o acesso é controlado por Row Level Security, JWT e papel.
 
 O frontend fala direto com o Supabase para tudo que é dado de domínio. Os
 Cloudflare Workers existem só para o que o banco não faz sozinho: enviar
-e-mail, receber as chamadas dos triggers e (no futuro) rodar tarefas
-agendadas. Quando uma mudança de estado precisa avisar o mundo externo, um
+e-mail e receber as chamadas dos triggers. Não há tarefa agendada: o Worker não
+tem cron trigger nem handler `scheduled`. Quando uma mudança de estado precisa avisar o mundo externo, um
 trigger do banco faz uma chamada HTTP assíncrona (`pg_net`) ao Worker.
 
 ## Stack
@@ -94,7 +94,7 @@ apps/
   workers/              Cloudflare Workers (integrações)
     src/email/          Envio via Resend
     src/webhooks/       Recebedores das chamadas HTTP dos triggers
-    src/cron/           Tarefas agendadas (declarado, sem nenhuma tarefa ainda)
+    src/cron/           Pasta reservada; sem cron trigger nem handler `scheduled`
     src/shared/         Cliente Supabase (service key), CORS, ambiente
 packages/
   types/                Tipos de domínio compartilhados
@@ -290,9 +290,9 @@ quebra telas.
    - **Build output directory:** `apps/web/dist`
    - **Root directory:** `/` (raiz do monorepo; o comando acima já filtra o
      workspace certo)
-3. Em **Settings → Environment variables**, adicione `VITE_SUPABASE_URL`,
-   `VITE_SUPABASE_PUBLISHABLE_KEY` e `VITE_WORKERS_URL` (a URL pública do
-   Worker publicado no passo 2) para os ambientes de produção e preview.
+3. Em **Settings → Environment variables**, adicione `VITE_SUPABASE_URL`
+   e `VITE_SUPABASE_PUBLISHABLE_KEY` para os ambientes de produção e preview.
+   O frontend não chama o Worker; só o banco chama.
 
 ### 2. `apps/workers` via wrangler
 
@@ -326,8 +326,8 @@ domínio) e, em Templates → Confirm signup, cole o modelo de
 Klass". Essas duas configurações ficam só no painel; o `config.toml` só vale
 para o banco local.
 
-Depois do primeiro deploy, volte ao passo 1 e atualize `VITE_WORKERS_URL` no
-Pages com a URL que o `wrangler deploy` imprimiu.
+A URL que o `wrangler deploy` imprimir vai para o Vault do banco
+(`webhook_url`, passo 3), não para o Pages.
 
 ### 3. Webhooks do banco para o Worker (`pg_net` + Vault)
 
@@ -370,7 +370,16 @@ Supabase Vault. Para a sua instalação:
    deixam de sair.
 
 Limite conhecido: a chamada `pg_net` é assíncrona e **não é reenviada**; se o
-Worker ou o Resend falharem, o e-mail pode se perder.
+Worker ou o Resend falharem, o e-mail pode se perder. As respostas ficam por
+algumas horas em `net._http_response`. Para ver as falhas (status fora de 2xx ou
+erro de rede), rode no SQL Editor:
+
+```sql
+select id, created, status_code, error_msg, content
+from net._http_response
+where status_code is null or status_code not between 200 and 299
+order by created desc;
+```
 
 **Testando o Worker localmente.** O Supabase hospedado não alcança `localhost`.
 Duas opções:
@@ -421,8 +430,14 @@ inatividade e só volta pelo painel ("Restore project").
 - O cadastro é aberto: qualquer pessoa cria uma conta de aluno. Não há convite,
   nem lista prévia de alunos, nem vínculo do aluno com uma instituição além da
   própria instalação.
-- A publicação do Worker e a aplicação das migrations são manuais, e o cron do
-  Worker está declarado, mas sem nenhuma tarefa.
+- A publicação do Worker e a aplicação das migrations são manuais. Não há tarefa
+  agendada: o Worker não tem cron trigger nem handler `scheduled` (a pasta
+  `src/cron` só fica reservada).
+- Não há recuperação nem troca de senha pela interface.
+- Não há aviso de privacidade, termos de uso nem exclusão da própria conta
+  (pedidos da LGPD ficam sem fluxo no sistema).
+- A instância hospedada da equipe é só de demonstração, com dados de teste; não
+  deve receber dados reais de alunos.
 - O sistema não registra quem exporta uma lista.
 - Não há módulo financeiro nem ambiente virtual de aprendizagem.
 

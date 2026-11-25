@@ -95,7 +95,7 @@ funcionalidade, decida onde ela mora por esta tabela.
 | Relatórios e BI em modo leitura | **Supabase** | View / Materialized View |
 | Enviar e-mail transacional | **Worker** | Recebe a chamada HTTP do trigger (`pg_net`), chama Resend |
 | Reagir a evento fora do banco | **Worker** | Endpoint que recebe a chamada do trigger (hoje: `/webhooks/inscricao-recebida`, `/webhooks/matricula-deferida` e `/webhooks/certificado-emitido`) |
-| Tarefa agendada | **Worker** | Cron trigger (declarado, **nenhuma tarefa implementada**) |
+| Tarefa agendada | **Worker** | Nenhuma: não há cron trigger nem handler `scheduled`; só a pasta `src/cron` reservada |
 | Arquivos (materiais da turma) | **Supabase Storage, direto do frontend** | Bucket privado `materiais` + políticas por turma |
 | Gerar o PDF do certificado | **Frontend** (react-pdf) | Ver seção Certificação |
 
@@ -382,7 +382,7 @@ apps/
     src/
       email/            Envio via Resend
       webhooks/         Recebedores das chamadas HTTP dos triggers (pg_net)
-      cron/             Tarefas agendadas (ainda sem nenhuma tarefa)
+      cron/             Reservada (sem cron trigger nem handler `scheduled`)
       shared/           Cliente Supabase (service key), utilitários
 packages/
   types/                Tipos de domínio compartilhados entre web e workers
@@ -454,9 +454,11 @@ silêncio: sistema monolocatário; sem testes de carga; sem avaliação de
 usabilidade com usuários externos; sem avaliação de conformidade com ISO/IEC
 27001 nem LGPD; restauração do backup fora do Supabase não testada (o dump
 não inclui Auth nem Storage); decisão D7 do UI Kit (publicar notas após
-revisão) não implementada; cron sem tarefas; sem e-mail para matrícula
-rejeitada; cadastro aberto (qualquer pessoa cria conta de aluno; não há
-convite nem vínculo do aluno com uma instituição além da própria instalação).
+revisão) não implementada; sem tarefa agendada (nem cron trigger); sem e-mail
+para matrícula rejeitada; cadastro aberto (qualquer pessoa cria conta de aluno;
+não há convite nem vínculo do aluno com uma instituição além da própria
+instalação); sem recuperação ou troca de senha; sem aviso de privacidade, termos
+nem exclusão de conta (LGPD); a instância hospedada é só de demonstração.
 
 ## Como trabalhar neste projeto
 
