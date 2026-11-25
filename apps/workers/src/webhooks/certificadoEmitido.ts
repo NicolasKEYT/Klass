@@ -3,6 +3,7 @@ import { caixaDeCodigo, destaque, escaparHtml, montarEmail, paragrafo } from "..
 import { enviarEmail } from "../email/resend";
 import type { Env } from "../shared/env";
 import { createSupabaseAdmin } from "../shared/supabaseAdmin";
+import { autorizarWebhook, lerCorpoJson } from "../shared/webhook";
 
 // Payload do Database Webhook do Supabase para o INSERT em
 // certificacao.certificados — não é o Row do banco diretamente. Os dados
@@ -65,12 +66,14 @@ function montarEmailCertificadoEmitido(dados: {
 export async function receberCertificadoEmitido(c: Context<{ Bindings: Env }>) {
   // Mesmo secret do webhook de matrícula — sem isso qualquer um que
   // descobrisse a URL poderia disparar e-mails de certificado.
-  const autorizacao = c.req.header("Authorization");
-  if (autorizacao !== `Bearer ${c.env.WEBHOOK_SECRET}`) {
+  if (!autorizarWebhook(c)) {
     return c.json({ error: "não autorizado" }, 401);
   }
 
-  const payload = await c.req.json<PayloadWebhookCertificado>();
+  const payload = await lerCorpoJson<PayloadWebhookCertificado>(c);
+  if (!payload) {
+    return c.json({ error: "corpo JSON inválido" }, 400);
+  }
 
   // Ser defensivo aqui evita mandar e-mail numa configuração errada de
   // painel, mesmo o webhook já devendo disparar só nesse caso.

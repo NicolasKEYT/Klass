@@ -83,7 +83,7 @@ trigger do banco faz uma chamada HTTP assíncrona (`pg_net`) ao Worker.
 | E-mail transacional | Resend, acessado só pelos Workers |
 | PDF do certificado | `@react-pdf/renderer`, no navegador |
 | Tipos compartilhados | `packages/types`, gerados do banco e consumidos por web e workers |
-| Testes | pgTAP (SQL) e Playwright, só no banco local |
+| Testes | pgTAP (SQL) e Playwright, só no banco local; Vitest no Worker, sem rede |
 
 ## Estrutura do repositório
 
@@ -240,6 +240,16 @@ configuração recusa qualquer URL que não seja local.
 
 ```bash
 apps/web/e2e/rodar.sh          # precisa de psql no PATH (brew install libpq)
+```
+
+**Testes do Worker (Vitest)** — `apps/workers/test/`, 9 casos que rodam em Node,
+sem banco e sem rede (o `fetch` do Supabase e do Resend é simulado): webhook
+recusado sem o cabeçalho, com segredo ausente, vazio, curto ou errado; JSON
+inválido (400); caminho feliz com o e-mail montado; erro não tratado vira JSON 500;
+CORS só com GET, POST e OPTIONS.
+
+```bash
+pnpm --filter @klass/workers test
 ```
 
 A cobertura não é medida. Os testes não substituem avaliação com usuários.

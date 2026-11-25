@@ -3,6 +3,7 @@ import { destaque, escaparHtml, montarEmail, paragrafo } from "../email/layout";
 import { enviarEmail } from "../email/resend";
 import type { Env } from "../shared/env";
 import { createSupabaseAdmin } from "../shared/supabaseAdmin";
+import { autorizarWebhook, lerCorpoJson } from "../shared/webhook";
 import { carregarDadosDaMatricula, type DadosDaMatricula } from "./dadosDaMatricula";
 
 // Formato do Database Webhook do Supabase — não é o Row do banco
@@ -51,12 +52,14 @@ export async function receberMatriculaDeferida(c: Context<{ Bindings: Env }>) {
   // Sem isso, qualquer um na internet que descobrisse a URL poderia
   // chamar essa rota — o trigger manda esse header com o segredo do Vault,
   // o mesmo valor do WEBHOOK_SECRET do Worker.
-  const autorizacao = c.req.header("Authorization");
-  if (autorizacao !== `Bearer ${c.env.WEBHOOK_SECRET}`) {
+  if (!autorizarWebhook(c)) {
     return c.json({ error: "não autorizado" }, 401);
   }
 
-  const payload = await c.req.json<PayloadWebhookMatricula>();
+  const payload = await lerCorpoJson<PayloadWebhookMatricula>(c);
+  if (!payload) {
+    return c.json({ error: "corpo JSON inválido" }, 400);
+  }
 
   const eraInscrita = payload.old_record?.status === "inscrita";
   const agoraMatriculada = payload.record?.status === "matriculada";

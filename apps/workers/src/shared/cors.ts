@@ -8,7 +8,7 @@ const DEV_ORIGIN = "http://localhost:5173";
 export function corsMiddleware() {
   return cors({
     origin: (_origin, c) => (c.env as Env).ALLOWED_ORIGIN ?? DEV_ORIGIN,
-    allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowMethods: ["GET", "POST", "OPTIONS"],
     allowHeaders: ["Content-Type", "Authorization"],
     credentials: true,
   });

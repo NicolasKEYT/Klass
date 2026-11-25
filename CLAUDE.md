@@ -313,7 +313,10 @@ Como funciona hoje:
   arquivos, `supabase test db`) que assumem os papéis `authenticated` e
   `anon` com `request.jwt.claims` forjadas, cada arquivo dentro de
   `begin … rollback`, e 4 roteiros Playwright (`apps/web/e2e/`, 5 casos,
-  `apps/web/e2e/rodar.sh`) para os fluxos da interface. Regra nova ou
+  `apps/web/e2e/rodar.sh`) para os fluxos da interface. O Worker tem 9
+  testes Vitest (`apps/workers/test/`, `pnpm --filter @klass/workers test`),
+  em Node e sem rede, para a autorização, o 400, o caminho feliz e o 500 dos
+  webhooks (`autorizarWebhook` em `shared/webhook.ts`). Regra nova ou
   alterada no banco ganha asserção no arquivo do contexto; ao mudar um número
   aqui, atualize o artigo. Não há testes de carga nem avaliação de
   usabilidade com usuários externos, e a cobertura não é medida.

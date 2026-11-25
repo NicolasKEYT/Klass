@@ -8,7 +8,8 @@
     "dev": "wrangler dev",
     "build": "wrangler deploy --dry-run --outdir dist",
     "typecheck": "tsc --noEmit",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy",
+    "test": "vitest run"
   },
   "dependencies": {
     "@klass/types": "workspace:*",
@@ -18,6 +19,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261125.1",
     "typescript": "^5.9.3",
+    "vitest": "^4.1.12",
     "wrangler": "^4.168.0"
   }
 }
