@@ -207,9 +207,11 @@ comando (a chave publicável local aparece em `supabase status`):
 VITE_SUPABASE_URL=http://127.0.0.1:54321 VITE_SUPABASE_PUBLISHABLE_KEY=<chave local> pnpm dev
 ```
 
-Atenção: os triggers de webhook (`20260917001912_webhooks_via_pg_net.sql` e
-`20261124120000_webhook_inscricao_recebida.sql`) chamam um Worker publicado. Sem o segredo no Vault local, a chamada é recusada
-(401) e nenhum e-mail sai. Nunca grave o `webhook_secret` real no banco local e
+Atenção: os triggers de webhook leem a URL do Worker (`webhook_url`) e o segredo
+(`webhook_secret`) do Vault. No banco local não há `webhook_url`: os triggers não
+chamam nada e nenhum e-mail sai. Se quiser testar com um Worker, grave os dois
+no Vault local (`vault.create_secret(..., 'webhook_url')`). Nunca grave o
+`webhook_secret` real no banco local e
 nunca rode `supabase link` ou `db push` apontando para um ambiente real a
 partir de um teste local.
 
@@ -218,7 +220,7 @@ partir de um teste local.
 Os testes rodam **só no banco local** (ver "Banco local" acima), nunca no
 Supabase hospedado, onde rodadas simultâneas de teste já contaminaram dados.
 
-**Testes SQL (pgTAP)** — `supabase/tests/database/`, 9 arquivos e 278 asserções:
+**Testes SQL (pgTAP)** — `supabase/tests/database/`, 9 arquivos e 279 asserções:
 RLS e privilégios, identidade, catálogo, seleção, diário (chamada e notas,
 encerramento, materiais), certificação e relatórios da coordenação. Cada arquivo
 é uma transação que termina em `rollback`, monta o próprio cenário e assume os
@@ -254,7 +256,7 @@ Cada camada é publicada de um jeito; só o frontend é automático.
 
 ### Migrations
 
-O repositório tem 50 migrations versionadas. Toda alteração de schema é uma
+O repositório tem 51 migrations versionadas. Toda alteração de schema é uma
 migration; nada é alterado à mão no painel do Supabase. Para aplicar em um
 projeto hospedado:
 
@@ -343,12 +345,19 @@ Supabase Vault. Para a sua instalação:
    select vault.create_secret('<mesmo valor do WEBHOOK_SECRET>', 'webhook_secret');
    ```
    O segredo nunca entra em migration.
-3. **Aponte os triggers para o seu Worker.** As migrations trazem fixa a URL do
-   Worker da equipe (`url := 'https://…/webhooks/…'`, nas três funções, em dois
-   arquivos). Antes de aplicar as migrations em uma instalação sua, troque essa
-   URL pela do seu Worker, ou crie uma migration nova que recrie as três
-   funções com a sua URL.
-   Sem isso, os eventos da sua instituição seriam enviados ao Worker da equipe.
+3. **Grave a URL do seu Worker no Vault**, com o nome exato `webhook_url` (URL
+   base, sem barra no final; cada função monta `<webhook_url>/webhooks/<rota>`):
+   ```sql
+   select vault.create_secret('<URL do Worker>', 'webhook_url');
+   ```
+   Não edite migration. Sem `webhook_url`, os três triggers não chamam nada e
+   nenhum e-mail sai.
+
+   **Banco hospedado já em uso:** a migration `20261125120000_webhook_url_no_vault.sql`
+   ainda não foi aplicada lá. Antes do `supabase db push`, rode no SQL Editor
+   `select vault.create_secret('<URL do Worker>', 'webhook_url');`; senão os
+   três e-mails (inscrição recebida, matrícula deferida, certificado emitido)
+   deixam de sair.
 
 Limite conhecido: a chamada `pg_net` é assíncrona e **não é reenviada**; se o
 Worker ou o Resend falharem, o e-mail pode se perder.

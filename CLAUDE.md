@@ -125,7 +125,9 @@ migration (`20260917001912_webhooks_via_pg_net.sql`). Hoje há três:
 `matriculas_notifica_deferimento` (matrícula passa de `inscrita` para
 `matriculada`) e `certificados_notifica_emissao` (certificado inserido). A
 chamada leva `Authorization: Bearer <segredo>`, lido do Supabase Vault
-(nome `webhook_secret`, mesmo valor do `WEBHOOK_SECRET` do Worker); o
+(nome `webhook_secret`, mesmo valor do `WEBHOOK_SECRET` do Worker). A URL base do
+Worker, sem barra final, também vem do Vault (`webhook_url`; cada função monta
+`<webhook_url>/webhooks/<rota>`); sem ela os triggers não chamam nada. O
 segredo nunca entra em migration.
 
 Os e-mails do aluno são quatro: a confirmação de cadastro (enviada pelo
@@ -307,7 +309,7 @@ Como funciona hoje:
   com o seed de demonstração). Teste nunca no Supabase hospedado (rodadas
   simultâneas de teste já contaminaram dados de produção).
 - **Testes automatizados** rodam só no banco local e estão no repositório:
-  testes SQL em pgTAP (`supabase/tests/database/`, 278 asserções em 9
+  testes SQL em pgTAP (`supabase/tests/database/`, 279 asserções em 9
   arquivos, `supabase test db`) que assumem os papéis `authenticated` e
   `anon` com `request.jwt.claims` forjadas, cada arquivo dentro de
   `begin … rollback`, e 4 roteiros Playwright (`apps/web/e2e/`, 5 casos,
@@ -399,9 +401,13 @@ Cada camada é publicada de um jeito; só o frontend é automático.
   as pendentes esperadas). Antes de aplicar, backup dos cinco schemas com
   `pg_dump` (schema e dados), guardado **fora do repositório**. As migrations
   vão **antes** do frontend que depende delas; o inverso quebra telas. Estado
-  em 24/11/2026: 50 migrations no repositório, todas aplicadas (a
-  `20261124120000_webhook_inscricao_recebida` entrou em 24/11, com backup dos
-  cinco schemas e `--dry-run` antes; ela não exige frontend novo).
+  em 25/11/2026: 51 migrations no repositório; as 50 primeiras estão aplicadas
+  (a `20261124120000_webhook_inscricao_recebida` entrou em 24/11, com backup dos
+  cinco schemas e `--dry-run` antes). A `20261125120000_webhook_url_no_vault` ainda
+  **não** foi aplicada no hospedado e não exige frontend novo. **Antes do `db push`
+  dela, rodar lá `select vault.create_secret('<URL do Worker>', 'webhook_url');`**,
+  senão os 3 e-mails (inscrição recebida, matrícula deferida, certificado emitido)
+  deixam de sair.
 - **Worker (Cloudflare Workers):** `npx wrangler deploy` em `apps/workers`;
   não publica sozinho no push. Variáveis do Worker: service role, API key do
   Resend, `WEBHOOK_SECRET`, `EMAIL_REMETENTE` e `ALLOWED_ORIGIN` (origem do
@@ -419,7 +425,7 @@ Cada camada é publicada de um jeito; só o frontend é automático.
 A versão atualizada do artigo (29/10/2026) afirma coisas que dependem do
 estado do código. **Ao mudar qualquer uma, atualize o artigo:**
 
-- contagem de migrations (50, todas aplicadas) e o fluxo "migrations manuais com backup";
+- contagem de migrations (51; a última ainda não aplicada no hospedado) e o fluxo "migrations manuais com backup";
 - paleta e contrastes (tema claro: texto secundário `#61635C`, discreto
   `#6D6F68`; só o discreto sobre `#E3E4DE` fica abaixo de 4,5:1, em 4,0:1),
   tema escuro, sombras só em modal e dica de gráfico, alvo de toque de 48 px
@@ -433,7 +439,7 @@ estado do código. **Ao mudar qualquer uma, atualize o artigo:**
 - Storage (`materiais`), views de acompanhamento (`vw_desempenho_por_trilha`,
   `vw_taxa_evasao`) e cache TanStack Query;
 - a licença (Apache-2.0), citada em 2.8 e 4.6, com a referência da Apache Software Foundation;
-- contagem de testes (278 asserções SQL em 9 arquivos; 4 roteiros Playwright,
+- contagem de testes (279 asserções SQL em 9 arquivos; 4 roteiros Playwright,
   5 casos) e a forma de rodá-los;
 - relatórios da coordenação: exports em CSV e XLSX (`write-excel-file`,
   carregado sob demanda), relatório do período no Acompanhamento e as funções
