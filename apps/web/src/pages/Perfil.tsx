@@ -103,6 +103,7 @@ export function Perfil() {
         </Titulo>
         <SeletorTema />
       </Card>
+      <p className="mt-6 text-label text-text-muted">Klass v{__VERSAO_KLASS__}</p>
     </PaginaAutenticada>
   );
 }
