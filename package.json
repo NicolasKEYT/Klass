@@ -18,8 +18,5 @@
       "source-map-js": "^1.2.2",
       "postcss-selector-parser@6": "^6.1.5"
     }
-  },
-  "dependencies": {
-    "@supabase/supabase-js": "^2.112.4"
   }
 }
