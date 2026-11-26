@@ -10,9 +10,11 @@ import { Catalogo } from "@/pages/Catalogo";
 import { DetalheModulo } from "@/pages/DetalheModulo";
 import { DetalheTrilha } from "@/pages/DetalheTrilha";
 import { Entrar } from "@/pages/Entrar";
+import { EsqueciSenha } from "@/pages/EsqueciSenha";
 import { Home } from "@/pages/Home";
 import { RotaNaoEncontrada } from "@/pages/NaoEncontrada";
 import { Perfil } from "@/pages/Perfil";
+import { RedefinirSenha } from "@/pages/RedefinirSenha";
 import { VerificarCertificado } from "@/pages/VerificarCertificado";
 import { Boletim } from "@/pages/aluno/Boletim";
 import { Acompanhamento } from "@/pages/coordenacao/Acompanhamento";
@@ -50,6 +52,10 @@ export default function App() {
         <Routes>
           <Route path="/entrar" element={<Entrar />} />
           <Route path="/cadastrar" element={<Cadastrar />} />
+          {/* Recuperação de senha: públicas. /redefinir-senha é o destino do
+              link do e-mail e decide sozinha se o link ainda vale. */}
+          <Route path="/esqueci-senha" element={<EsqueciSenha />} />
+          <Route path="/redefinir-senha" element={<RedefinirSenha />} />
           <Route path="/acesso-negado" element={<AcessoNegado />} />
           {/* Públicas, sem <Autenticado>: verificação de certificado por hash
               (destino do QR do PDF) e o campo para digitar um código. */}

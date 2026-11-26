@@ -47,16 +47,25 @@ export function Entrar() {
             />
           </label>
 
-          <label className="flex flex-col gap-1.5">
-            <span className="text-label font-medium text-text-secondary">Senha</span>
-            <Input
-              type="password"
-              autoComplete="current-password"
-              required
-              value={senha}
-              onChange={(e) => setSenha(e.target.value)}
-            />
-          </label>
+          <div className="flex flex-col">
+            <label className="flex flex-col gap-1.5">
+              <span className="text-label font-medium text-text-secondary">Senha</span>
+              <Input
+                type="password"
+                autoComplete="current-password"
+                required
+                value={senha}
+                onChange={(e) => setSenha(e.target.value)}
+              />
+            </label>
+            {/* Fora do <label>: dentro dele o texto do link viraria parte do nome do campo. */}
+            <Link
+              to="/esqueci-senha"
+              className="inline-flex h-12 items-center self-end text-label font-medium text-primary hover:underline sm:h-10"
+            >
+              Esqueci minha senha
+            </Link>
+          </div>
 
           {erro && <p className="text-body-sm text-danger">{erro}</p>}
 

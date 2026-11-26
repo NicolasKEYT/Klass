@@ -207,6 +207,12 @@ comando (a chave publicável local aparece em `supabase status`):
 VITE_SUPABASE_URL=http://127.0.0.1:54321 VITE_SUPABASE_PUBLISHABLE_KEY=<chave local> pnpm dev
 ```
 
+Os e-mails do Supabase Auth no banco local (confirmação de cadastro e
+redefinição de senha) não saem para a internet: caem no Mailpit, em
+`http://127.0.0.1:54324`, com os mesmos modelos de `supabase/templates/`. Depois
+de mudar o `config.toml` (modelos, URLs de redirecionamento), rode
+`supabase stop` e `supabase start` de novo.
+
 Atenção: os triggers de webhook leem a URL do Worker (`webhook_url`) e o segredo
 (`webhook_secret`) do Vault. No banco local não há `webhook_url`: os triggers não
 chamam nada e nenhum e-mail sai. Se quiser testar com um Worker, grave os dois
@@ -231,11 +237,13 @@ supabase start -x studio,imgproxy,edge-runtime,logflare,vector,supavisor
 supabase test db
 ```
 
-**Roteiros Playwright** — `apps/web/e2e/`, 4 roteiros (5 casos) que percorrem a
+**Roteiros Playwright** — `apps/web/e2e/`, 5 roteiros (9 casos) que percorrem a
 interface com os três papéis: inscrição e aprovação, chamada e nota (com a nota
 chegando ao aluno em tempo real), encerramento e certificado (com verificação
-pública e revogação) e relatórios/exports da coordenação. O script recria o banco
-local (`supabase db reset`), sobe o Vite apontado para ele e roda os roteiros; a
+pública e revogação), relatórios/exports da coordenação e recuperação de senha
+(do pedido ao login com a senha nova, lendo o e-mail no Mailpit do banco local,
+mais a troca de senha pelo Perfil). O script recria o banco local
+(`supabase db reset`), sobe o Vite apontado para ele e roda os roteiros; a
 configuração recusa qualquer URL que não seja local.
 
 ```bash
@@ -316,15 +324,23 @@ com um endereço desse domínio e publique o Worker de novo. O ambiente da equip
 já usa `Klass <no-reply@klass.digital>`, com o domínio verificado (SPF, DKIM e
 DMARC no DNS).
 
-**E-mail de confirmação de cadastro.** Este não sai do Worker: é do Supabase
-Auth. Para ele sair do seu domínio, em Authentication → Emails → SMTP Settings
-ligue o SMTP próprio com o Resend (host `smtp.resend.com`, porta `465`, usuário
-`resend`, senha = uma API key do Resend só com permissão de envio no seu
-domínio) e, em Templates → Confirm signup, cole o modelo de
-[`supabase/templates/confirmacao-cadastro.html`](supabase/templates/confirmacao-cadastro.html)
-(a partir da linha `<html lang="pt-BR">`) com o assunto "Confirme seu e-mail no
-Klass". Essas duas configurações ficam só no painel; o `config.toml` só vale
-para o banco local.
+**E-mails de confirmação de cadastro e de redefinição de senha.** Estes não
+saem do Worker: são do Supabase Auth. Para saírem do seu domínio, em
+Authentication → Emails → SMTP Settings ligue o SMTP próprio com o Resend (host
+`smtp.resend.com`, porta `465`, usuário `resend`, senha = uma API key do Resend
+só com permissão de envio no seu domínio) e, em Templates, cole o conteúdo de
+cada arquivo a partir da linha `<html lang="pt-BR">`, com o assunto indicado:
+
+| Modelo no painel | Arquivo | Assunto |
+| --- | --- | --- |
+| Confirm signup | [`supabase/templates/confirmacao-cadastro.html`](supabase/templates/confirmacao-cadastro.html) | Confirme seu e-mail no Klass |
+| Reset Password | [`supabase/templates/redefinir-senha.html`](supabase/templates/redefinir-senha.html) | Redefina sua senha do Klass |
+
+O link de "Esqueci minha senha" volta para `/redefinir-senha` do site, e esse
+endereço precisa estar em Authentication → URL Configuration → Redirect URLs
+(`https://klass.digital/**` para o ambiente da equipe); sem isso o link cai na
+página inicial em vez de abrir a tela da nova senha. SMTP, modelos e Redirect
+URLs ficam só no painel; o `config.toml` só vale para o banco local.
 
 A URL que o `wrangler deploy` imprimir vai para o Vault do banco
 (`webhook_url`, passo 3), não para o Pages.
@@ -363,11 +379,12 @@ Supabase Vault. Para a sua instalação:
    Não edite migration. Sem `webhook_url`, os três triggers não chamam nada e
    nenhum e-mail sai.
 
-   **Banco hospedado já em uso:** a migration `20261125120000_webhook_url_no_vault.sql`
-   ainda não foi aplicada lá. Antes do `supabase db push`, rode no SQL Editor
-   `select vault.create_secret('<URL do Worker>', 'webhook_url');`; senão os
-   três e-mails (inscrição recebida, matrícula deferida, certificado emitido)
-   deixam de sair.
+   **Banco hospedado que já usava as versões antigas dos triggers** (URL fixa
+   na função): antes do `supabase db push` da migration
+   `20261125120000_webhook_url_no_vault.sql`, grave a `webhook_url` no Vault (SQL
+   Editor ou `supabase db query --linked`); senão os três e-mails (inscrição
+   recebida, matrícula deferida, certificado emitido) deixam de sair. No
+   ambiente da equipe isso já foi feito em 25/11/2026.
 
 Limite conhecido: a chamada `pg_net` é assíncrona e **não é reenviada**; se o
 Worker ou o Resend falharem, o e-mail pode se perder. As respostas ficam por
@@ -433,7 +450,10 @@ inatividade e só volta pelo painel ("Restore project").
 - A publicação do Worker e a aplicação das migrations são manuais. Não há tarefa
   agendada: o Worker não tem cron trigger nem handler `scheduled` (a pasta
   `src/cron` só fica reservada).
-- Não há recuperação nem troca de senha pela interface.
+- A recuperação de senha depende do e-mail do Supabase Auth: sem SMTP próprio, o
+  limite de envio do Supabase é baixo, e a mensagem pode cair no lixo eletrônico
+  como a de confirmação de cadastro. Não há outro caminho para quem perdeu o
+  acesso ao e-mail da conta.
 - Não há aviso de privacidade, termos de uso nem exclusão da própria conta
   (pedidos da LGPD ficam sem fluxo no sistema).
 - A instância hospedada da equipe é só de demonstração, com dados de teste; não
