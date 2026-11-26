@@ -1,4 +1,5 @@
 import { AuthError } from "@supabase/supabase-js";
+import { SENHA_MINIMA } from "./senha";
 
 // Nunca expõe a mensagem crua do Supabase (em inglês, às vezes técnica
 // demais) — traduz pelos códigos estáveis da API; qualquer código não
@@ -12,13 +13,19 @@ const MENSAGENS: Record<string, string> = {
   // O Supabase recusa domínios claramente inválidos/de teste (ex.:
   // example.com) — sem isto o cadastro caía na mensagem genérica.
   email_address_invalid: "Esse e-mail não parece válido. Use um endereço de e-mail real.",
-  weak_password: "Senha muito fraca. Use pelo menos 6 caracteres.",
+  weak_password: `Senha muito fraca. Use pelo menos ${SENHA_MINIMA} caracteres.`,
   validation_failed: "Confira o e-mail e a senha informados.",
   over_request_rate_limit: "Muitas tentativas. Aguarde alguns minutos e tente de novo.",
-  // Limite do provedor de e-mail do Supabase (confirmação de cadastro):
-  // orienta a aguardar em vez de sugerir retry imediato, que falharia de novo.
+  // Limite de envio de e-mail do Supabase (confirmação de cadastro e
+  // redefinição de senha): orienta a aguardar em vez de sugerir retry
+  // imediato, que falharia de novo.
   over_email_send_rate_limit:
-    "Muitos cadastros em pouco tempo. Aguarde alguns minutos e tente de novo.",
+    "Muitos e-mails em pouco tempo. Aguarde alguns minutos e tente de novo.",
+  // Troca e redefinição de senha.
+  same_password: "A nova senha precisa ser diferente da atual.",
+  // Link de redefinição vencido ou já usado: a sessão dele não existe mais.
+  session_not_found: "O link expirou. Peça um novo link para redefinir a senha.",
+  reauthentication_needed: "Por segurança, entre de novo e repita a troca de senha.",
 };
 
 const MENSAGEM_PADRAO = "Não foi possível completar a operação. Tente novamente.";

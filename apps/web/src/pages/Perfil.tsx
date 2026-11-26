@@ -7,13 +7,15 @@ import { Card } from "@/components/Card";
 import { LinkBotao } from "@/components/LinkBotao";
 import { PaginaAutenticada } from "@/components/PaginaAutenticada";
 import { Titulo } from "@/components/Titulo";
+import { TrocarSenha } from "@/components/TrocarSenha";
 import { rotuloDoPapel } from "@/lib/identidade";
 import { definirPreferenciaTema, usePreferenciaTema, type PreferenciaTema } from "@/lib/tema";
 
 // D3 (klass-uikit.pdf, pág. 7) — "Perfil" é o terceiro item da barra
 // inferior do professor; o aluno chega aqui pelo avatar (menu do usuário).
 // Só mostra o que a sessão já tem (perfil e e-mail do Auth): nenhuma
-// consulta nova. Edição de dados pessoais não faz parte do escopo.
+// consulta nova. Edição de dados pessoais não faz parte do escopo; a única
+// alteração de conta é a troca de senha.
 
 const OPCOES_TEMA: { valor: PreferenciaTema; texto: string; Icone: typeof Sun }[] = [
   { valor: "sistema", texto: "Sistema", Icone: Monitor },
@@ -102,6 +104,12 @@ export function Perfil() {
           Aparência
         </Titulo>
         <SeletorTema />
+      </Card>
+      <Card className="mt-6 flex flex-col gap-4">
+        <Titulo nivel="item" as="h2">
+          Trocar senha
+        </Titulo>
+        <TrocarSenha />
       </Card>
       <p className="mt-6 text-label text-text-muted">Klass v{__VERSAO_KLASS__}</p>
     </PaginaAutenticada>

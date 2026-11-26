@@ -7,12 +7,21 @@ export const USUARIOS = {
   coordenacao: { email: "coordenacao.teste@klass.dev", senha: "klass-coord-2026" },
 } as const;
 
-export async function entrarComo(page: Page, papel: keyof typeof USUARIOS) {
+// Só preenche e envia o formulário; quem chama decide o que esperar (sucesso ou erro).
+export async function enviarLogin(page: Page, email: string, senha: string) {
   await page.goto("/entrar");
-  await page.getByLabel("E-mail").fill(USUARIOS[papel].email);
-  await page.getByLabel("Senha").fill(USUARIOS[papel].senha);
+  await page.getByLabel("E-mail").fill(email);
+  await page.getByLabel("Senha", { exact: true }).fill(senha);
   await page.getByRole("button", { name: "Entrar" }).click();
+}
+
+export async function entrarComSenha(page: Page, email: string, senha: string) {
+  await enviarLogin(page, email, senha);
   await expect(page).not.toHaveURL(/\/entrar/);
+}
+
+export async function entrarComo(page: Page, papel: keyof typeof USUARIOS) {
+  await entrarComSenha(page, USUARIOS[papel].email, USUARIOS[papel].senha);
 }
 
 // ---------------------------------------------------------------------------
@@ -32,6 +41,83 @@ export function sql(comando: string): string {
     encoding: "utf-8",
     env: { ...process.env, PATH: `/opt/homebrew/opt/libpq/bin:${process.env.PATH}` },
   }).trim();
+}
+
+// Aluno só dos roteiros de senha. Os usuários de demonstração não servem: o
+// roteiro troca a senha, e isso quebraria todos os outros se a rodada fosse
+// interrompida no meio. É recriado a cada chamada, com a senha de partida.
+export const ALUNO_DE_SENHA = { email: "aluno.senha@klass.dev", senha: "senha-inicial-2026" } as const;
+const ID_ALUNO_DE_SENHA = "a1000000-0000-4000-8000-0000000000e1";
+
+export function recriarAlunoDeSenha() {
+  sql(`
+    delete from auth.users where id = '${ID_ALUNO_DE_SENHA}';
+    insert into auth.users (
+      instance_id, id, aud, role, email, encrypted_password,
+      email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+      created_at, updated_at, confirmation_token, recovery_token,
+      email_change_token_new, email_change
+    ) values (
+      '00000000-0000-0000-0000-000000000000', '${ID_ALUNO_DE_SENHA}', 'authenticated', 'authenticated',
+      '${ALUNO_DE_SENHA.email}', extensions.crypt('${ALUNO_DE_SENHA.senha}', extensions.gen_salt('bf')),
+      now(), '{"provider":"email","providers":["email"]}',
+      jsonb_build_object('nome_completo', 'Aluno de Senha'),
+      now(), now(), '', '', '', ''
+    );
+    insert into auth.identities (
+      id, provider_id, user_id, identity_data, provider,
+      last_sign_in_at, created_at, updated_at
+    ) values (
+      'b1000000-0000-4000-8000-0000000000e1', '${ID_ALUNO_DE_SENHA}', '${ID_ALUNO_DE_SENHA}',
+      jsonb_build_object('sub', '${ID_ALUNO_DE_SENHA}', 'email', '${ALUNO_DE_SENHA.email}'),
+      'email', now(), now(), now()
+    );
+  `);
+}
+
+// ---------------------------------------------------------------------------
+// E-mail de teste do banco local (Mailpit, `[local_smtp]` do config.toml). Tudo
+// que o Auth "envia" no banco local cai aqui, e nada sai para a internet.
+const CAIXA_DE_TESTE = process.env.KLASS_E2E_EMAIL_URL ?? "http://127.0.0.1:54324";
+if (!/^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?\/?$/.test(CAIXA_DE_TESTE)) {
+  throw new Error("Os roteiros e2e só leem a caixa de e-mail de teste do banco local.");
+}
+
+const buscaDoDestinatario = (para: string) => encodeURIComponent(`to:${para}`);
+
+export async function esvaziarCaixaDe(para: string) {
+  await fetch(`${CAIXA_DE_TESTE}/api/v1/search?query=${buscaDoDestinatario(para)}`, { method: "DELETE" });
+}
+
+export async function contarEmailsPara(para: string): Promise<number> {
+  const busca = await fetch(`${CAIXA_DE_TESTE}/api/v1/search?query=${buscaDoDestinatario(para)}`);
+  const { messages = [] } = (await busca.json()) as { messages?: unknown[] };
+  return messages.length;
+}
+
+// Espera chegar um e-mail para `para` com o assunto dado e devolve o HTML. O
+// envio do Auth é assíncrono, por isso a espera em vez de uma leitura só.
+export async function esperarEmail(para: string, assunto: RegExp): Promise<{ assunto: string; html: string }> {
+  const limite = Date.now() + 30_000;
+  while (Date.now() < limite) {
+    const busca = await fetch(`${CAIXA_DE_TESTE}/api/v1/search?query=${buscaDoDestinatario(para)}`);
+    const { messages = [] } = (await busca.json()) as { messages?: { ID: string; Subject: string }[] };
+    const achado = messages.find((m) => assunto.test(m.Subject));
+    if (achado) {
+      const mensagem = await fetch(`${CAIXA_DE_TESTE}/api/v1/message/${achado.ID}`);
+      const { HTML } = (await mensagem.json()) as { HTML: string };
+      return { assunto: achado.Subject, html: HTML };
+    }
+    await new Promise((resolver) => setTimeout(resolver, 500));
+  }
+  throw new Error(`Nenhum e-mail com assunto ${assunto} chegou para ${para} em 30 s.`);
+}
+
+// O botão do e-mail e o texto de apoio apontam para o mesmo endereço do Auth.
+export function linkDoEmail(html: string): string {
+  const achado = html.match(/href="([^"]*\/auth\/v1\/verify[^"]*)"/);
+  if (!achado) throw new Error("O e-mail não traz o link de verificação do Auth.");
+  return achado[1].replaceAll("&amp;", "&");
 }
 
 export const IDS = {

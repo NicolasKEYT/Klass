@@ -130,10 +130,11 @@ Worker, sem barra final, também vem do Vault (`webhook_url`; cada função mont
 `<webhook_url>/webhooks/<rota>`); sem ela os triggers não chamam nada. O
 segredo nunca entra em migration.
 
-Os e-mails do aluno são quatro: a confirmação de cadastro (enviada pelo
-Supabase Auth, com SMTP do Resend e o modelo de
-`supabase/templates/confirmacao-cadastro.html`, que no projeto hospedado fica
-colado no painel) e os três acima, enviados pelo Worker. A rejeição de
+Os e-mails do aluno são cinco: dois enviados pelo Supabase Auth, com SMTP do
+Resend (a confirmação de cadastro, modelo
+`supabase/templates/confirmacao-cadastro.html`, e a redefinição de senha,
+`supabase/templates/redefinir-senha.html`; no projeto hospedado os dois ficam
+colados no painel) e os três acima, enviados pelo Worker. A rejeição de
 matrícula não envia e-mail.
 
 Limites conhecidos: a chamada `pg_net` é assíncrona e **não é reenviada**;
@@ -292,6 +293,15 @@ Como funciona hoje:
   frontend segue falando direto com o Supabase, o cache só evita repetir
   a mesma leitura a cada troca de tela. As assinaturas do Realtime ficam em
   `consultas/realtime.ts` (aluno, turma, professor).
+- **Recuperação e troca de senha** (sem Worker nem migration: é só Supabase
+  Auth). "Esqueci minha senha" (`/esqueci-senha`) chama `resetPasswordForEmail`
+  e responde igual exista ou não a conta; o link do e-mail abre
+  `/redefinir-senha`, que só mostra o formulário a quem chegou por ele
+  (`emRecuperacao`, de `ABRIU_LINK_DE_RECUPERACAO` em `lib/supabase.ts`, lido
+  antes de o supabase-js apagar o `type=recovery` da URL). Quem só está logado
+  troca a senha pelo Perfil, que confere a senha atual. O endereço de
+  `/redefinir-senha` precisa estar nas Redirect URLs do Supabase (hospedado:
+  painel; local: `config.toml`). Mínimo de senha em `auth/senha.ts`.
 - **Tema claro/escuro.** Cores são variáveis CSS em `apps/web/src/index.css`
   (`:root` e `:root[data-tema="escuro"]`), expostas como tokens em
   `tailwind.config.ts`. Tela nenhuma usa cor literal; cor nova entra nos
@@ -312,7 +322,7 @@ Como funciona hoje:
   testes SQL em pgTAP (`supabase/tests/database/`, 279 asserções em 9
   arquivos, `supabase test db`) que assumem os papéis `authenticated` e
   `anon` com `request.jwt.claims` forjadas, cada arquivo dentro de
-  `begin … rollback`, e 4 roteiros Playwright (`apps/web/e2e/`, 5 casos,
+  `begin … rollback`, e 5 roteiros Playwright (`apps/web/e2e/`, 9 casos,
   `apps/web/e2e/rodar.sh`) para os fluxos da interface. O Worker tem 9
   testes Vitest (`apps/workers/test/`, `pnpm --filter @klass/workers test`),
   em Node e sem rede, para a autorização, o 400, o caminho feliz e o 500 dos
@@ -437,13 +447,15 @@ estado do código. **Ao mudar qualquer uma, atualize o artigo:**
 - a publicação (Pages automático; Worker e migrations manuais);
 - `pg_net` no lugar de Database Webhooks, com segredo no Vault e sem
   reenvio, e os três pontos de integração (inscrição recebida, matrícula
-  deferida, certificado emitido), mais o e-mail de confirmação de cadastro do
-  Supabase Auth;
+  deferida, certificado emitido), mais os e-mails do Supabase Auth (confirmação
+  de cadastro e redefinição de senha);
+- recuperação e troca de senha (telas `/esqueci-senha` e `/redefinir-senha`,
+  "Trocar senha" no Perfil) e o fim da limitação "sem recuperação de senha";
 - Storage (`materiais`), views de acompanhamento (`vw_desempenho_por_trilha`,
   `vw_taxa_evasao`) e cache TanStack Query;
 - a licença (Apache-2.0), citada em 2.8 e 4.6, com a referência da Apache Software Foundation;
-- contagem de testes (279 asserções SQL em 9 arquivos; 4 roteiros Playwright,
-  5 casos) e a forma de rodá-los;
+- contagem de testes (279 asserções SQL em 9 arquivos; 5 roteiros Playwright,
+  9 casos) e a forma de rodá-los;
 - relatórios da coordenação: exports em CSV e XLSX (`write-excel-file`,
   carregado sob demanda), relatório do período no Acompanhamento e as funções
   `*.relatorio_*`, só da coordenação (erro `42501` para os demais), sem CPF nos
@@ -457,8 +469,9 @@ não inclui Auth nem Storage); decisão D7 do UI Kit (publicar notas após
 revisão) não implementada; sem tarefa agendada (nem cron trigger); sem e-mail
 para matrícula rejeitada; cadastro aberto (qualquer pessoa cria conta de aluno;
 não há convite nem vínculo do aluno com uma instituição além da própria
-instalação); sem recuperação ou troca de senha; sem aviso de privacidade, termos
-nem exclusão de conta (LGPD); a instância hospedada é só de demonstração.
+instalação); recuperação de senha só pelo e-mail da conta (sem outro caminho se a
+pessoa perdeu o acesso a ele); sem aviso de privacidade, termos nem exclusão de
+conta (LGPD); a instância hospedada é só de demonstração.
 
 ## Como trabalhar neste projeto
 

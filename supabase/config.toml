@@ -159,7 +159,15 @@ site_url = "http://localhost:5173"
 # The public URL that Auth serves on. Defaults to the API external URL with `/auth/v1` appended.
 # external_url = ""
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-additional_redirect_urls = ["http://localhost:5173", "https://klass-91y.pages.dev/**"]
+# Com "/**": o link de "Esqueci minha senha" volta para /redefinir-senha, e
+# endereço sem curinga só aceita a raiz. O 5199 é o servidor dos roteiros
+# Playwright (apps/web/e2e). No hospedado a lista vive no painel
+# (Authentication, URL Configuration) e precisa ter https://klass.digital/**.
+additional_redirect_urls = [
+  "http://localhost:5173/**",
+  "http://127.0.0.1:5199/**",
+  "https://klass-91y.pages.dev/**",
+]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # JWT issuer URL. If not set, defaults to auth.external_url.
@@ -247,6 +255,12 @@ otp_expiry = 3600
 [auth.email.template.confirmation]
 subject = "Confirme seu e-mail no Klass"
 content_path = "./supabase/templates/confirmacao-cadastro.html"
+
+# E-mail de redefinição de senha ("Esqueci minha senha"). Mesma regra: só local;
+# no hospedado, colar no painel em "Reset Password".
+[auth.email.template.recovery]
+subject = "Redefina sua senha do Klass"
+content_path = "./supabase/templates/redefinir-senha.html"
 
 # Uncomment to customize email template
 # [auth.email.template.invite]
