@@ -433,6 +433,11 @@ Cada camada é publicada de um jeito; só o frontend é automático.
   pode cair no lixo eletrônico de alguns provedores no início.
 - **Tipos:** depois de mudar o schema, regerar os tipos
   (`supabase gen types typescript`, ver README) e commitar.
+- **Versões:** `CHANGELOG.md` (Keep a Changelog) e `version` igual na raiz e nos
+  três pacotes. A `main` só recebe versão: o corte é um PR da `trabalho` com o
+  CHANGELOG, e depois a tag `vX.Y.Z` no commit da `main` que foi ao ar e a
+  Release no GitHub. A 1.0.0 (26/11/2026) é a versão do TCC, com as limitações
+  declaradas no CHANGELOG.
 
 ## Artigo do TCC 2
 
