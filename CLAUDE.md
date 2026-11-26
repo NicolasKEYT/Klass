@@ -414,13 +414,14 @@ Cada camada é publicada de um jeito; só o frontend é automático.
   as pendentes esperadas). Antes de aplicar, backup dos cinco schemas com
   `pg_dump` (schema e dados), guardado **fora do repositório**. As migrations
   vão **antes** do frontend que depende delas; o inverso quebra telas. Estado
-  em 25/11/2026: 51 migrations no repositório; as 50 primeiras estão aplicadas
-  (a `20261124120000_webhook_inscricao_recebida` entrou em 24/11, com backup dos
-  cinco schemas e `--dry-run` antes). A `20261125120000_webhook_url_no_vault` ainda
-  **não** foi aplicada no hospedado e não exige frontend novo. **Antes do `db push`
-  dela, rodar lá `select vault.create_secret('<URL do Worker>', 'webhook_url');`**,
-  senão os 3 e-mails (inscrição recebida, matrícula deferida, certificado emitido)
-  deixam de sair.
+  em 25/11/2026: 51 migrations no repositório, todas aplicadas no hospedado. A
+  `20261124120000_webhook_inscricao_recebida` entrou em 24/11 e a
+  `20261125120000_webhook_url_no_vault` em 25/11, cada uma com backup dos cinco
+  schemas e `--dry-run` antes; para esta, a `webhook_url` foi gravada no Vault antes
+  do `db push` (`select vault.create_secret('<URL do Worker>', 'webhook_url');`),
+  sem o que os 3 e-mails (inscrição recebida, matrícula deferida, certificado
+  emitido) deixariam de sair. Instalação nova ou banco ainda nas versões antigas
+  dos triggers repete essa ordem.
 - **Worker (Cloudflare Workers):** `npx wrangler deploy` em `apps/workers`;
   não publica sozinho no push. Variáveis do Worker: service role, API key do
   Resend, `WEBHOOK_SECRET`, `EMAIL_REMETENTE` e `ALLOWED_ORIGIN` (origem do
@@ -438,7 +439,7 @@ Cada camada é publicada de um jeito; só o frontend é automático.
 A versão atualizada do artigo (29/10/2026) afirma coisas que dependem do
 estado do código. **Ao mudar qualquer uma, atualize o artigo:**
 
-- contagem de migrations (51; a última ainda não aplicada no hospedado) e o fluxo "migrations manuais com backup";
+- contagem de migrations (51, todas aplicadas no hospedado) e o fluxo "migrations manuais com backup";
 - paleta e contrastes (tema claro: texto secundário `#61635C`, discreto
   `#6D6F68`; só o discreto sobre `#E3E4DE` fica abaixo de 4,5:1, em 4,0:1),
   tema escuro, sombras só em modal e dica de gráfico, alvo de toque de 48 px
