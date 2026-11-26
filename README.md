@@ -42,8 +42,8 @@ Três perfis, cada um com a sua navegação:
 - **Coordenação:** acompanhamento com gráficos (panorama e relatório do
   período) e exportação de listas em CSV e XLSX, sem CPF.
 - **Materiais da turma** em bucket privado do Supabase Storage.
-- **E-mails** de matrícula deferida e de certificado emitido, enviados pelo
-  Resend.
+- **E-mails** de inscrição recebida, matrícula deferida e certificado emitido,
+  enviados pelo Worker via Resend (a confirmação de cadastro é do Supabase Auth).
 - **Tema claro e escuro.**
 
 ## Arquitetura
@@ -68,8 +68,8 @@ função) e o acesso é controlado por Row Level Security, JWT e papel.
 
 O frontend fala direto com o Supabase para tudo que é dado de domínio. Os
 Cloudflare Workers existem só para o que o banco não faz sozinho: enviar
-e-mail, receber as chamadas dos triggers e (no futuro) rodar tarefas
-agendadas. Quando uma mudança de estado precisa avisar o mundo externo, um
+e-mail e receber as chamadas dos triggers. Não há tarefa agendada: o Worker não
+tem cron trigger nem handler `scheduled`. Quando uma mudança de estado precisa avisar o mundo externo, um
 trigger do banco faz uma chamada HTTP assíncrona (`pg_net`) ao Worker.
 
 ## Stack
@@ -83,7 +83,7 @@ trigger do banco faz uma chamada HTTP assíncrona (`pg_net`) ao Worker.
 | E-mail transacional | Resend, acessado só pelos Workers |
 | PDF do certificado | `@react-pdf/renderer`, no navegador |
 | Tipos compartilhados | `packages/types`, gerados do banco e consumidos por web e workers |
-| Testes | pgTAP (SQL) e Playwright, só no banco local |
+| Testes | pgTAP (SQL) e Playwright, só no banco local; Vitest no Worker, sem rede |
 
 ## Estrutura do repositório
 
@@ -94,7 +94,7 @@ apps/
   workers/              Cloudflare Workers (integrações)
     src/email/          Envio via Resend
     src/webhooks/       Recebedores das chamadas HTTP dos triggers
-    src/cron/           Tarefas agendadas (declarado, sem nenhuma tarefa ainda)
+    src/cron/           Pasta reservada; sem cron trigger nem handler `scheduled`
     src/shared/         Cliente Supabase (service key), CORS, ambiente
 packages/
   types/                Tipos de domínio compartilhados
@@ -207,9 +207,17 @@ comando (a chave publicável local aparece em `supabase status`):
 VITE_SUPABASE_URL=http://127.0.0.1:54321 VITE_SUPABASE_PUBLISHABLE_KEY=<chave local> pnpm dev
 ```
 
-Atenção: os triggers de webhook (`20260917001912_webhooks_via_pg_net.sql` e
-`20261124120000_webhook_inscricao_recebida.sql`) chamam um Worker publicado. Sem o segredo no Vault local, a chamada é recusada
-(401) e nenhum e-mail sai. Nunca grave o `webhook_secret` real no banco local e
+Os e-mails do Supabase Auth no banco local (confirmação de cadastro e
+redefinição de senha) não saem para a internet: caem no Mailpit, em
+`http://127.0.0.1:54324`, com os mesmos modelos de `supabase/templates/`. Depois
+de mudar o `config.toml` (modelos, URLs de redirecionamento), rode
+`supabase stop` e `supabase start` de novo.
+
+Atenção: os triggers de webhook leem a URL do Worker (`webhook_url`) e o segredo
+(`webhook_secret`) do Vault. No banco local não há `webhook_url`: os triggers não
+chamam nada e nenhum e-mail sai. Se quiser testar com um Worker, grave os dois
+no Vault local (`vault.create_secret(..., 'webhook_url')`). Nunca grave o
+`webhook_secret` real no banco local e
 nunca rode `supabase link` ou `db push` apontando para um ambiente real a
 partir de um teste local.
 
@@ -218,7 +226,7 @@ partir de um teste local.
 Os testes rodam **só no banco local** (ver "Banco local" acima), nunca no
 Supabase hospedado, onde rodadas simultâneas de teste já contaminaram dados.
 
-**Testes SQL (pgTAP)** — `supabase/tests/database/`, 9 arquivos e 278 asserções:
+**Testes SQL (pgTAP)** — `supabase/tests/database/`, 9 arquivos e 279 asserções:
 RLS e privilégios, identidade, catálogo, seleção, diário (chamada e notas,
 encerramento, materiais), certificação e relatórios da coordenação. Cada arquivo
 é uma transação que termina em `rollback`, monta o próprio cenário e assume os
@@ -229,15 +237,27 @@ supabase start -x studio,imgproxy,edge-runtime,logflare,vector,supavisor
 supabase test db
 ```
 
-**Roteiros Playwright** — `apps/web/e2e/`, 4 roteiros (5 casos) que percorrem a
+**Roteiros Playwright** — `apps/web/e2e/`, 5 roteiros (9 casos) que percorrem a
 interface com os três papéis: inscrição e aprovação, chamada e nota (com a nota
 chegando ao aluno em tempo real), encerramento e certificado (com verificação
-pública e revogação) e relatórios/exports da coordenação. O script recria o banco
-local (`supabase db reset`), sobe o Vite apontado para ele e roda os roteiros; a
+pública e revogação), relatórios/exports da coordenação e recuperação de senha
+(do pedido ao login com a senha nova, lendo o e-mail no Mailpit do banco local,
+mais a troca de senha pelo Perfil). O script recria o banco local
+(`supabase db reset`), sobe o Vite apontado para ele e roda os roteiros; a
 configuração recusa qualquer URL que não seja local.
 
 ```bash
 apps/web/e2e/rodar.sh          # precisa de psql no PATH (brew install libpq)
+```
+
+**Testes do Worker (Vitest)** — `apps/workers/test/`, 9 casos que rodam em Node,
+sem banco e sem rede (o `fetch` do Supabase e do Resend é simulado): webhook
+recusado sem o cabeçalho, com segredo ausente, vazio, curto ou errado; JSON
+inválido (400); caminho feliz com o e-mail montado; erro não tratado vira JSON 500;
+CORS só com GET, POST e OPTIONS.
+
+```bash
+pnpm --filter @klass/workers test
 ```
 
 A cobertura não é medida. Os testes não substituem avaliação com usuários.
@@ -254,7 +274,7 @@ Cada camada é publicada de um jeito; só o frontend é automático.
 
 ### Migrations
 
-O repositório tem 50 migrations versionadas. Toda alteração de schema é uma
+O repositório tem 51 migrations versionadas. Toda alteração de schema é uma
 migration; nada é alterado à mão no painel do Supabase. Para aplicar em um
 projeto hospedado:
 
@@ -278,9 +298,9 @@ quebra telas.
    - **Build output directory:** `apps/web/dist`
    - **Root directory:** `/` (raiz do monorepo; o comando acima já filtra o
      workspace certo)
-3. Em **Settings → Environment variables**, adicione `VITE_SUPABASE_URL`,
-   `VITE_SUPABASE_PUBLISHABLE_KEY` e `VITE_WORKERS_URL` (a URL pública do
-   Worker publicado no passo 2) para os ambientes de produção e preview.
+3. Em **Settings → Environment variables**, adicione `VITE_SUPABASE_URL`
+   e `VITE_SUPABASE_PUBLISHABLE_KEY` para os ambientes de produção e preview.
+   O frontend não chama o Worker; só o banco chama.
 
 ### 2. `apps/workers` via wrangler
 
@@ -304,18 +324,26 @@ com um endereço desse domínio e publique o Worker de novo. O ambiente da equip
 já usa `Klass <no-reply@klass.digital>`, com o domínio verificado (SPF, DKIM e
 DMARC no DNS).
 
-**E-mail de confirmação de cadastro.** Este não sai do Worker: é do Supabase
-Auth. Para ele sair do seu domínio, em Authentication → Emails → SMTP Settings
-ligue o SMTP próprio com o Resend (host `smtp.resend.com`, porta `465`, usuário
-`resend`, senha = uma API key do Resend só com permissão de envio no seu
-domínio) e, em Templates → Confirm signup, cole o modelo de
-[`supabase/templates/confirmacao-cadastro.html`](supabase/templates/confirmacao-cadastro.html)
-(a partir da linha `<html lang="pt-BR">`) com o assunto "Confirme seu e-mail no
-Klass". Essas duas configurações ficam só no painel; o `config.toml` só vale
-para o banco local.
+**E-mails de confirmação de cadastro e de redefinição de senha.** Estes não
+saem do Worker: são do Supabase Auth. Para saírem do seu domínio, em
+Authentication → Emails → SMTP Settings ligue o SMTP próprio com o Resend (host
+`smtp.resend.com`, porta `465`, usuário `resend`, senha = uma API key do Resend
+só com permissão de envio no seu domínio) e, em Templates, cole o conteúdo de
+cada arquivo a partir da linha `<html lang="pt-BR">`, com o assunto indicado:
 
-Depois do primeiro deploy, volte ao passo 1 e atualize `VITE_WORKERS_URL` no
-Pages com a URL que o `wrangler deploy` imprimiu.
+| Modelo no painel | Arquivo | Assunto |
+| --- | --- | --- |
+| Confirm signup | [`supabase/templates/confirmacao-cadastro.html`](supabase/templates/confirmacao-cadastro.html) | Confirme seu e-mail no Klass |
+| Reset Password | [`supabase/templates/redefinir-senha.html`](supabase/templates/redefinir-senha.html) | Redefina sua senha do Klass |
+
+O link de "Esqueci minha senha" volta para `/redefinir-senha` do site, e esse
+endereço precisa estar em Authentication → URL Configuration → Redirect URLs
+(`https://klass.digital/**` para o ambiente da equipe); sem isso o link cai na
+página inicial em vez de abrir a tela da nova senha. SMTP, modelos e Redirect
+URLs ficam só no painel; o `config.toml` só vale para o banco local.
+
+A URL que o `wrangler deploy` imprimir vai para o Vault do banco
+(`webhook_url`, passo 3), não para o Pages.
 
 ### 3. Webhooks do banco para o Worker (`pg_net` + Vault)
 
@@ -343,15 +371,31 @@ Supabase Vault. Para a sua instalação:
    select vault.create_secret('<mesmo valor do WEBHOOK_SECRET>', 'webhook_secret');
    ```
    O segredo nunca entra em migration.
-3. **Aponte os triggers para o seu Worker.** As migrations trazem fixa a URL do
-   Worker da equipe (`url := 'https://…/webhooks/…'`, nas três funções, em dois
-   arquivos). Antes de aplicar as migrations em uma instalação sua, troque essa
-   URL pela do seu Worker, ou crie uma migration nova que recrie as três
-   funções com a sua URL.
-   Sem isso, os eventos da sua instituição seriam enviados ao Worker da equipe.
+3. **Grave a URL do seu Worker no Vault**, com o nome exato `webhook_url` (URL
+   base, sem barra no final; cada função monta `<webhook_url>/webhooks/<rota>`):
+   ```sql
+   select vault.create_secret('<URL do Worker>', 'webhook_url');
+   ```
+   Não edite migration. Sem `webhook_url`, os três triggers não chamam nada e
+   nenhum e-mail sai.
+
+   **Banco hospedado já em uso:** a migration `20261125120000_webhook_url_no_vault.sql`
+   ainda não foi aplicada lá. Antes do `supabase db push`, rode no SQL Editor
+   `select vault.create_secret('<URL do Worker>', 'webhook_url');`; senão os
+   três e-mails (inscrição recebida, matrícula deferida, certificado emitido)
+   deixam de sair.
 
 Limite conhecido: a chamada `pg_net` é assíncrona e **não é reenviada**; se o
-Worker ou o Resend falharem, o e-mail pode se perder.
+Worker ou o Resend falharem, o e-mail pode se perder. As respostas ficam por
+algumas horas em `net._http_response`. Para ver as falhas (status fora de 2xx ou
+erro de rede), rode no SQL Editor:
+
+```sql
+select id, created, status_code, error_msg, content
+from net._http_response
+where status_code is null or status_code not between 200 and 299
+order by created desc;
+```
 
 **Testando o Worker localmente.** O Supabase hospedado não alcança `localhost`.
 Duas opções:
@@ -402,8 +446,17 @@ inatividade e só volta pelo painel ("Restore project").
 - O cadastro é aberto: qualquer pessoa cria uma conta de aluno. Não há convite,
   nem lista prévia de alunos, nem vínculo do aluno com uma instituição além da
   própria instalação.
-- A publicação do Worker e a aplicação das migrations são manuais, e o cron do
-  Worker está declarado, mas sem nenhuma tarefa.
+- A publicação do Worker e a aplicação das migrations são manuais. Não há tarefa
+  agendada: o Worker não tem cron trigger nem handler `scheduled` (a pasta
+  `src/cron` só fica reservada).
+- A recuperação de senha depende do e-mail do Supabase Auth: sem SMTP próprio, o
+  limite de envio do Supabase é baixo, e a mensagem pode cair no lixo eletrônico
+  como a de confirmação de cadastro. Não há outro caminho para quem perdeu o
+  acesso ao e-mail da conta.
+- Não há aviso de privacidade, termos de uso nem exclusão da própria conta
+  (pedidos da LGPD ficam sem fluxo no sistema).
+- A instância hospedada da equipe é só de demonstração, com dados de teste; não
+  deve receber dados reais de alunos.
 - O sistema não registra quem exporta uma lista.
 - Não há módulo financeiro nem ambiente virtual de aprendizagem.
 

@@ -95,7 +95,7 @@ funcionalidade, decida onde ela mora por esta tabela.
 | Relatórios e BI em modo leitura | **Supabase** | View / Materialized View |
 | Enviar e-mail transacional | **Worker** | Recebe a chamada HTTP do trigger (`pg_net`), chama Resend |
 | Reagir a evento fora do banco | **Worker** | Endpoint que recebe a chamada do trigger (hoje: `/webhooks/inscricao-recebida`, `/webhooks/matricula-deferida` e `/webhooks/certificado-emitido`) |
-| Tarefa agendada | **Worker** | Cron trigger (declarado, **nenhuma tarefa implementada**) |
+| Tarefa agendada | **Worker** | Nenhuma: não há cron trigger nem handler `scheduled`; só a pasta `src/cron` reservada |
 | Arquivos (materiais da turma) | **Supabase Storage, direto do frontend** | Bucket privado `materiais` + políticas por turma |
 | Gerar o PDF do certificado | **Frontend** (react-pdf) | Ver seção Certificação |
 
@@ -125,13 +125,16 @@ migration (`20260917001912_webhooks_via_pg_net.sql`). Hoje há três:
 `matriculas_notifica_deferimento` (matrícula passa de `inscrita` para
 `matriculada`) e `certificados_notifica_emissao` (certificado inserido). A
 chamada leva `Authorization: Bearer <segredo>`, lido do Supabase Vault
-(nome `webhook_secret`, mesmo valor do `WEBHOOK_SECRET` do Worker); o
+(nome `webhook_secret`, mesmo valor do `WEBHOOK_SECRET` do Worker). A URL base do
+Worker, sem barra final, também vem do Vault (`webhook_url`; cada função monta
+`<webhook_url>/webhooks/<rota>`); sem ela os triggers não chamam nada. O
 segredo nunca entra em migration.
 
-Os e-mails do aluno são quatro: a confirmação de cadastro (enviada pelo
-Supabase Auth, com SMTP do Resend e o modelo de
-`supabase/templates/confirmacao-cadastro.html`, que no projeto hospedado fica
-colado no painel) e os três acima, enviados pelo Worker. A rejeição de
+Os e-mails do aluno são cinco: dois enviados pelo Supabase Auth, com SMTP do
+Resend (a confirmação de cadastro, modelo
+`supabase/templates/confirmacao-cadastro.html`, e a redefinição de senha,
+`supabase/templates/redefinir-senha.html`; no projeto hospedado os dois ficam
+colados no painel) e os três acima, enviados pelo Worker. A rejeição de
 matrícula não envia e-mail.
 
 Limites conhecidos: a chamada `pg_net` é assíncrona e **não é reenviada**;
@@ -290,6 +293,15 @@ Como funciona hoje:
   frontend segue falando direto com o Supabase, o cache só evita repetir
   a mesma leitura a cada troca de tela. As assinaturas do Realtime ficam em
   `consultas/realtime.ts` (aluno, turma, professor).
+- **Recuperação e troca de senha** (sem Worker nem migration: é só Supabase
+  Auth). "Esqueci minha senha" (`/esqueci-senha`) chama `resetPasswordForEmail`
+  e responde igual exista ou não a conta; o link do e-mail abre
+  `/redefinir-senha`, que só mostra o formulário a quem chegou por ele
+  (`emRecuperacao`, de `ABRIU_LINK_DE_RECUPERACAO` em `lib/supabase.ts`, lido
+  antes de o supabase-js apagar o `type=recovery` da URL). Quem só está logado
+  troca a senha pelo Perfil, que confere a senha atual. O endereço de
+  `/redefinir-senha` precisa estar nas Redirect URLs do Supabase (hospedado:
+  painel; local: `config.toml`). Mínimo de senha em `auth/senha.ts`.
 - **Tema claro/escuro.** Cores são variáveis CSS em `apps/web/src/index.css`
   (`:root` e `:root[data-tema="escuro"]`), expostas como tokens em
   `tailwind.config.ts`. Tela nenhuma usa cor literal; cor nova entra nos
@@ -307,11 +319,14 @@ Como funciona hoje:
   com o seed de demonstração). Teste nunca no Supabase hospedado (rodadas
   simultâneas de teste já contaminaram dados de produção).
 - **Testes automatizados** rodam só no banco local e estão no repositório:
-  testes SQL em pgTAP (`supabase/tests/database/`, 278 asserções em 9
+  testes SQL em pgTAP (`supabase/tests/database/`, 279 asserções em 9
   arquivos, `supabase test db`) que assumem os papéis `authenticated` e
   `anon` com `request.jwt.claims` forjadas, cada arquivo dentro de
-  `begin … rollback`, e 4 roteiros Playwright (`apps/web/e2e/`, 5 casos,
-  `apps/web/e2e/rodar.sh`) para os fluxos da interface. Regra nova ou
+  `begin … rollback`, e 5 roteiros Playwright (`apps/web/e2e/`, 9 casos,
+  `apps/web/e2e/rodar.sh`) para os fluxos da interface. O Worker tem 9
+  testes Vitest (`apps/workers/test/`, `pnpm --filter @klass/workers test`),
+  em Node e sem rede, para a autorização, o 400, o caminho feliz e o 500 dos
+  webhooks (`autorizarWebhook` em `shared/webhook.ts`). Regra nova ou
   alterada no banco ganha asserção no arquivo do contexto; ao mudar um número
   aqui, atualize o artigo. Não há testes de carga nem avaliação de
   usabilidade com usuários externos, e a cobertura não é medida.
@@ -377,7 +392,7 @@ apps/
     src/
       email/            Envio via Resend
       webhooks/         Recebedores das chamadas HTTP dos triggers (pg_net)
-      cron/             Tarefas agendadas (ainda sem nenhuma tarefa)
+      cron/             Reservada (sem cron trigger nem handler `scheduled`)
       shared/           Cliente Supabase (service key), utilitários
 packages/
   types/                Tipos de domínio compartilhados entre web e workers
@@ -399,9 +414,13 @@ Cada camada é publicada de um jeito; só o frontend é automático.
   as pendentes esperadas). Antes de aplicar, backup dos cinco schemas com
   `pg_dump` (schema e dados), guardado **fora do repositório**. As migrations
   vão **antes** do frontend que depende delas; o inverso quebra telas. Estado
-  em 24/11/2026: 50 migrations no repositório, todas aplicadas (a
-  `20261124120000_webhook_inscricao_recebida` entrou em 24/11, com backup dos
-  cinco schemas e `--dry-run` antes; ela não exige frontend novo).
+  em 25/11/2026: 51 migrations no repositório; as 50 primeiras estão aplicadas
+  (a `20261124120000_webhook_inscricao_recebida` entrou em 24/11, com backup dos
+  cinco schemas e `--dry-run` antes). A `20261125120000_webhook_url_no_vault` ainda
+  **não** foi aplicada no hospedado e não exige frontend novo. **Antes do `db push`
+  dela, rodar lá `select vault.create_secret('<URL do Worker>', 'webhook_url');`**,
+  senão os 3 e-mails (inscrição recebida, matrícula deferida, certificado emitido)
+  deixam de sair.
 - **Worker (Cloudflare Workers):** `npx wrangler deploy` em `apps/workers`;
   não publica sozinho no push. Variáveis do Worker: service role, API key do
   Resend, `WEBHOOK_SECRET`, `EMAIL_REMETENTE` e `ALLOWED_ORIGIN` (origem do
@@ -419,7 +438,7 @@ Cada camada é publicada de um jeito; só o frontend é automático.
 A versão atualizada do artigo (29/10/2026) afirma coisas que dependem do
 estado do código. **Ao mudar qualquer uma, atualize o artigo:**
 
-- contagem de migrations (50, todas aplicadas) e o fluxo "migrations manuais com backup";
+- contagem de migrations (51; a última ainda não aplicada no hospedado) e o fluxo "migrations manuais com backup";
 - paleta e contrastes (tema claro: texto secundário `#61635C`, discreto
   `#6D6F68`; só o discreto sobre `#E3E4DE` fica abaixo de 4,5:1, em 4,0:1),
   tema escuro, sombras só em modal e dica de gráfico, alvo de toque de 48 px
@@ -428,13 +447,15 @@ estado do código. **Ao mudar qualquer uma, atualize o artigo:**
 - a publicação (Pages automático; Worker e migrations manuais);
 - `pg_net` no lugar de Database Webhooks, com segredo no Vault e sem
   reenvio, e os três pontos de integração (inscrição recebida, matrícula
-  deferida, certificado emitido), mais o e-mail de confirmação de cadastro do
-  Supabase Auth;
+  deferida, certificado emitido), mais os e-mails do Supabase Auth (confirmação
+  de cadastro e redefinição de senha);
+- recuperação e troca de senha (telas `/esqueci-senha` e `/redefinir-senha`,
+  "Trocar senha" no Perfil) e o fim da limitação "sem recuperação de senha";
 - Storage (`materiais`), views de acompanhamento (`vw_desempenho_por_trilha`,
   `vw_taxa_evasao`) e cache TanStack Query;
 - a licença (Apache-2.0), citada em 2.8 e 4.6, com a referência da Apache Software Foundation;
-- contagem de testes (278 asserções SQL em 9 arquivos; 4 roteiros Playwright,
-  5 casos) e a forma de rodá-los;
+- contagem de testes (279 asserções SQL em 9 arquivos; 5 roteiros Playwright,
+  9 casos) e a forma de rodá-los;
 - relatórios da coordenação: exports em CSV e XLSX (`write-excel-file`,
   carregado sob demanda), relatório do período no Acompanhamento e as funções
   `*.relatorio_*`, só da coordenação (erro `42501` para os demais), sem CPF nos
@@ -445,9 +466,12 @@ silêncio: sistema monolocatário; sem testes de carga; sem avaliação de
 usabilidade com usuários externos; sem avaliação de conformidade com ISO/IEC
 27001 nem LGPD; restauração do backup fora do Supabase não testada (o dump
 não inclui Auth nem Storage); decisão D7 do UI Kit (publicar notas após
-revisão) não implementada; cron sem tarefas; sem e-mail para matrícula
-rejeitada; cadastro aberto (qualquer pessoa cria conta de aluno; não há
-convite nem vínculo do aluno com uma instituição além da própria instalação).
+revisão) não implementada; sem tarefa agendada (nem cron trigger); sem e-mail
+para matrícula rejeitada; cadastro aberto (qualquer pessoa cria conta de aluno;
+não há convite nem vínculo do aluno com uma instituição além da própria
+instalação); recuperação de senha só pelo e-mail da conta (sem outro caminho se a
+pessoa perdeu o acesso a ele); sem aviso de privacidade, termos nem exclusão de
+conta (LGPD); a instância hospedada é só de demonstração.
 
 ## Como trabalhar neste projeto
 

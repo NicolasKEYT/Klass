@@ -3,7 +3,7 @@ import type { Session, User } from "@supabase/supabase-js";
 import type { Profile } from "@klass/types";
 import { queryClient } from "@/lib/consultas/cliente";
 import { limparUltimaGravacao } from "@/lib/consultas/estadoGravacao";
-import { supabase } from "@/lib/supabase";
+import { ABRIU_LINK_DE_RECUPERACAO, supabase } from "@/lib/supabase";
 import { AuthContext, type CadastroResultado } from "./AuthContext";
 import { mensagemDeErroAuth } from "./mensagensDeErro";
 
@@ -41,6 +41,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [usuario, setUsuario] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [carregando, setCarregando] = useState(true);
+  // Já começa certo se a página abriu pelo link do e-mail; o evento
+  // PASSWORD_RECOVERY (abaixo) cobre o caso de ele chegar depois.
+  const [emRecuperacao, setEmRecuperacao] = useState(ABRIU_LINK_DE_RECUPERACAO);
 
   useEffect(() => {
     if (!supabase) {
@@ -97,7 +100,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_evento, session) => {
+    } = supabase.auth.onAuthStateChange((evento, session) => {
+      if (evento === "PASSWORD_RECOVERY") setEmRecuperacao(true);
+      if (evento === "SIGNED_OUT") setEmRecuperacao(false);
       void sincronizar(session);
     });
 
@@ -136,8 +141,61 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut();
   }
 
+  async function pedirRedefinicaoDeSenha(email: string) {
+    if (!supabase) throw new Error("Supabase não configurado.");
+    // O link do e-mail volta para esta mesma origem, em /redefinir-senha. Esse
+    // endereço precisa estar na lista de redirecionamentos permitidos do
+    // Supabase (Authentication, URL Configuration); se não estiver, o link
+    // cai na página inicial em vez de abrir a tela da nova senha.
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/redefinir-senha`,
+    });
+    if (error) throw new Error(mensagemDeErroAuth(error));
+  }
+
+  async function definirNovaSenha(senha: string) {
+    if (!supabase) throw new Error("Supabase não configurado.");
+    const { error } = await supabase.auth.updateUser({ password: senha });
+    if (error) throw new Error(mensagemDeErroAuth(error));
+    setEmRecuperacao(false);
+  }
+
+  async function trocarSenha(senhaAtual: string, novaSenha: string) {
+    if (!supabase) throw new Error("Supabase não configurado.");
+    const email = usuario?.email;
+    if (!email) throw new Error("Entre na sua conta para trocar a senha.");
+
+    // Confere a senha atual antes: quem encontrar o computador com a conta
+    // aberta não troca a senha sem saber a que está em uso.
+    const { error: erroDaSenhaAtual } = await supabase.auth.signInWithPassword({
+      email,
+      password: senhaAtual,
+    });
+    if (erroDaSenhaAtual) {
+      throw new Error(
+        erroDaSenhaAtual.code === "invalid_credentials"
+          ? "A senha atual está incorreta."
+          : mensagemDeErroAuth(erroDaSenhaAtual),
+      );
+    }
+    await definirNovaSenha(novaSenha);
+  }
+
   return (
-    <AuthContext.Provider value={{ usuario, profile, carregando, entrar, cadastrar, sair }}>
+    <AuthContext.Provider
+      value={{
+        usuario,
+        profile,
+        carregando,
+        emRecuperacao,
+        entrar,
+        cadastrar,
+        sair,
+        pedirRedefinicaoDeSenha,
+        definirNovaSenha,
+        trocarSenha,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

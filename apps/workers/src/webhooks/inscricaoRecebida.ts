@@ -3,6 +3,7 @@ import { destaque, escaparHtml, montarEmail, paragrafo } from "../email/layout";
 import { enviarEmail } from "../email/resend";
 import type { Env } from "../shared/env";
 import { createSupabaseAdmin } from "../shared/supabaseAdmin";
+import { autorizarWebhook, lerCorpoJson } from "../shared/webhook";
 import { carregarDadosDaMatricula, type DadosDaMatricula } from "./dadosDaMatricula";
 
 // Payload do INSERT em selecao.matriculas, montado pelo trigger
@@ -51,12 +52,14 @@ function montarEmailInscricaoRecebida(
 export async function receberInscricaoRecebida(c: Context<{ Bindings: Env }>) {
   // Mesmo segredo dos outros webhooks: sem ele, quem descobrisse a URL
   // dispararia e-mails em nome do Klass.
-  const autorizacao = c.req.header("Authorization");
-  if (autorizacao !== `Bearer ${c.env.WEBHOOK_SECRET}`) {
+  if (!autorizarWebhook(c)) {
     return c.json({ error: "não autorizado" }, 401);
   }
 
-  const payload = await c.req.json<PayloadWebhookInscricao>();
+  const payload = await lerCorpoJson<PayloadWebhookInscricao>(c);
+  if (!payload) {
+    return c.json({ error: "corpo JSON inválido" }, 400);
+  }
 
   // O trigger já só dispara nesse caso; defensivo para o caso de ele mudar.
   if (

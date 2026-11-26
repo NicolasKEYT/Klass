@@ -17,9 +17,8 @@ const RESEND_API_URL = "https://api.resend.com/emails";
 const REMETENTE_PADRAO = "Klass <onboarding@resend.dev>";
 
 /**
- * Envio genérico via Resend. Os e-mails específicos do domínio (ex.:
- * confirmação de matrícula) entram na fase de cada módulo — esta função
- * ainda não é chamada de lugar nenhum.
+ * Envio genérico via Resend, usado pelos três webhooks (inscrição recebida,
+ * matrícula deferida e certificado emitido).
  */
 export async function enviarEmail(env: Env, input: EnviarEmailInput) {
   const response = await fetch(RESEND_API_URL, {

@@ -131,9 +131,22 @@ insert into selecao.turmas (id, modulo_id, codigo, professor_id, periodo_inicio,
   (pg_temp.id('t4'), pg_temp.id('m1'), 'PGT-D1', pg_temp.id('prof1'), pg_temp.hoje() - 60, pg_temp.hoje() - 30, 2);
 
 
-select plan(33);
+select plan(34);
 
 -- Contexto Motor de Seleção: inscrição, regras de matrícula e deferimento.
+
+-- Sem 'webhook_url' no Vault, o trigger não chama nada: nada entra na fila do
+-- pg_net. A matrícula é inserida como dono do banco e removida em seguida.
+delete from vault.secrets where name = 'webhook_url';
+insert into selecao.matriculas (aluno_id, turma_id, status)
+  values (pg_temp.id('al4'), pg_temp.id('t1'), 'inscrita');
+select is((select count(*)::int from net.http_request_queue
+           where url like '%/webhooks/inscricao-recebida'),
+  0, 'sem webhook_url no Vault, nada entra em net.http_request_queue');
+delete from selecao.matriculas where aluno_id = pg_temp.id('al4');
+
+-- Os testes seguintes precisam da URL base do Worker no Vault (só na transação).
+select vault.create_secret('http://worker.invalid', 'webhook_url');
 
 -- Inscrição pelo aluno: a matrícula nasce "inscrita" e em nome de quem chamou.
 select pg_temp.como('al1');

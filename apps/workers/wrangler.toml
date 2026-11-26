@@ -7,6 +7,10 @@ workers_dev = true
 # perguntando sobre telemetria quando roda sem terminal interativo (CI).
 send_metrics = false
 
+# Logs do Worker publicado no painel da Cloudflare (Workers Logs).
+[observability]
+enabled = true
+
 # Nenhum valor de segredo entra neste arquivo. As variáveis abaixo são
 # configuradas com `wrangler secret put <NOME>` (produção) ou num arquivo
 # `.dev.vars` não versionado (desenvolvimento local) — ver README para o

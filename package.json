@@ -1,6 +1,7 @@
 {
   "name": "klass",
   "private": true,
+  "version": "1.0.0",
   "license": "Apache-2.0",
   "description": "ERP educacional open source para automação da jornada acadêmica.",
   "engines": {
@@ -13,7 +14,10 @@
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck"
   },
-  "dependencies": {
-    "@supabase/supabase-js": "^2.112.4"
+  "pnpm": {
+    "overrides": {
+      "source-map-js": "^1.2.2",
+      "postcss-selector-parser@6": "^6.1.5"
+    }
   }
 }

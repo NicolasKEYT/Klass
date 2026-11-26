@@ -2,22 +2,24 @@
   "name": "@klass/workers",
   "private": true,
   "license": "Apache-2.0",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
     "build": "wrangler deploy --dry-run --outdir dist",
     "typecheck": "tsc --noEmit",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy",
+    "test": "vitest run"
   },
   "dependencies": {
     "@klass/types": "workspace:*",
-    "@supabase/supabase-js": "^2.112.4",
-    "hono": "^4.13.5"
+    "@supabase/supabase-js": "^2.119.2",
+    "hono": "^4.13.22"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20260831.1",
+    "@cloudflare/workers-types": "^5.20261125.1",
     "typescript": "^5.9.3",
-    "wrangler": "^4.127.1"
+    "vitest": "^4.1.12",
+    "wrangler": "^4.168.0"
   }
 }

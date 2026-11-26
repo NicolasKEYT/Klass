@@ -5,6 +5,7 @@ import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
 import { Input } from "@/components/Input";
 import { useAuth } from "@/auth";
+import { SENHA_MINIMA } from "@/auth/senha";
 
 export function Cadastrar() {
   const { cadastrar } = useAuth();
@@ -95,7 +96,7 @@ export function Cadastrar() {
               type="password"
               autoComplete="new-password"
               required
-              minLength={6}
+              minLength={SENHA_MINIMA}
               value={senha}
               onChange={(e) => setSenha(e.target.value)}
             />
@@ -107,7 +108,7 @@ export function Cadastrar() {
               type="password"
               autoComplete="new-password"
               required
-              minLength={6}
+              minLength={SENHA_MINIMA}
               value={confirmacaoSenha}
               onChange={(e) => setConfirmacaoSenha(e.target.value)}
             />
