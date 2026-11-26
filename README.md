@@ -379,11 +379,12 @@ Supabase Vault. Para a sua instalação:
    Não edite migration. Sem `webhook_url`, os três triggers não chamam nada e
    nenhum e-mail sai.
 
-   **Banco hospedado já em uso:** a migration `20261125120000_webhook_url_no_vault.sql`
-   ainda não foi aplicada lá. Antes do `supabase db push`, rode no SQL Editor
-   `select vault.create_secret('<URL do Worker>', 'webhook_url');`; senão os
-   três e-mails (inscrição recebida, matrícula deferida, certificado emitido)
-   deixam de sair.
+   **Banco hospedado que já usava as versões antigas dos triggers** (URL fixa
+   na função): antes do `supabase db push` da migration
+   `20261125120000_webhook_url_no_vault.sql`, grave a `webhook_url` no Vault (SQL
+   Editor ou `supabase db query --linked`); senão os três e-mails (inscrição
+   recebida, matrícula deferida, certificado emitido) deixam de sair. No
+   ambiente da equipe isso já foi feito em 25/11/2026.
 
 Limite conhecido: a chamada `pg_net` é assíncrona e **não é reenviada**; se o
 Worker ou o Resend falharem, o e-mail pode se perder. As respostas ficam por
